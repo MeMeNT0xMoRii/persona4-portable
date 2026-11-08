@@ -1,0 +1,57 @@
+# Game data: never commit
+*.iso
+*.ISO
+SLUS_217.82
+*.bin
+build/
+
+# Decomp input, kept as its own clone (no licence to redistribute)
+ext/
+
+# Local tools and Ghidra project
+.claude/
+p4/
+__pycache__/
+
+# PSP build outputs
+port/*.o
+port/*.elf
+port/*.PBP
+port/*.SFO
+
+# Local memory cards and saves
+card0/
+card1/
+saves/
+
+# Game-derived artifacts, including copies outside build/
+*.cso
+*.chd
+*.CVM
+*.cvm
+*.PBP
+*.pbp
+*.prx
+*.elf
+*.o
+*.SFO
+*.p4v
+*.p4a
+*.pcm
+*.afs
+*.AFS
+DATA.[0-9]*
+BTL.[0-9]*
+BGM.[0-9]*
+ENV.[0-9]*
+ZZZZZ.[0-9]*
+AUDIO.[0-9]*
+p4files.idx
+audio.idx
+
+# Local Python environments and editor state
+.venv/
+.env
+.env.*
+.vscode/
+.idea/
