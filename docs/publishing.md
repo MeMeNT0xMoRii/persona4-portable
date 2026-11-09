@@ -1,6 +1,8 @@
 # Publishing the project
 
-The source repository is [dreikk91/persona4-psp](https://github.com/dreikk91/persona4-psp). Original port source, build tools and documentation are published from a separate source snapshot with fresh Git history. Local game artifacts and external checkouts are excluded from that snapshot. The optional b164 Windows preparation utility is a separate release asset.
+The source repository is [dreikk91/persona4-psp](https://github.com/dreikk91/persona4-psp). Original port source, build tools and documentation are published from a separate source snapshot with fresh Git history. Local game artifacts and external checkouts are excluded from that snapshot. The older Windows preparation release asset was withdrawn; its source-build replacement is packaged locally.
+
+For updates, clone the existing public repository with `gh repo clone dreikk91/persona4-psp`, copy only the reviewed source/documentation changes into that clone, and commit and push from there. Preserve the public history; do not push the development checkout's history. Uploading a Windows utility to Releases is a separate operation from pushing source changes.
 
 ## Source publication
 
@@ -28,6 +30,8 @@ Review filenames and file contents, including historical versions, for game data
 
 Do not upload `build/release_b164/UPDATE`, the complete installation folder or any converted media. They are local installation products.
 
-`tools/psp_prepare_release.py` bundles an EBOOT containing game-derived code. Reconstructing data from a user's ISO does not establish executable redistribution rights. The MIT grant does not cover that game code. Preserve the bundled tools' notices, version/source information and any required corresponding source when distributing the preparation package. The Windows package uses the earlier prepared b164 executable, not the independently checked clean-build binary; both sets of hashes are documented separately.
+The withdrawn b164 package contained an EBOOT with game-derived code. The packager now defaults to a source-build package that compiles EBOOT and matching data locally; it does not include a prebuilt game executable, game objects or a numerical data recipe. Frozen source packages include PSPDEV so users do not need to install a compiler. The pinned upstream source is obtained separately. Legacy EBOOT packaging requires `--legacy-prebuilt` explicitly.
+
+Local compilation does not establish permissions for the sources or tools. The MIT grant covers only our original contributions. Preserve bundled tools' notices, version/source information and any required corresponding source. Creating the source-build package does not upload it or update the existing release.
 
 The tested Windows compiler was a locally built PSPDEV toolchain. Its recorded version identifiers are in [the build guide](building.md); a verified public download of that exact toolchain and bit-for-bit release reproducibility are not established here. Do not advertise a fully self-contained or one-click source build until a clean public setup has been verified.

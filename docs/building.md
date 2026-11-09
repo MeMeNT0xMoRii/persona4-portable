@@ -1,6 +1,6 @@
 # Building Persona 4 for PSP
 
-These instructions target the current **b164** working-tree sources. Run commands from the root of this port repository in **PowerShell**. Build on a local disk in a path without spaces, such as `C:/src/p4-psp`; the initial linker response file does not quote object paths. Network shares are much slower and have additional path/ownership complications.
+These instructions target the current **b164** working-tree sources. Run commands from the root of this port repository in **PowerShell**. Build on a local disk, such as `C:/src/p4-psp`. Linker response files now quote object paths. Network shares are much slower and have additional path/ownership complications. The [source-build preparation utility](prepare_game.md) automates this pipeline with an isolated local cache.
 
 The aim is to rebuild the port and recreate the installation from your own disc. Bit-for-bit equality with the maintainer's previous b164 binary is not yet guaranteed: compiler, libraries, upstream revision and compiled inputs affect the output. Record the versions and hashes from your own build.
 
@@ -77,7 +77,7 @@ python tools/psp_link.py
 python tools/psp_hw_debug.py --release --out build/release_b164
 ```
 
-`failed_compile.txt` must be empty before linking. The census script currently writes failures to its report without returning a failing process exit code, so checking the report is necessary. Do not continue with missing or stale objects.
+`failed_compile.txt` must contain no failed filenames before linking. The census script now returns a failing exit code when compilation fails; it also keeps the detailed reports. Do not continue with missing or stale objects.
 
 What these commands do:
 
@@ -135,6 +135,7 @@ No PSPSDK, Python or conversion tools are needed on the PSP itself.
 Host regression checks for the preparation/conversion tools:
 
 ```powershell
+python -m unittest discover -s tools -p test_build.py
 python -m unittest discover -s tools -p test_prepare.py
 python -m unittest discover -s tools -p test_audio.py
 python -m unittest discover -s tools -p test_video.py

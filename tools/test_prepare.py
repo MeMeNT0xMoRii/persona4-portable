@@ -1,17 +1,32 @@
 """Release recipe identity, disc-part indexing and interrupted-extraction checks."""
 import hashlib
+import io
 import json
 from pathlib import Path
+import queue
 import struct
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from psp_prepare import apply_recipe, extract_containers, sha256
+from psp_prepare import LogWriter, apply_recipe, extract_containers, sha256
 from psp_prepare_release import make_recipe
 
 
 class PreparationTests(unittest.TestCase):
+    def test_missing_console_keeps_file_log_and_gui_messages(self):
+        for failure in ('write', 'flush'):
+            with self.subTest(failure=failure):
+                log, echo, messages = io.StringIO(), io.StringIO(), queue.Queue()
+                writer = LogWriter(messages, log, echo=echo)
+                with patch.object(echo, failure, side_effect=OSError(22, 'Invalid argument')):
+                    self.assertEqual(writer.write('building\n'), 9)
+                    writer.write('finished\n')
+                    writer.flush()
+                self.assertIsNone(writer.echo)
+                self.assertEqual(log.getvalue(), 'building\nfinished\n')
+                self.assertEqual([messages.get_nowait(), messages.get_nowait()], ['building\n', 'finished\n'])
+
     def test_recipe_roundtrip_and_wrong_edition(self):
         elf = bytearray(512)
         elf[:6] = b'\x7fELF\x01\x01'

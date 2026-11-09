@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-"""Build a public Windows preparation package, excluding original game assets.
+"""Build a source-compiling Windows preparation package without a game EBOOT.
 
-python tools/psp_prepare_release.py --release build/release_b164 --vgmstream C:/tools/vgmstream --freeze --out C:/temp/P4-PSP-b164
+python tools/psp_prepare_release.py --vgmstream C:/tools/vgmstream --freeze --out C:/temp/P4-PSP-source
 
 This creates a local package for review; it never publishes a GitHub release.
 """
@@ -17,6 +17,9 @@ import sys
 import tempfile
 
 from psp_prepare import apply_recipe, sha256
+from psp_build import (UPSTREAM_COMMIT, UPSTREAM_URL, UPSTREAM_TREE_SHA256,
+                       payload_files, find_pspdev)
+import re
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -78,9 +81,46 @@ def copy_licenses(destination):
         shutil.copyfile(path, destination / 'Tk-license.terms')
 
 
+def source_package(root, out):
+    """Copy source inputs only; no upstream checkout or generated game files."""
+    source_hashes = {}
+    for path in payload_files(root):
+        relative = path.relative_to(root)
+        target = out / 'source' / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, target)
+        source_hashes[relative.as_posix()] = sha256(target)
+    number = int(re.search(r'^#define BUILD (\d+)$', (root / 'port/main.c').read_text(), re.M)[1])
+    return dict(version=2, mode='source-build', build=number,
+                edition='Persona 4 USA / SLUS-21782', audio_streams=17375, movies=23,
+                upstream=dict(commit=UPSTREAM_COMMIT, url=UPSTREAM_URL, tree_sha256=UPSTREAM_TREE_SHA256,
+                              hash_format='persona4-upstream-tree-v1'),
+                reference=json.loads((root / 'tools/build_reference.json').read_text(encoding='utf-8')),
+                source_sha256=source_hashes)
+
+
+def copy_toolchain(compiler, destination):
+    shutil.copytree(compiler, destination)
+    # BFD loads every plugin as a DLL; static archives cause Windows Bad Image dialogs.
+    for plugin in (destination / 'lib/bfd-plugins').glob('*'):
+        if plugin.suffix in ('.a', '.la'):
+            plugin.unlink()
+    info = destination / 'BUILDINFO.txt'
+    if info.is_file():
+        text = info.read_text(encoding='utf-8')
+        # Keep compiler provenance without publishing the maintainer's install path.
+        posix = compiler.as_posix()
+        for prefix in (str(compiler), posix, '/' + posix[0].lower() + posix[2:]):
+            text = re.sub(re.escape(prefix), '${PSPDEV}', text, flags=re.I)
+        info.write_text(text, encoding='utf-8')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--release', type=Path, required=True)
+    parser.add_argument('--release', type=Path, help='Existing release, only with --legacy-prebuilt')
+    parser.add_argument('--legacy-prebuilt', action='store_true', help='Explicitly create the older package containing EBOOT')
+    parser.add_argument('--pspdev', type=Path, help='Windows PSPDEV to include in the preparation package')
+    parser.add_argument('--bundle-toolchain', action='store_true', help='Include PSPDEV (automatic for frozen source packages)')
     parser.add_argument('--retail-elf', type=Path, default=ROOT / 'build/SLUS_217.82')
     parser.add_argument('--vgmstream', type=Path, required=True, help='Directory containing the complete Windows vgmstream CLI distribution')
     parser.add_argument('--out', type=Path, required=True)
@@ -90,15 +130,21 @@ def main():
     out = args.out.resolve()
     if out.exists() and any(out.iterdir()):
         raise ValueError('Choose a new empty package directory.')
-    manifest = json.loads((args.release / 'manifest.json').read_text())
-    if not manifest.get('release'): raise ValueError('Expected an XMB release build.')
-    for name in ('EBOOT.PBP', 'p4data.bin', 'p4str.bin'):
-        if sha256(args.release / name) != manifest['artifact_sha256'][name]:
-            raise ValueError('Release artifact hash mismatch: ' + name)
-    recipe = make_recipe(args.retail_elf.read_bytes(), (args.release / 'p4data.bin').read_bytes(),
-                         (args.release / 'p4str.bin').read_bytes(), (args.release / 'EBOOT.PBP').read_bytes(), manifest['build'])
+    if args.legacy_prebuilt:
+        if not args.release:
+            parser.error('--legacy-prebuilt requires --release')
+        manifest = json.loads((args.release / 'manifest.json').read_text())
+        if not manifest.get('release'): raise ValueError('Expected an XMB release build.')
+        for name in ('EBOOT.PBP', 'p4data.bin', 'p4str.bin'):
+            if sha256(args.release / name) != manifest['artifact_sha256'][name]:
+                raise ValueError('Release artifact hash mismatch: ' + name)
+        recipe = make_recipe(args.retail_elf.read_bytes(), (args.release / 'p4data.bin').read_bytes(),
+                             (args.release / 'p4str.bin').read_bytes(), (args.release / 'EBOOT.PBP').read_bytes(), manifest['build'])
+    elif args.release:
+        parser.error('--release requires --legacy-prebuilt; source packages do not read a prebuilt release')
     if not (args.vgmstream / 'vgmstream-cli.exe').is_file():
         raise ValueError('Missing vgmstream-cli.exe.')
+    compiler = find_pspdev(out, args.pspdev) if args.bundle_toolchain or (args.freeze and not args.legacy_prebuilt) else None
     out.mkdir(parents=True, exist_ok=True)
     if args.freeze:
         with tempfile.TemporaryDirectory(prefix='p4-freeze-') as temporary:
@@ -109,15 +155,22 @@ def main():
                 '--exclude-module', 'imageio_ffmpeg', '--exclude-module', 'numpy', '--exclude-module', 'PIL',
                 '--hidden-import', 'tkinter', '--hidden-import', 'tkinter.filedialog', '--hidden-import', 'tkinter.messagebox',
                 '--hidden-import', 'tkinter.ttk', '--add-data', str(ROOT / 'tools/audio_vag_encoder.cs') + ';tools',
+                '--hidden-import', 'runpy', '--hidden-import', 'concurrent.futures.thread',
                 str(ROOT / 'tools/psp_prepare.py')], check=True)
             shutil.copytree(temp / 'dist/Prepare P4', out, dirs_exist_ok=True)
     else:
         # Developer package: public packages should use --freeze.
-        for name in ('psp_prepare.py', 'psp_audio.py', 'psp_video.py', 'psp_disc.py', 'psp_data_census.py', 'audio_vag_encoder.cs'):
+        for name in ('psp_prepare.py', 'psp_audio.py', 'psp_video.py', 'psp_disc.py', 'psp_data_census.py',
+                     'psp_build.py', 'extract_elf.py', 'audio_vag_encoder.cs'):
             target = out / 'tools' / name
             target.parent.mkdir(exist_ok=True); shutil.copyfile(ROOT / 'tools' / name, target)
-    (out / 'P4').mkdir()
-    shutil.copyfile(args.release / 'EBOOT.PBP', out / 'P4/EBOOT.PBP')
+    if args.legacy_prebuilt:
+        (out / 'P4').mkdir()
+        shutil.copyfile(args.release / 'EBOOT.PBP', out / 'P4/EBOOT.PBP')
+    else:
+        recipe = source_package(ROOT, out)
+    if compiler is not None:
+        copy_toolchain(compiler, out / 'toolchain/pspdev')
     (out / 'prepare.json').write_text(json.dumps(recipe, separators=(',', ':')) + '\n', encoding='utf-8')
     helpers = out / 'helpers'; helpers.mkdir()
     from psp_audio import build_encoder
@@ -135,14 +188,18 @@ def main():
     (out / 'THIRD_PARTY.md').write_text(
         'This package includes Python, Tcl/Tk, PyInstaller runtime, PyAV, FFmpeg and vgmstream.\n'
         'License texts are in licenses/ and helpers/vgmstream/COPYING.\n'
+        'Bundled PSPDEV/PSPSDK notices and build versions are in toolchain/pspdev/licenses/ '
+        'and toolchain/pspdev/BUILDINFO.txt (if included).\n'
         'Upstream projects and source: https://www.python.org/ https://www.tcl.tk/ '
         'https://pyinstaller.org/ https://github.com/PyAV-Org/PyAV '
-        'https://ffmpeg.org/ https://github.com/vgmstream/vgmstream\n'
-        'FFmpeg binary provider: imageio-ffmpeg (https://github.com/imageio/imageio-ffmpeg).\n'
+        'https://ffmpeg.org/ https://github.com/vgmstream/vgmstream '
+        'https://github.com/pspdev/pspdev https://github.com/pspdev/pspsdk\n'
+        'The exact FFmpeg version and build configuration are recorded in licenses/FFmpeg.txt.\n'
+        'Its provider depends on the executable selected at packaging time.\n'
         'Before public redistribution, supply the corresponding source and notices required '
         'by the exact bundled third-party binaries.\n', encoding='utf-8')
     files = {p.relative_to(out).as_posix(): sha256(p) for p in sorted(out.rglob('*')) if p.is_file()}
-    (out / 'package.json').write_text(json.dumps(dict(build=manifest['build'], files=files), indent=2) + '\n')
+    (out / 'package.json').write_text(json.dumps(dict(build=recipe['build'], mode=recipe.get('mode', 'prebuilt'), files=files), indent=2) + '\n')
     if args.zip:
         print(shutil.make_archive(str(out), 'zip', out.parent, out.name))
     print(f'Preparation package ready: {out}', flush=True)

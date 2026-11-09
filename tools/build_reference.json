@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "recommended_toolchain": {
+    "description": "Local Windows PSP GCC 15.2.0 / binutils 2.44 / PSPSDK build",
+    "sha256": "fb1eba5ce4bacb8c9e383b542a2d49fe071b42756dd84b1602ee217e2ef6f1e3"
+  },
+  "profiles": [
+    {
+      "id": "b164-prepared-hardware",
+      "build": 164,
+      "kind": "hardware",
+      "scope": "Previously tested selected PSP scenes and movie transitions; not a complete playthrough.",
+      "files": {
+        "EBOOT.PBP": "18e30cce4290d0e369ae1b10e5e6c524e819c7d591384ba3357bc18edfbdc2fe",
+        "p4data.bin": "c13e21835c3b965cc6e15b35ffa93fc451f30b72b52cb11e604722cf841543dc",
+        "p4str.bin": "4bc65004bf091811ee679342eed10efe1dea01ef0fd02c0e189da45adf6e7ee4"
+      }
+    },
+    {
+      "id": "b164-clean-source-host",
+      "build": 164,
+      "kind": "host",
+      "scope": "Full host compilation, address/import checks and PBP validation. PSP validation pending.",
+      "files": {
+        "EBOOT.PBP": "0a7a830263e3f5b37b6b859af588a032ab5289fa0d40f0c5ab6ebbf06f5527e6",
+        "p4data.bin": "ef9fc8a9a9b4f3a1e85cb3fac929d654b1d4ef04f675f347afd2f2a4d1627337",
+        "p4str.bin": "4bc65004bf091811ee679342eed10efe1dea01ef0fd02c0e189da45adf6e7ee4"
+      }
+    }
+  ]
+}

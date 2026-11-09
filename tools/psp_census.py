@@ -474,6 +474,7 @@ def main():
         "".join(f"{e[0]}:{e[1]}: {e[2]}\n" for _, errors, rc in results if rc for e in errors), encoding="utf-8")
     print(report)
     assert sum(groups[g, "files"] for g in ("FIRST", "RW", "CRI", "SCE", "MIDDLEWARE")) == len(files)
+    return 1 if bad else 0
 
 
 if __name__ == "__main__":

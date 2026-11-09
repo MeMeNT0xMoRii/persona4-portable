@@ -4,19 +4,21 @@ An experimental native PSP port of **Shin Megami Tensei: Persona 4** (PlayStatio
 
 You must supply your own legally obtained USA disc image. Game executables, archives, music, voices, movies and generated game data are not included in the source repository.
 
-## Download the Windows preparation tool
+## Windows preparation tool
 
-The prebuilt Windows package for b164 has been withdrawn because it contained a game-derived EBOOT; a package that builds the EBOOT locally is in preparation. For now, build from source with [the build guide](docs/building.md), then prepare your own disc with [the preparation guide](docs/prepare_game.md).
+Use the **source-build** preparation package: extract the entire archive, run `Prepare P4.exe`, select your original USA ISO and an output folder, then copy the resulting `P4` folder to `PSP/GAME/` on your memory card. Packages with `toolchain/pspdev` include the compiler; no separate Python or PSPDEV setup is needed. See [the preparation guide](docs/prepare_game.md) for building the package and using it.
 
-This is an experimental prerelease. The utility bundles the previously prepared b164 EBOOT and reconstructs its matching resources from your ISO; the source repository contains no prebuilt EBOOT. The independently checked clean source build described below has different hashes.
+The utility compiles EBOOT and matching data locally from your ISO and pinned upstream sources. It needs Internet access for the first upstream download, or a verified offline source ZIP. The older **P4-PSP-b164-windows-x64.zip** download was withdrawn because it contained a prebuilt EBOOT. The source-build utility is implemented in `main`, but its replacement Windows download has not been published yet. Build a local package using the preparation guide below.
 
 ## Build and install
 
 - **Compile EBOOT.PBP from source:** follow [Building from source](docs/building.md), including the pinned decompilation revision and Windows PSP toolchain requirements.
 - **Prepare resources and install:** the same guide covers extraction, audio/movie conversion and copying the complete installation to `PSP/GAME/P4`.
-- **Windows preparation utility:** [Prepare game](docs/prepare_game.md) describes the optional build-specific GUI package. It prepares resources using an existing EBOOT; it does not compile source.
+- **Windows preparation utility:** [Build and prepare](docs/prepare_game.md) describes the source-build GUI/CLI. Frozen source packages include the compiler and build EBOOT locally.
 
 A [clean source-build check](docs/build_validation_b164.md) successfully produced an EBOOT. Its output differs from the older local b164 binary; the fresh build has not yet been tested on PSP.
+
+The [source-build utility validation](docs/source_build_validation_b164.md) also covers the frozen Windows runtime, build caching and hidden compiler processes.
 
 The current working-tree build is **b164**. The source build currently targets Windows and a Windows PSPSDK toolchain. A PSP with 64 MB RAM and firmware capable of running homebrew is required; PSP-1000 support is not established.
 
@@ -47,6 +49,6 @@ Original contributions owned by this project's contributors are available under 
 
 The inspected upstream revision has no repository-wide license. A public repository and attribution alone do not grant permission to redistribute or relicense its contents. Keep the upstream checkout external and resolve applicable permissions before distributing derived material.
 
-Publish source tooling separately from locally generated game artifacts. **EBOOT.PBP and the preparation package contain game-derived code**, including translated retail routines; excluding ISO files and assets does not establish permission to redistribute those binaries. The project license covers only our original contributions. See [publication notes](docs/publishing.md) for the packaging boundaries.
+Publish source tooling separately from locally generated game artifacts. **Generated EBOOT.PBP contains game-derived code**, including translated retail routines. The source-build utility generates these locally from the user's disc instead of bundling the game executable. The project license covers only our original contributions. See [publication notes](docs/publishing.md) for the packaging boundaries.
 
 Persona 4 and associated names and assets belong to their respective rights holders. This is an unofficial project with no affiliation with or endorsement by Atlus, Sega or Sony.

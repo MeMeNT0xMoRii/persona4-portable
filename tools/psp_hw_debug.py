@@ -38,7 +38,7 @@ def main():
     print(f"Staging network objects in {out}", flush=True)
     stage = out / "objects"
     stage.mkdir()
-    original_objects = [ROOT / "build" / "obj" / Path(line.strip()).name
+    original_objects = [ROOT / "build" / "obj" / Path(line.strip().strip('"')).name
                         for line in (base / "objects.rsp").read_text().splitlines() if line.strip()]
     inputs = list(original_objects)
     inputs += [base / name for name in ("stubs.o", "reasm.o", "image.ld", "symbols.ld")]

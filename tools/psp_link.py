@@ -3,11 +3,11 @@
 
   python tools/psp_link.py   # after psp_census.py --compile; writes build/psp/ and build/psp_dist/
 """
-import os, re, subprocess, sys
+import os, re, struct, subprocess, sys
 from pathlib import Path
 from psp_data_census import CODE, END, ROOT, inside
 from psp_link_census import OBJ, symbols
-from psp_make_data import K, PSP_IMAGE, START, retail_to_native
+from psp_make_data import K, PSP_IMAGE, START, retail_to_native, build as build_data
 from psp_reasm import reassemble, write_report
 from psp_xref import find_gp, load, sources, stub_address, symbol_addresses
 
@@ -174,7 +174,7 @@ def main():
 
     run(BIN / "psp-gcc.exe", "-O2", "-G0", "-w", "-fno-builtin", "-c", OUT / "stubs.c", "-o", OUT / "stubs.o")
     rsp = OUT / "objects.rsp"
-    rsp.write_text("\n".join(p.as_posix() for p in objects) + "\n", encoding="utf-8")
+    rsp.write_text("\n".join('"' + p.as_posix() + '"' for p in objects) + "\n", encoding="utf-8")
     elf = OUT / "p4.elf"
     # ponytail: two CRI generations define the same names, first object wins; drop one set when audio lands.
     run(BIN / "psp-gcc.exe", "-G0", f"-L{SDK / 'lib'}", "-Wl,-zmax-page-size=128", "-Wl,--allow-multiple-definition", "-Wl,--wrap=sdkSpriteRequestLoad", "-Wl,--wrap=sceGuGetMemory", "-Wl,--wrap=sceGeListUpdateStallAddr", "-Wl,--wrap=func_00397c40", f"-Wl,-T,{(OUT / 'image.ld').as_posix()}",
@@ -187,8 +187,13 @@ def main():
     print(run(BIN / "psp-size.exe", elf).strip())
     print(f"data symbols {len(data)}, stubs {len(stubs)}, program end {end:#x}")
 
-    subprocess.run([sys.executable, str(ROOT / "tools" / "psp_make_data.py")], check=True)
-    subprocess.run([sys.executable, str(ROOT / "tools" / "psp_address_audit.py")], check=True)
+    # Keep these stages in this worker. Nested windowed Python executables do
+    # not reliably inherit usable CRT stdout/stderr descriptors on Windows.
+    image_data, string_offsets = build_data(elf=elf)
+    (OUT / "p4data.bin").write_bytes(image_data)
+    (OUT / "p4str.bin").write_bytes(struct.pack(f"<{len(string_offsets)}I", *string_offsets))
+    from psp_address_audit import main as audit_addresses
+    audit_addresses()
     run(BIN / "mksfoex.exe", "-d", "MEMSIZE=1", "Persona 4", OUT / "PARAM.SFO")
     run(BIN / "psp-strip.exe", elf, "-o", OUT / "strip.elf")
     run(BIN / "pack-pbp.exe", OUT / "EBOOT.PBP", OUT / "PARAM.SFO", "NULL", "NULL", "NULL", "NULL", "NULL", OUT / "strip.elf", "NULL")
