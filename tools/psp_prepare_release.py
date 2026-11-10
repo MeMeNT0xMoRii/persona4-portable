@@ -175,19 +175,17 @@ def main():
     (out / 'prepare.json').write_text(json.dumps(recipe, separators=(',', ':')) + '\n', encoding='utf-8')
     helpers = out / 'helpers'; helpers.mkdir()
     from psp_audio import build_encoder
-    from psp_video import ffmpeg_path
     shutil.copyfile(build_encoder(), helpers / 'audio_vag_encoder.exe')
-    shutil.copyfile(ffmpeg_path(), helpers / 'ffmpeg.exe')
     shutil.copytree(args.vgmstream, helpers / 'vgmstream')
     notices = out / 'licenses'
     copy_licenses(notices)
-    license_info = subprocess.run([str(helpers / 'ffmpeg.exe'), '-L'], capture_output=True, text=True, check=True)
-    (notices / 'FFmpeg.txt').write_text(license_info.stdout + license_info.stderr, encoding='utf-8')
     shutil.copyfile(ROOT / 'docs/prepare_game.md', out / 'README.md')
     shutil.copyfile(ROOT / 'LICENSE', out / 'LICENSE')
     shutil.copyfile(ROOT / 'THIRD_PARTY.md', out / 'PROJECT_NOTICES.md')
     (out / 'THIRD_PARTY.md').write_text(
-        'This package includes Python, Tcl/Tk, PyInstaller runtime, PyAV, FFmpeg and vgmstream.\n'
+        'This package includes Python, Tcl/Tk, PyInstaller runtime, PyAV (with its FFmpeg libraries) and vgmstream.\n'
+        'The FFmpeg program is not included: the utility downloads the gyan.dev FFmpeg 9.0.1 essentials build '
+        'from https://github.com/GyanD/codexffmpeg/releases/tag/9.0.1 on first use.\n'
         'License texts are in licenses/ and helpers/vgmstream/COPYING.\n'
         'The PSP compiler (PSPDEV/PSPSDK) is not included: the utility downloads it on first build from '
         'https://github.com/dreikk91/persona4-psp/releases/tag/toolchain-gcc15.2, '
@@ -196,8 +194,6 @@ def main():
         'https://pyinstaller.org/ https://github.com/PyAV-Org/PyAV '
         'https://ffmpeg.org/ https://github.com/vgmstream/vgmstream '
         'https://github.com/pspdev/pspdev https://github.com/pspdev/pspsdk\n'
-        'The exact FFmpeg version and build configuration are recorded in licenses/FFmpeg.txt.\n'
-        'Its provider depends on the executable selected at packaging time.\n'
         'Before public redistribution, supply the corresponding source and notices required '
         'by the exact bundled third-party binaries.\n', encoding='utf-8')
     files = {p.relative_to(out).as_posix(): sha256(p) for p in sorted(out.rglob('*')) if p.is_file()}

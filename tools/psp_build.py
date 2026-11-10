@@ -125,7 +125,7 @@ def clean_cache(cache=None, include_downloads=False):
                 raise ValueError('Refusing to clean redirected downloads.')
             for path in downloads.iterdir():
                 if not path.is_file() or path.is_symlink() or not re.fullmatch(
-                        r'(persona4-[0-9a-f]{40}|pspdev-[0-9a-f]{64})\.(zip|lock|download)', path.name):
+                        r'(persona4-[0-9a-f]{40}|(pspdev|ffmpeg)-[0-9a-f]{64})\.(zip|lock|download)', path.name):
                     raise ValueError('Unknown download-cache entry. No files were removed.')
                 targets.append(path)
         toolchains = root / 'toolchain'
@@ -329,49 +329,71 @@ def upstream_archive(cache, config, supplied=None):
     return path
 
 
+FFMPEG_URL = 'https://github.com/GyanD/codexffmpeg/releases/download/9.0.1/ffmpeg-9.0.1-essentials_build.zip'
+FFMPEG_SHA256 = 'fec81ae03971d9dd4be3ebe02e263bd2ec1d789483f931bdba5f5715e65da2e9'
+
+
+def download_tool(cache, kind, url, archive_sha, top, label, hint, keep=lambda name: True):
+    """Download a pinned ZIP once, check its SHA256 and extract top/ into the cache."""
+    target = cache / 'toolchain' / archive_sha
+    if (target / 'complete').is_file():
+        return target / top
+    path = cache / 'downloads' / f'{kind}-{archive_sha}.zip'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with exclusive_lock(path.with_suffix('.lock')):
+        if (target / 'complete').is_file():
+            return target / top
+        if not path.is_file() or digest(path) != archive_sha:
+            print(f'Downloading {label} (once)...', flush=True)
+            temporary = path.with_suffix('.download')
+            try:
+                with urllib.request.urlopen(url, timeout=60) as response, temporary.open('wb') as out:
+                    shutil.copyfileobj(response, out, 1 << 20)
+                if digest(temporary) != archive_sha:
+                    raise ValueError('archive SHA256 mismatch')
+            except (OSError, ValueError, urllib.error.URLError) as error:
+                temporary.unlink(missing_ok=True)
+                raise RuntimeError(f'Unable to download {label}: {error}\n'
+                                   f'Retry with Internet access, or download {url} yourself and {hint}') from error
+            os.replace(temporary, path)
+        print(f'Extracting {label}...', flush=True)
+        partial = target.with_name(archive_sha + '.partial')
+        shutil.rmtree(partial, ignore_errors=True)
+        with zipfile.ZipFile(path) as source:
+            for entry in source.infolist():
+                name = safe_relative(entry.filename)
+                if name.parts[0] != top or (entry.external_attr >> 16) & 0o170000 == 0o120000:
+                    raise ValueError(f'Unexpected {label} archive entry: {entry.filename}')
+                if not entry.is_dir() and keep(name.as_posix()):
+                    out = partial.joinpath(*name.parts)
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    with source.open(entry) as src, out.open('wb') as dst:
+                        shutil.copyfileobj(src, dst)
+        (partial / 'complete').write_text(url + '\n')
+        shutil.rmtree(target, ignore_errors=True)
+        os.replace(partial, target)
+        path.unlink()
+    return target / top
+
+
 def download_toolchain(cache, config):
     """Fetch the recommended Windows PSPDEV once into the cache and return its root."""
     wanted = config.get('reference', {}).get('recommended_toolchain', {})
     url, archive_sha = wanted.get('url', ''), wanted.get('archive_sha256', '')
     if not url.startswith('https://github.com/dreikk91/persona4-psp/releases/download/') or len(archive_sha) != 64:
         raise ValueError('This package has no compiler download. Pass --pspdev with a PSPDEV root.')
-    target = cache / 'toolchain' / archive_sha
-    if (target / 'complete').is_file():
-        return target / 'pspdev'
-    path = cache / 'downloads' / f'pspdev-{archive_sha}.zip'
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if not path.is_file() or digest(path) != archive_sha:
-        print('Downloading the PSP compiler (about 100 MB, once)...', flush=True)
-        temporary = path.with_suffix('.download')
-        try:
-            with urllib.request.urlopen(url, timeout=60) as response, temporary.open('wb') as out:
-                shutil.copyfileobj(response, out, 1 << 20)
-            if digest(temporary) != archive_sha:
-                raise ValueError('compiler archive SHA256 mismatch')
-        except (OSError, ValueError, urllib.error.URLError) as error:
-            temporary.unlink(missing_ok=True)
-            raise RuntimeError(f'Unable to download the PSP compiler: {error}\n'
-                               f'Retry with Internet access, or download {url} yourself, extract it '
-                               'and pass --pspdev with its pspdev folder.') from error
-        os.replace(temporary, path)
-    print('Extracting the PSP compiler...', flush=True)
-    partial = target.with_name(archive_sha + '.partial')
-    shutil.rmtree(partial, ignore_errors=True)
-    with zipfile.ZipFile(path) as source:
-        for entry in source.infolist():
-            name = safe_relative(entry.filename)
-            if name.parts[0] != 'pspdev' or (entry.external_attr >> 16) & 0o170000 == 0o120000:
-                raise ValueError(f'Unexpected compiler archive entry: {entry.filename}')
-            if not entry.is_dir():
-                out = partial.joinpath(*name.parts)
-                out.parent.mkdir(parents=True, exist_ok=True)
-                with source.open(entry) as src, out.open('wb') as dst:
-                    shutil.copyfileobj(src, dst)
-    (partial / 'complete').write_text(url + '\n')
-    shutil.rmtree(target, ignore_errors=True)
-    os.replace(partial, target)
-    path.unlink()
-    return target / 'pspdev'
+    return download_tool(cache, 'pspdev', url, archive_sha, 'pspdev', 'the PSP compiler (about 100 MB)',
+                         'pass --pspdev with its extracted pspdev folder.')
+
+
+def download_ffmpeg(cache=None):
+    """FFmpeg is fetched from gyan.dev's versioned release instead of being redistributed."""
+    root = prepare_cache(cache_path(cache))
+    top = FFMPEG_URL.rsplit('/', 1)[1].removesuffix('.zip')
+    folder = download_tool(root, 'ffmpeg', FFMPEG_URL, FFMPEG_SHA256, top, 'FFmpeg 9.0.1 (about 110 MB)',
+                           'pass --ffmpeg with its bin/ffmpeg.exe.',
+                           keep=lambda name: name.endswith(('/bin/ffmpeg.exe', '/LICENSE', '/README.txt')))
+    return folder / 'bin/ffmpeg.exe'
 
 
 def extract_upstream(archive, destination):

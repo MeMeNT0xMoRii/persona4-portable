@@ -19,13 +19,13 @@
       }
     },
     {
-      "id": "b164-clean-source-host",
-      "build": 164,
+      "id": "b165-clean-source-host",
+      "build": 165,
       "kind": "host",
-      "scope": "Full host compilation, address/import checks and PBP validation. PSP validation pending.",
+      "scope": "Full host compilation from the release package with the downloaded toolchain, reproduced twice. Not yet tested on a PSP.",
       "files": {
-        "EBOOT.PBP": "0a7a830263e3f5b37b6b859af588a032ab5289fa0d40f0c5ab6ebbf06f5527e6",
-        "p4data.bin": "ef9fc8a9a9b4f3a1e85cb3fac929d654b1d4ef04f675f347afd2f2a4d1627337",
+        "EBOOT.PBP": "ded9acdc41a31db37a749897c49739f717de2890ac2e76a5faf1641105457ab1",
+        "p4data.bin": "f78ffd8a9437ab31edd6db7f316880cd7c47fa409aa1ad305b542c06474520dd",
         "p4str.bin": "4bc65004bf091811ee679342eed10efe1dea01ef0fd02c0e189da45adf6e7ee4"
       }
     }

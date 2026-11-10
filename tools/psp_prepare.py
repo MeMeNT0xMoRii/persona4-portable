@@ -174,10 +174,19 @@ def extract_containers(iso, containers, destination, state, state_path):
     return files
 
 
+def bundle_ffmpeg(bundle, cache=None):
+    """A package's own helpers/ffmpeg.exe, else the pinned gyan.dev build downloaded once."""
+    helper = Path(bundle) / 'helpers/ffmpeg.exe'
+    if helper.is_file():
+        return helper
+    from psp_build import download_ffmpeg
+    return download_ffmpeg(cache)
+
+
 def prepare(iso, output, bundle=BUNDLE, workers=4, *, pspdev=None, build_cache=None,
             upstream_archive=None, build_only=False):
     from psp_audio import available_rows, build_encoder, catalogue, convert as convert_audio, copy_banks, pack_audio
-    from psp_video import convert as convert_video, ffmpeg_path, movies
+    from psp_video import convert as convert_video, movies
 
     iso, output, bundle = Path(iso).resolve(), Path(output).resolve(), Path(bundle).resolve()
     recipe = json.loads((bundle / 'prepare.json').read_text(encoding='utf-8'))
@@ -194,7 +203,7 @@ def prepare(iso, output, bundle=BUNDLE, workers=4, *, pspdev=None, build_cache=N
     # Preflight all dependencies before the large extraction.
     if not build_only:
         import av  # noqa: F401
-        ffmpeg = ffmpeg_path(bundle / 'helpers/ffmpeg.exe')
+        ffmpeg = bundle_ffmpeg(bundle, build_cache)
         encoder = build_encoder(bundle / 'helpers/audio_vag_encoder.exe')
         vgmstream = bundle / 'helpers/vgmstream/vgmstream-cli.exe'
         for helper in (Path(ffmpeg), vgmstream):
@@ -493,9 +502,8 @@ def main():
     parser.add_argument('--check', action='store_true', help='Check the ISO and bundled runtime without converting')
     parser.add_argument('--probe', action='store_true', help='With --check, convert sample original audio and a short movie')
     args = parser.parse_args()
-    # Do not flash dozens of console windows while converting from the desktop UI.
-    if os.name == 'nt' and not args.cli:
-        _hide_child_windows()
+    # Do not flash dozens of console windows: the frozen EXE has no console even with --cli.
+    _hide_child_windows()
     if args.cache_info or args.clean_cache:
         from psp_build import cache_info, clean_cache
         result = clean_cache(args.build_cache, args.include_downloads) if args.clean_cache else cache_info(args.build_cache)
@@ -523,7 +531,8 @@ def main():
                         raise
             av.CodecContext.create('h264', 'r')
             window = tkinter.Tk(); window.withdraw(); window.update_idletasks(); window.destroy()
-            for name in ('helpers/ffmpeg.exe', 'helpers/audio_vag_encoder.exe', 'helpers/vgmstream/vgmstream-cli.exe'):
+            ffmpeg = bundle_ffmpeg(args.bundle, args.build_cache)
+            for name in ('helpers/audio_vag_encoder.exe', 'helpers/vgmstream/vgmstream-cli.exe'):
                 if not (args.bundle / name).is_file(): raise FileNotFoundError(name)
             if not source_build and sha256(args.bundle / 'P4/EBOOT.PBP') != recipe['eboot_sha256']:
                 raise ValueError('EBOOT hash mismatch')
@@ -541,10 +550,10 @@ def main():
                     audio = args.output / 'audio'; audio.mkdir(exist_ok=True)
                     selected = [min((r for r in rows if r['encoding'] == encoding), key=lambda r: r['size']) for encoding in (3, 0x11)]
                     for row in selected:
-                        convert_audio(row, args.iso, audio, args.bundle / 'helpers/ffmpeg.exe',
+                        convert_audio(row, args.iso, audio, ffmpeg,
                                       args.bundle / 'helpers/audio_vag_encoder.exe', args.bundle / 'helpers/vgmstream/vgmstream-cli.exe')
                     movie = min(movies(args.iso), key=lambda r: r[2])
-                    convert_video(args.iso, movie, args.output / 'video', str(args.bundle / 'helpers/ffmpeg.exe'), seconds=1, crop_black=False)
+                    convert_video(args.iso, movie, args.output / 'video', str(ffmpeg), seconds=1, crop_black=False)
                     report['probe_audio'] = [r['path'] for r in selected]
                     report['probe_movie'] = movie[0]
         except Exception:
