@@ -26,6 +26,22 @@ void p4_log(const char *fmt, ...);
 /* Allegrex counters per section of the render thread (PSPLINK "profmode t" then "reset" before ldstart; the kernel keeps
    them per thread, sceKernelReferThreadProfiler gives a user-readable block). Words 0x04..0x4C in PSPTEK's order.
    Sections nest and are inclusive; "frame" runs present to present. */
+typedef struct KwlnTask KwlnTask;
+struct KwlnTask {
+    char name[0x18];
+    int nameSum;
+    unsigned flags;
+    int unk20;
+    unsigned unk24, unk28;
+    unsigned short unk2C, unk2E;
+    void *update, *destroy;
+    unsigned char *work;
+    KwlnTask *listNext;
+};
+extern KwlnTask *iGpffffba04, *iGpffffba14;
+extern char D_00710568[];
+void kAssertFail(const void *file, unsigned line);
+int kwlnTaskRunUpdate(KwlnTask *task);
 #ifdef P4_HW_PROFILE
 #include <pspdebug.h>
 enum { PROF_FRAME, PROF_ATOMIC, PROF_MESH, PROF_GUARD, PROF_SKIN, PROF_PTANK, PROF_2D, PROF_SYNC, PROF_VBLANK, PROF_SETUP, PROF_SHADE, PROF_EMIT, PROF_SUBMIT, PROF_HIT, PROF_GDRAW, PROF_KEY, PROF_UVSCAN, PROF_LIGHTS, PROF_HEMPTY, PROF_HBIND, PROF_DLIGHT, PROF_DDRAW, PROF_GCLASS, PROF_GLOOP, PROF_GCLIP, PROF_GSUB,
@@ -33,7 +49,7 @@ enum { PROF_FRAME, PROF_ATOMIC, PROF_MESH, PROF_GUARD, PROF_SKIN, PROF_PTANK, PR
       PROF_SBONES, PROF_SGUARD, PROF_SDRAW, PROF_SMAT, PROF_SBIND, PROF_STEST,
       PROF_QMODEL, PROF_QATTACH, PROF_QSORT, PROF_QEFFECT, PROF_QFLD, PROF_QPRIM,
       PROF_AFRAME, PROF_AATTACH, PROF_ALAYER, PROF_ACTRL, PROF_AFX, PROF_AMOTION,
-      PROF_ABLEND, PROF_AREBASE, PROF_APOSE, PROF_KADD, PROF_KSET, PROF_KBLEND, PROF_KMAT, PROF_KANIM, PROF_KFRAME, PROF_SECTIONS };
+      PROF_ABLEND, PROF_AREBASE, PROF_APOSE, PROF_KADD, PROF_KSET, PROF_KBLEND, PROF_KMAT, PROF_KANIM, PROF_KFRAME, PROF_KINTERP, PROF_TBIND, PROF_LBIND, PROF_SECTIONS };
 enum { PC_COUNT = 5 };
 /* counter words read per section edge: cpu cycles, stall, memory stall, imiss, dmiss (b73 read all 19, which itself
    cost a visible part of the frame at ~800 section edges a frame) */
@@ -42,7 +58,7 @@ static const char *const prof_names[PROF_SECTIONS] = { "frame", "atomic", "mesh"
     "mfrust", "mslot", "mcopy", "altm", "ablack", "acover", "geskin", "sector", "tasks", "sbones", "sguard", "sdraw", "smat", "sbind", "stest",
     "qmodel", "qattach", "qsort", "qeffect", "qfld", "qprim",
     "aframe", "aattach", "alayer", "actrl", "afx", "amotion",
-    "ablend", "arebase", "apose", "kadd", "kset", "kblend", "kmat", "kanim", "kframe" };
+    "ablend", "arebase", "apose", "kadd", "kset", "kblend", "kmat", "kanim", "kframe", "kinterp", "tbind", "lbind" };
 static const volatile unsigned *prof_regs;
 static int prof_state; /* 0 not tried, 1 live, -1 none */
 static unsigned prof_at[PROF_SECTIONS][PC_COUNT], prof_depth[PROF_SECTIONS], prof_calls[PROF_SECTIONS];
@@ -136,22 +152,6 @@ static void prof_report(unsigned frames)
    kwlnTaskRunUpdate timed and booked to the task's update callback. This definition wins the link (port objects come
    first, --allow-multiple-definition); kwlnTaskRunFrame reaches it through its R_MIPS_26 call and keeps only s
    registers across it. "self" leaves out the renderer sections that ran inside the callback. */
-typedef struct KwlnTask KwlnTask;
-struct KwlnTask {
-    char name[0x18];
-    int nameSum;
-    unsigned flags;
-    int unk20;
-    unsigned unk24, unk28;
-    unsigned short unk2C, unk2E;
-    void *update, *destroy;
-    unsigned char *work;
-    KwlnTask *listNext;
-};
-extern KwlnTask *iGpffffba04, *iGpffffba14;
-extern char D_00710568[];
-void kAssertFail(const void *file, unsigned line);
-int kwlnTaskRunUpdate(KwlnTask *task);
 enum { TASK_STATS = 128 };
 typedef struct { unsigned fn, calls; unsigned long long cycles, self; char name[0x19]; } TaskStat;
 static TaskStat task_stats[TASK_STATS];
@@ -193,31 +193,6 @@ static int run_task(KwlnTask *node)
     task_book(node, fn, cycles, render_mono() - render);
     hanim_scan_after(node->name, fn);
     return r;
-}
-void kwlnTaskRunList(void)
-{
-    prof_begin(PROF_TASKS);
-    unsigned before = prof_state > 0 ? prof_regs[1 + prof_index[0]] : 0;
-    KwlnTask *node = iGpffffba04;
-    while (node) {
-        iGpffffba14 = node;
-        if (run_task(node)) {
-            if (node != iGpffffba14) {
-                if ((iGpffffba14->flags & 0xF) != 2)
-                    kAssertFail(D_00710568, 0x22F);
-                node = iGpffffba14 ? iGpffffba14->listNext : iGpffffba04;
-            } else {
-                if ((node->flags & 0xF) != 2)
-                    kAssertFail(D_00710568, 0x236);
-                node = node->listNext;
-            }
-        } else {
-            node = iGpffffba14 ? iGpffffba14->listNext : iGpffffba04->listNext;
-        }
-    }
-    if (prof_state > 0)
-        task_list_cycles += prof_regs[1 + prof_index[0]] - before, task_lists++;
-    prof_end(PROF_TASKS);
 }
 /* the 16 costliest update callbacks per frame: inclusive and self kcycles */
 static void task_report(unsigned frames)
@@ -312,7 +287,32 @@ P4_WRAP_VOID(PrimAppendNode, PROF_QPRIM, (void *list, void *node), (list, node))
 /* RenderWare animation toolkit called from mdlAdvanceLayer (b141): RtAnimInterpolatorAddAnimTime, SetCurrentTime,
    Blend, SetCurrentAnim and RpHAnimHierarchyUpdateMatrices */
 int __real_func_003d5bc0(void *interpolator, float time);
-int __wrap_func_003d5bc0(void *interpolator, float time) { prof_begin(PROF_KADD); int r = __real_func_003d5bc0(interpolator, time); prof_end(PROF_KADD); return r; }
+/* b168: AddAnimTime calls the scheme's interpolate callback (per node: slerp of the rotation, lerp of the offset) through
+   the interpolator's pointer at +0x44, so it cannot be wrapped by name. For the call the pointer is swapped for a timed
+   trampoline: kinterp is the math, kadd minus kinterp the key search and bookkeeping. Seen in PPSSPP: RpHAnim's
+   p4r_00415bc0 (slerp + lerp) and the game's mdlKeyFrameInterpolateCopy; both are timed. */
+typedef void (*KInterp)(void *out, void *in1, void *in2, float time, void *data);
+static KInterp kinterp_now; /* the callback of the AddAnimTime in progress (animation runs on one thread) */
+static void kinterp_timed(void *out, void *in1, void *in2, float time, void *data)
+{
+    prof_begin(PROF_KINTERP);
+    kinterp_now(out, in1, in2, time, data);
+    prof_end(PROF_KINTERP);
+}
+KInterp p4_interp_pick(KInterp cb);
+int __wrap_func_003d5bc0(void *interpolator, float time)
+{
+    KInterp *cb = (KInterp *)((char *)interpolator + 0x44), saved = *cb;
+    int swap = saved && saved != kinterp_timed;
+    if (swap)
+        kinterp_now = p4_interp_pick(saved), *cb = kinterp_timed;
+    prof_begin(PROF_KADD);
+    int r = __real_func_003d5bc0(interpolator, time);
+    prof_end(PROF_KADD);
+    if (swap)
+        *cb = saved;
+    return r;
+}
 int __real_func_003d5e40(void *interpolator, float time);
 int __wrap_func_003d5e40(void *interpolator, float time) { prof_begin(PROF_KSET); int r = __real_func_003d5e40(interpolator, time); prof_end(PROF_KSET); return r; }
 int __real_func_003d5e90(void *out, void *in1, void *in2, float alpha);
@@ -355,7 +355,40 @@ int __wrap_func_00397c40(void *hierarchy)
 unsigned p4_ot_begin(void) { return 0; }
 void p4_sec(int id, int begin) { (void)id, (void)begin; }
 void p4_ot_end(unsigned start, unsigned key) { (void)start, (void)key; }
+#define run_task kwlnTaskRunUpdate
 #endif
+/* b176: outside the profiler too; release builds need the tick for the far animation LOD */
+unsigned p4_anim_tick; /* b171: one per game tick (task list run), for the bone-update decisions */
+void kwlnTaskRunList(void)
+{
+    p4_anim_tick++;
+    prof_begin(PROF_TASKS);
+#ifdef P4_HW_PROFILE
+    unsigned before = prof_state > 0 ? prof_regs[1 + prof_index[0]] : 0;
+#endif
+    KwlnTask *node = iGpffffba04;
+    while (node) {
+        iGpffffba14 = node;
+        if (run_task(node)) {
+            if (node != iGpffffba14) {
+                if ((iGpffffba14->flags & 0xF) != 2)
+                    kAssertFail(D_00710568, 0x22F);
+                node = iGpffffba14 ? iGpffffba14->listNext : iGpffffba04;
+            } else {
+                if ((node->flags & 0xF) != 2)
+                    kAssertFail(D_00710568, 0x236);
+                node = node->listNext;
+            }
+        } else {
+            node = iGpffffba14 ? iGpffffba14->listNext : iGpffffba04->listNext;
+        }
+    }
+#ifdef P4_HW_PROFILE
+    if (prof_state > 0)
+        task_list_cycles += prof_regs[1 + prof_index[0]] - before, task_lists++;
+#endif
+    prof_end(PROF_TASKS);
+}
 #ifdef P4_HW_PROFILE
 #define PROF_COUNT(var, n) (var += (n))
 #else
@@ -576,6 +609,7 @@ static unsigned ge_time_end(int started, int category);
 extern int p4_exp_ge_time;
 static unsigned ge_time_frames;
 static unsigned kept_textures, kept_cameras, kept_lights, mesh_modes; /* the mesh state cache, logged */
+static unsigned textures_bound, lights_bound; /* b174: binds that wrote GE state (tbind, lbind: their cost) */
 static void cover_report(unsigned frames);
 static void other_report(unsigned frames);
 static void hanim_report(void);
@@ -616,6 +650,11 @@ int p4_skin_alpha = 1; /* 0: skinned batches' alpha unknown, two TEST_1 passes, 
 int p4_bone_direct = 1; /* 0: sceGuBoneMatrix for every slot of every batch, as b123 */
 static unsigned bones_sent;
 static unsigned skin_ge_draws, skin_ge_batches, skin_ge_fallbacks, skin_ge_builds, skin_ge_bytes;
+/* b171: the per-bone guard spheres test against planes built once per skin (p4_skin_guard_fast; check: the old test
+   too, compared), and skin-to-bone x pose on the VFPU (p4_skin_vfpu; check: the FPU product too, compared). */
+int p4_skin_guard_fast = 1, p4_skin_guard_check = 0, p4_skin_vfpu = 1, p4_skin_vfpu_check = 0; /* b172: vfpu on (b171 class: 440k checks, 0 diffs) */
+static unsigned skin_guard_checks, skin_guard_diffs, skin_vfpu_unaligned, skin_vfpu_checks, skin_vfpu_diffs;
+static float skin_vfpu_max_diff;
 int p4_ge_light = 1; /* 1: lit meshes the GE draws whole are lit by the GE; 0: shaded on the CPU, as b75 */
 static unsigned work_shaded, work_ge_emitted, work_cpu_emitted, work_ge_draws;
 enum { POOL_VERTICES = 128 * 1024 };
@@ -684,6 +723,8 @@ int p4_guard_clip = 1; /* 0: every triangle goes to the GE as before, for A/B on
 static int index_used;
 static unsigned cache_bytes, cache_frame, cache_hits, cache_builds, cache_misses, cache_noslot, guard_mesh_draws;
 int p4_mesh_cache = 1; /* 0: build every frame, as b68 */
+int p4_lock_memo = 1; /* b167: unlocked geometry reuses its sampled key and UV shift (draw_meshes_body); 0: as b166 */
+static unsigned lock_memo_hits;
 int p4_cache_audit = 0; /* see audit_inputs */
 static unsigned audit_checks, audit_stale[3], audit_stale_vertices;
 unsigned p4_cache_budget = 6144 * 1024; /* b72: 1.5 MB was full, 170 mesh draws a frame missed. b113 classroom: 4 MB full,
@@ -1382,6 +1423,8 @@ int func_003f79b0(void *raster, void *device, int flags)
 #endif
     watch();
     if (!(++frames & 255)) {
+        extern void p4_memstat_report(void);
+        p4_memstat_report();
         p4_log("frames %d atomics %d skipped %d ptanks %d/%d sectors %d skinned %d other %d tests %d out %d af48 %d\n", frames, atomics_drawn, atomics_skipped, ptanks_drawn, particles_drawn, sectors_drawn, skinned_drawn, pipeline_other, frustum_tests, frustum_out, G32(0xaf48 - 0x10000));
         p4_log("guard on %d meshes %d clipped %d dropped %d spheres %d vertices %d uvrebase %d uvmemo %d hits %u dstalpha_skipped %d\n", p4_guard_clip, guard_meshes, guard_clipped, guard_dropped, guard_spheres, guard_vertices, uv_rebased, p4_uv_memo, uv_memo_hits, dst_alpha_skipped);
         uv_memo_hits = 0;
@@ -1400,15 +1443,19 @@ int func_003f79b0(void *raster, void *device, int flags)
         /* b114 set the budget to what the cache held when the heap was short; during a load that was 0 and the cache
            stayed off for the session (Heaven 38 KB free while loading, 1.3 MB a few seconds later). Now the budget only
            follows the heap between the b72 4 MB and 6 MB, both ways. */
-        unsigned room = cache_bytes + (heap.fordblks > CACHE_HEAP_RESERVE ? heap.fordblks - CACHE_HEAP_RESERVE : 0);
+        extern unsigned p4_heap_unclaimed(void);
+        unsigned heap_free = heap.fordblks + p4_heap_unclaimed(); /* b166: the arena's free alone missed the untouched heap */
+        unsigned room = cache_bytes + (heap_free > CACHE_HEAP_RESERVE ? heap_free - CACHE_HEAP_RESERVE : 0);
         unsigned want = room < CACHE_BUDGET_MIN ? CACHE_BUDGET_MIN : room > CACHE_BUDGET_MAX ? CACHE_BUDGET_MAX : room;
         if (want != p4_cache_budget) {
-            p4_log("mesh cache budget %u -> %u: heap free %d, cache %u\n", p4_cache_budget, want, heap.fordblks, cache_bytes);
+            p4_log("mesh cache budget %u -> %u: heap free %u, cache %u\n", p4_cache_budget, want, heap_free, cache_bytes);
             p4_cache_budget = want;
         }
-        p4_log("mesh cache on %d hits %u builds %u misses %u noslot %u bytes %u budget %u heap_free %d guarded_meshes %u\n", p4_mesh_cache, cache_hits, cache_builds, cache_misses, cache_noslot, cache_bytes, p4_cache_budget, heap.fordblks, guard_mesh_draws);
+        p4_log("mesh cache on %d hits %u builds %u misses %u noslot %u bytes %u budget %u heap_free %u guarded_meshes %u\n", p4_mesh_cache, cache_hits, cache_builds, cache_misses, cache_noslot, cache_bytes, p4_cache_budget, heap_free, guard_mesh_draws);
         p4_log("cache audit %d checks %u stale positions %u uvs %u prelight %u vertices %u\n", p4_cache_audit, audit_checks, audit_stale[0], audit_stale[1], audit_stale[2], audit_stale_vertices);
         audit_checks = audit_stale[0] = audit_stale[1] = audit_stale[2] = audit_stale_vertices = 0;
+        p4_log("lock memo %d hits %u\n", p4_lock_memo, lock_memo_hits);
+        lock_memo_hits = 0;
         guard_mesh_draws = 0;
         /* Work per frame, the same in PPSSPP and on the PSP (b69 on the PSP: shade_fast 238 cycles a vertex) */
         p4_log("work ge_light %d per frame: cpu_lit %u emitted_ge_lit %u emitted_cpu_lit %u ge_lit_draws %u\n", p4_ge_light, work_shaded / 256, work_ge_emitted / 256, work_cpu_emitted / 256, work_ge_draws / 256);
@@ -1424,9 +1471,9 @@ int func_003f79b0(void *raster, void *device, int flags)
         p4_log("gs test %d skip %d mesh_alpha %d: draws %u second %u opaque %u nodepth %u allfail %u scans %u\n", p4_gs_test, p4_gs_test_skip, p4_gs_mesh_alpha,
                tested_draws, tested_second, tested_opaque, tested_nodepth, tested_allfail, tested_scans);
         tested_draws = tested_second = tested_opaque = tested_nodepth = tested_allfail = tested_scans = 0;
-        p4_log("state cache %d batch %d per frame: mesh modes %u kept textures %u cameras %u lights %u\n", p4_state_cache, p4_draw_batch,
-               mesh_modes / 256, kept_textures / 256, kept_cameras / 256, kept_lights / 256);
-        mesh_modes = kept_textures = kept_cameras = kept_lights = 0;
+        p4_log("state cache %d batch %d per frame: mesh modes %u kept textures %u cameras %u lights %u; bound textures %u lights %u\n", p4_state_cache, p4_draw_batch,
+               mesh_modes / 256, kept_textures / 256, kept_cameras / 256, kept_lights / 256, textures_bound / 256, lights_bound / 256);
+        mesh_modes = kept_textures = kept_cameras = kept_lights = textures_bound = lights_bound = 0;
         cover_report(256);
         other_report(256);
         hanim_report();
@@ -1453,6 +1500,11 @@ int func_003f79b0(void *raster, void *device, int flags)
         p4_log("hanim nan fix %d: frames fixed %u, nan right after update %u; bone check %d: bad bone matrices %u\n", p4_hanim_nan_fix, hanim_nan_fixed, hanim_nan_after_update, p4_bone_check, bone_bad_count);
         hanim_nan_fixed = hanim_nan_after_update = 0;
         bone_bad_count = 0;
+        { extern void p4_anim_report(void); p4_anim_report(); }
+        { extern void p4_interp_report(void); p4_interp_report(); }
+        p4_log("skin guard fast %d checks %u diffs %u; skin vfpu %d unaligned %u checks %u diffs %u max_diff %d/1e6\n", p4_skin_guard_fast, skin_guard_checks, skin_guard_diffs, p4_skin_vfpu, skin_vfpu_unaligned, skin_vfpu_checks, skin_vfpu_diffs, (int)(skin_vfpu_max_diff * 1e6f));
+        skin_guard_checks = skin_guard_diffs = skin_vfpu_unaligned = skin_vfpu_checks = skin_vfpu_diffs = 0;
+        skin_vfpu_max_diff = 0;
         skipped_bone_updates = 0;
         list_writebacks = 0;
         texture_waits = 0;
@@ -2062,7 +2114,16 @@ static void capture_feedback_half(void)
 
 /* The bound texture's smallest alpha for draw_tested: 255 without a texture, 0 when not known. */
 static unsigned bound_alpha_min, bound_alpha_max = 255;
+static void bind_raster_body(Raster *r, int wrap);
 static void bind_raster(Raster *r, int wrap)
+{
+    unsigned kept = kept_textures;
+    prof_begin(PROF_TBIND);
+    bind_raster_body(r, wrap);
+    prof_end(PROF_TBIND);
+    textures_bound += kept_textures == kept;
+}
+static void bind_raster_body(Raster *r, int wrap)
 {
     if (r != &display_raster && gu_mesh_mode) {
         const void *pixels = r ? r->originalPixels : 0, *palette = r ? r->palette : 0;
@@ -2670,6 +2731,28 @@ static int guard_sphere_inside(Mat4 m, const float *sphere, float near)
     }
     return inside;
 }
+
+/* guard_sphere_inside with the planes taken out: plane p as a 4-vector P (a point x is inside when x.P + P[3] > 0,
+   the near plane carrying -near) and its normal's length. Built once per skinned draw instead of once per bone. */
+static void guard_sphere_planes(Mat4 m, float near, float P[5][4], float len[5])
+{
+    static const float coef[5][4] = { { 0, 0, 0, 1 }, { -1, 0, 0, GUARD }, { 1, 0, 0, GUARD }, { 0, -1, 0, GUARD }, { 0, 1, 0, GUARD } };
+    for (int p = 0; p < 5; p++) {
+        for (int i = 0; i < 4; i++)
+            P[p][i] = coef[p][0] * m[i][0] + coef[p][1] * m[i][1] + coef[p][2] * m[i][2] + coef[p][3] * m[i][3];
+        if (!p)
+            P[p][3] -= near;
+        len[p] = sqrtf(P[p][0] * P[p][0] + P[p][1] * P[p][1] + P[p][2] * P[p][2]);
+    }
+}
+static int guard_sphere_inside_planes(float P[5][4], const float len[5], const float *sphere)
+{
+    for (int p = p4_guard_gnear ? 1 : 0; p < 5; p++)
+        if (!(sphere[0] * P[p][0] + sphere[1] * P[p][1] + sphere[2] * P[p][2] + P[p][3] > sphere[3] * len[p]))
+            return 0;
+    return 1;
+}
+static void anim_seen_at(const void *hierarchy, float depth, const Matrix *model);
 
 /* The guard planes (near, then the four sides of GUARD x the view) as world-space 4-vectors: a world point p is inside
    plane k when W[k] . (p, 1) > 0 (near: > near). guard_sphere_inside builds model x view x projection for every array
@@ -3471,7 +3554,16 @@ static inline unsigned shade_fast(unsigned base, const V3 *n, const ShadeSetup *
    ambient and the global ambient is the material colour, so prelight x colour; emissive is colour x ka x the ambient
    light; light 0 adds colour x kd x the directional light x N.L. Differs from shade_fast + modulate_colour only where
    a channel saturates: the GE clamps after the material colour, the CPU path before it. */
+static void bind_ge_light_body(const Material *material, int modulate, const SceneLight *light);
 static void bind_ge_light(const Material *material, int modulate, const SceneLight *light)
+{
+    unsigned kept = kept_lights;
+    prof_begin(PROF_LBIND);
+    bind_ge_light_body(material, modulate, light);
+    prof_end(PROF_LBIND);
+    lights_bound += kept_lights == kept;
+}
+static void bind_ge_light_body(const Material *material, int modulate, const SceneLight *light)
 {
     unsigned c = modulate ? material->colour : 0xffffffff, emissive = 0, diffuse = 0;
     if (gu_mesh_mode) { /* same colour, material terms and light as the last lit draw: only switch lighting on */
@@ -3625,6 +3717,9 @@ enum { CACHE_SLOTS = 4096 };
 typedef struct { const void *mesh; unsigned key, frame, built; int vertices, indices, capacity, churn, vtype; void *v; unsigned short *idx; int alpha_lo, alpha_hi; } MeshCache;
 static MeshCache mesh_cache[CACHE_SLOTS];
 int p4_cache_reuse_last = 1; /* 1: a miss may take its mesh's entry drawn last frame (pipeline off); 0: as b75 */
+static Geometry *draw_geometry; /* the atomic's geometry while its own arrays are drawn, else 0 */
+typedef struct { const Geometry *g; const void *pos, *uv, *pre, *nrm; int count; float du, dv; unsigned nsample, part[4]; } LockMemo;
+static LockMemo lock_memo[1024];
 
 /* Why a mesh's cache entry stops matching: the first input whose running hash differs (pointers, positions, UVs,
    prelight, then count + UV shift, then lighting and normals), vertices weighted. Heap: .bss is full. */
@@ -4071,8 +4166,21 @@ static void draw_meshes_body(MeshHeader *header, const V3 *position, float (*uv)
     /* Scrolled UVs (the station's cloud-shadow pass reached v = -969605) lose their fraction in the GE's float24 and
        sample in speckled streaks. Textures here repeat, so take the whole part of the smallest coordinate off. */
     float du = 0, dv = 0;
+    /* b167 (p4_lock_memo): RenderWare on the PS2 re-instances a geometry only when lockedSinceLastInst is set, so the
+       game must lock to change its arrays. Unlocked since we last drew it: reuse its sampled hash and UV shift (the
+       samples were cache misses, ~0.9 Mcycles a frame in the room). Clearing the flag below is what instancing did. */
+    LockMemo *lm = 0;
+    int lm_hit = 0;
+    if (p4_lock_memo && draw_geometry && p4_mesh_cache && p4_mesh_compact) {
+        lm = &lock_memo[((unsigned)draw_geometry >> 4) * 2654435761u >> 22];
+        lm_hit = lm->g == draw_geometry && !draw_geometry->locked && lm->pos == position && lm->uv == uv && lm->pre == preLit &&
+                 lm->nrm == normals && lm->count == count;
+        lock_memo_hits += lm_hit;
+    }
     prof_begin(PROF_UVSCAN);
-    if (uv && p4_uv_rebase && count > 0) {
+    if (lm_hit)
+        du = lm->du, dv = lm->dv;
+    else if (uv && p4_uv_rebase && count > 0) {
         /* b137: the shift only has to be whole (textures repeat), not the exact minimum, so it is kept per UV array
            and recomputed when 8 sampled coordinates change (scrolled UVs move all of them). b129 Heaven: the scan
            cost 0.68 Mcycles a frame. */
@@ -4127,33 +4235,45 @@ static void draw_meshes_body(MeshHeader *header, const V3 *position, float (*uv)
         int ge_lit = normals && p4_ge_light;
         prof_begin(PROF_KEY);
         if (p4_mesh_cache) {
-            unsigned h = 2166136261u;
-            const void *pointers[5] = { position, uv, preLit, normals, (void *)modulate };
-            h = hash_words(h, pointers, sizeof pointers);
-            part[0] = h;
-            h = hash_sample(h, position, count, sizeof *position);
-            part[1] = h;
-            if (uv)
-                h = hash_sample(h, uv, count, 8);
-            part[2] = h;
-            if (preLit)
-                h = hash_sample(h, preLit, count, 4);
-            part[3] = h;
+            unsigned h, nsample;
+            if (lm_hit) {
+                memcpy(part, lm->part, sizeof lm->part);
+                h = part[3];
+                nsample = lm->nsample;
+            } else {
+                h = 2166136261u;
+                const void *pointers[5] = { position, uv, preLit, normals, (void *)modulate };
+                h = hash_words(h, pointers, sizeof pointers);
+                part[0] = h;
+                h = hash_sample(h, position, count, sizeof *position);
+                part[1] = h;
+                if (uv)
+                    h = hash_sample(h, uv, count, 8);
+                part[2] = h;
+                if (preLit)
+                    h = hash_sample(h, preLit, count, 4);
+                part[3] = h;
+                nsample = normals ? hash_sample(2166136261u, normals, count, sizeof *normals) : 0;
+            }
             h = hash_words(h, &count, 4);
             float shift[2] = { du, dv };
             h = hash_words(h, shift, sizeof shift);
             part[4] = h;
             if (normals && ge_lit) {
                 h = hash_words(h, &ge_lit, 4); /* the GE lights it: light and rotation are not in the vertices */
-                h = hash_sample(h, normals, count, sizeof *normals);
+                h = hash_words(h, &nsample, 4);
             } else if (normals) {
                 h = hash_words(h, &light, sizeof light);
                 if (model)
                     h = hash_words(h, model, 12 * 4); /* rotation rows; position does not light */
-                h = hash_sample(h, normals, count, sizeof *normals);
+                h = hash_words(h, &nsample, 4);
             }
             part[5] = h;
             geometry_key = h | 1;
+            if (lm && !lm_hit) {
+                *lm = (LockMemo){ draw_geometry, position, uv, preLit, normals, count, du, dv, nsample, { part[0], part[1], part[2], part[3] } };
+                draw_geometry->locked = 0;
+            }
         }
         prof_end(PROF_KEY);
         /* which meshes touch a vertex beyond the band, decided before draw_guarded_compact overwrites guard_code */
@@ -4630,12 +4750,276 @@ static void hanim_sanitize(unsigned *h)
         hanim_nan_fixed++;
     }
 }
+/* b171: bone-matrix updates by what the frame draws. A hierarchy whose skin is drawn (skin_bones) is "skinned"; its
+   last drawn tick and clip w are kept. p4_anim_cull: a skinned hierarchy not drawn in the last 2 ticks is not updated;
+   skin_bones rebuilds its matrices when it is drawn again. p4_anim_far: one last drawn farther than p4_anim_far_depth
+   is updated every p4_anim_far_step ticks and drawn with the older matrices in between. Hierarchies never drawn as
+   skins (rigid parts on bone frames) always update. The counters run with both off: what each would save. */
+int p4_anim_cull = 0, p4_anim_far = 1, p4_anim_far_step = 2; /* b173: far on (b172 class, by eye: fine) */
+float p4_anim_far_depth = 500.0f;
+enum { ANIM_STATES = 128 };
+typedef struct { const void *h, *matrices, *interp; int nodes; unsigned drawn, updated, advanced, moved; float depth, pending, at[3]; unsigned char stale, skinned; } AnimState;
+static AnimState anim_state[ANIM_STATES];
+static unsigned anim_updates, anim_unskinned, anim_unseen, anim_far_due, anim_culled, anim_far_skipped, anim_lazy, anim_full;
+static unsigned anim_draws, anim_depth_bins[6];
+static float anim_depth_max;
+extern unsigned p4_anim_tick;
+static AnimState *anim_find(const void *h)
+{
+    const unsigned *w = h;
+    unsigned slot = ((unsigned)h >> 4) * 2654435761u >> 25;
+    for (int k = 0; k < ANIM_STATES; k++) {
+        AnimState *s = &anim_state[(slot + k) & (ANIM_STATES - 1)];
+        if (s->h && s->h != h)
+            continue;
+        if (!s->h || s->nodes != (int)w[1] || s->matrices != (const void *)w[2]) { /* new, or another hierarchy here now */
+            memset(s, 0, sizeof *s);
+            s->h = h, s->nodes = (int)w[1], s->matrices = (const void *)w[2];
+        }
+        return s;
+    }
+    anim_full++;
+    return 0;
+}
+/* b175: the bone matrices carry the character's place in the world; held while it walked, the body lagged a step
+   behind its shadow on every other tick (b174 Heaven: "my character doubles"). Only a character whose model has not
+   moved for 8 ticks is held. */
+static unsigned anim_moving_kept;
+static int anim_far_hold(const AnimState *s)
+{
+    if (!p4_anim_far || !(s->depth > p4_anim_far_depth) || p4_anim_tick - s->updated >= (unsigned)p4_anim_far_step)
+        return 0;
+    if (p4_anim_tick - s->moved < 8) {
+        anim_moving_kept++;
+        return 0;
+    }
+    return 1;
+}
+static int hanim_update_now(void *hierarchy);
+static void anim_drawn(const void *hierarchy)
+{
+    AnimState *s = anim_find(hierarchy);
+    if (!s)
+        return;
+    anim_draws++;
+    s->skinned = 1;
+    s->drawn = p4_anim_tick;
+    if (s->stale && !anim_far_hold(s)) {
+        prof_begin(PROF_KMAT);
+        hanim_update_now((void *)hierarchy);
+        prof_end(PROF_KMAT);
+        s->stale = 0, s->updated = p4_anim_tick;
+        anim_lazy++;
+    }
+}
+static void anim_seen_at(const void *hierarchy, float depth, const Matrix *model)
+{
+    AnimState *s = anim_find(hierarchy);
+    if (!s)
+        return;
+    s->depth = depth;
+    if (model) {
+        const float *at = &model->pos.x;
+        float d = 0;
+        for (int k = 0; k < 3; k++)
+            d += fabsf(at[k] - s->at[k]), s->at[k] = at[k];
+        if (d > 0.01f)
+            s->moved = p4_anim_tick;
+    } else
+        s->moved = p4_anim_tick;
+    s->interp = (const void *)((const unsigned *)hierarchy)[8]; /* the hierarchy's interpolator (hanim_sanitize) */
+    static const float edge[5] = { 250, 500, 1000, 2000, 4000 };
+    int bin = 0;
+    while (bin < 5 && depth >= edge[bin])
+        bin++;
+    anim_depth_bins[bin]++;
+    if (depth > anim_depth_max)
+        anim_depth_max = depth;
+}
+void p4_anim_report(void)
+{
+    p4_log("anim cull %d far %d depth %d step %d: updates %u unskinned %u unseen %u far_due %u culled %u far_skipped %u moving_kept %u lazy %u draws %u full %u\n",
+           p4_anim_cull, p4_anim_far, (int)p4_anim_far_depth, p4_anim_far_step, anim_updates, anim_unskinned, anim_unseen, anim_far_due,
+           anim_culled, anim_far_skipped, anim_moving_kept, anim_lazy, anim_draws, anim_full);
+    anim_moving_kept = 0;
+    p4_log("anim depth of drawn skins <250 %u <500 %u <1000 %u <2000 %u <4000 %u more %u max %d\n", anim_depth_bins[0], anim_depth_bins[1],
+           anim_depth_bins[2], anim_depth_bins[3], anim_depth_bins[4], anim_depth_bins[5], (int)anim_depth_max);
+    anim_updates = anim_unskinned = anim_unseen = anim_far_due = anim_culled = anim_far_skipped = anim_lazy = anim_draws = anim_full = 0;
+    memset(anim_depth_bins, 0, sizeof anim_depth_bins);
+    anim_depth_max = 0;
+}
+/* b172: RpHAnim's compressed-keyframe interpolate (p4r_00415bc0, the AddAnimTime callback; ~1000 cycles a node on
+   the FPU: polynomial acos and three polynomial sines). Read off the MIPS: keys {prev, time, q x y z w, t x y z} with
+   16-bit reals (sign, 4-bit exponent from 2^-15, 11-bit mantissa); f = (time - t1) / (t2 - t1); t = (t1 + f (t2 - t1))
+   x scale + offset (custom data: offset[3], scale[3]); q2 negated when q1.q2 < 0; slerp when the dot is below 0.999,
+   else the plain weights 1 - f, f. p4_interp_fast: the same with the trigonometry on the VFPU; check: the original
+   too, compared. */
+typedef void (*KInterp)(void *out, void *in1, void *in2, float time, void *data);
+int p4_interp_fast = 0, p4_interp_check = 0;
+static unsigned interp_calls, interp_slerps, interp_checks, interp_diffs, interp_other;
+static float interp_max_diff;
+typedef struct { void *prev; float time; unsigned short q[4], t[3]; } CKey;
+typedef struct { void *k1, *k2; float q[4], t[3]; } IFrame;
+void p4r_00415bc0(void *out, void *in1, void *in2, float time, void *data);
+static inline float rw_half(unsigned short h)
+{
+    union { unsigned u; float f; } v;
+    v.u = (h & 0x8000u) << 16;
+    if (h & 0x7fff)
+        v.u |= (((h & 0x7800u) << 12) + 0x38000000u) | ((h & 0x7ffu) << 12);
+    return v.f;
+}
+static void interp_fast(void *out_, void *in1_, void *in2_, float time, void *data)
+{
+    const CKey *a = in1_, *b = in2_;
+    IFrame *o = out_;
+    const float *cd = data;
+    float f = (time - a->time) / (b->time - a->time);
+    float q1[4], q2[4];
+    for (int i = 0; i < 4; i++)
+        q1[i] = rw_half(a->q[i]), q2[i] = rw_half(b->q[i]);
+    for (int i = 0; i < 3; i++) {
+        float t1 = rw_half(a->t[i]), t2 = rw_half(b->t[i]);
+        o->t[i] = (t1 + f * (t2 - t1)) * cd[3 + i] + cd[i];
+    }
+    float dot = q1[1] * q2[1] + q1[0] * q2[0] + q1[2] * q2[2] + q1[3] * q2[3];
+    if (dot < 0) {
+        for (int i = 0; i < 4; i++)
+            q2[i] = -q2[i];
+        dot = -dot;
+    }
+    float w[4] __attribute__((aligned(16))) = { dot, 1 - f, f, 0 };
+    if (dot < 0.999f) {
+        /* angles in quarter turns: vasin gives asin x 2/pi, vsin takes x pi/2; theta = 1 - asin(dot) */
+        __asm__ volatile(
+            "lv.q    C000, 0(%[w])\n"
+            "vasin.s S010, S000\n"
+            "vocp.s  S010, S010\n"
+            "vmul.s  S011, S001, S010\n"
+            "vmul.s  S012, S002, S010\n"
+            "vsin.s  S020, S010\n"
+            "vsin.s  S021, S011\n"
+            "vsin.s  S022, S012\n"
+            "vrcp.s  S020, S020\n"
+            "vmul.s  S001, S021, S020\n"
+            "vmul.s  S002, S022, S020\n"
+            "sv.q    C000, 0(%[w])\n"
+            : : [w] "r"(w) : "memory");
+        interp_slerps++;
+    }
+    for (int i = 0; i < 4; i++)
+        o->q[i] = w[2] * q2[i] + w[1] * q1[i];
+}
+static void interp_checked(void *out, void *in1, void *in2, float time, void *data)
+{
+    interp_fast(out, in1, in2, time, data);
+    if (!p4_interp_check)
+        return;
+    IFrame ref = *(IFrame *)out;
+    p4r_00415bc0(&ref, in1, in2, time, data);
+    const float *x = ((IFrame *)out)->q, *y = ref.q;
+    int differs = 0;
+    for (int k = 0; k < 7; k++) {
+        float d = fabsf(x[k] - y[k]) / (1 + fabsf(y[k]));
+        if (!(d <= 1e-4f))
+            differs = 1;
+        if (d > interp_max_diff)
+            interp_max_diff = d;
+    }
+    interp_checks++;
+    interp_diffs += differs;
+}
+KInterp p4_interp_pick(KInterp cb)
+{
+    if (cb == (KInterp)p4r_00415bc0) {
+        interp_calls++;
+        return p4_interp_fast ? interp_checked : cb;
+    }
+    interp_other++;
+    return cb;
+}
+/* AddAnimTime (RtAnimInterpolatorAddAnimTime). The interpolate callback is swapped for the call (a pointer at +0x44);
+   p4_anim_far_kadd: the interpolator of a hierarchy held by p4_anim_far (or culled by p4_anim_cull) keeps its time
+   step for later and is advanced by the sum when it is due. */
+int p4_anim_far_kadd = 1;
+static unsigned kadd_calls, kadd_mapped, kadd_held;
+int p4r_003d5bc0(void *interpolator, float time);
+static AnimState *anim_by_interp(const void *interp)
+{
+    for (int i = 0; i < ANIM_STATES; i++)
+        if (anim_state[i].h && anim_state[i].interp == interp)
+            return &anim_state[i];
+    return 0;
+}
+int func_003d5bc0(void *interpolator, float time)
+{
+    kadd_calls++;
+    if (p4_anim_far_kadd && (p4_anim_far || p4_anim_cull)) {
+        AnimState *s = anim_by_interp(interpolator);
+        if (s && s->skinned) {
+            kadd_mapped++;
+            int unseen = p4_anim_tick - s->drawn > 2;
+            int hold = (p4_anim_cull && unseen) ||
+                       (p4_anim_far && !unseen && s->depth > p4_anim_far_depth && p4_anim_tick - s->advanced < (unsigned)p4_anim_far_step &&
+                        p4_anim_tick - s->moved >= 8);
+            if (hold && s->pending < 1.0f) { /* at most a second kept back */
+                s->pending += time;
+                kadd_held++;
+                return 1;
+            }
+            time += s->pending;
+            s->pending = 0;
+            s->advanced = p4_anim_tick;
+        }
+    }
+    KInterp *cb = (KInterp *)((char *)interpolator + 0x44), saved = *cb;
+    KInterp pick = saved ? p4_interp_pick(saved) : saved;
+    if (pick != saved)
+        *cb = pick;
+    int r = p4r_003d5bc0(interpolator, time);
+    if (pick != saved)
+        *cb = saved;
+    return r;
+}
+void p4_interp_report(void)
+{
+    p4_log("interp fast %d calls %u other %u slerps %u checks %u diffs %u max_diff %d/1e6; kadd far %d calls %u mapped %u held %u\n",
+           p4_interp_fast, interp_calls, interp_other, interp_slerps, interp_checks, interp_diffs, (int)(interp_max_diff * 1e6f),
+           p4_anim_far_kadd, kadd_calls, kadd_mapped, kadd_held);
+    interp_calls = interp_other = interp_slerps = interp_checks = interp_diffs = kadd_calls = kadd_mapped = kadd_held = 0;
+    interp_max_diff = 0;
+}
 int func_00397c40(void *hierarchy)
 {
     if (skip_frame && p4_frameskip_bones) {
         skipped_bone_updates++;
         return 1;
     }
+    AnimState *s = anim_find(hierarchy);
+    if (s && s->skinned) {
+        int unseen = p4_anim_tick - s->drawn > 2;
+        anim_unseen += unseen;
+        if (!unseen && s->depth > p4_anim_far_depth)
+            anim_far_due++;
+        if (p4_anim_cull && unseen) {
+            s->stale = 1;
+            anim_culled++;
+            return 1;
+        }
+        if (!unseen && anim_far_hold(s)) {
+            s->stale = 1;
+            anim_far_skipped++;
+            return 1;
+        }
+    } else
+        anim_unskinned++;
+    anim_updates++;
+    if (s)
+        s->stale = 0, s->updated = p4_anim_tick;
+    return hanim_update_now(hierarchy);
+}
+static int hanim_update_now(void *hierarchy)
+{
     if (p4_hanim_nan_fix)
         hanim_sanitize(hierarchy);
     int r = p4r_00397c40(hierarchy);
@@ -4876,7 +5260,8 @@ static int hierarchy_nodes_seen; /* the hierarchy of the geometry being built, f
 /* b155: a party member's head drawn as a line in battle, in some rounds (b150-b154: not the GE skin, the look-at, the
    scale hook, frameskip). Every bone matrix checked each frame: not finite, or a row length outside 0.01..100, is logged
    with the hierarchy's own matrix (first 24 cases). */
-int p4_bone_check = 1;
+int p4_bone_check = 0; /* b169: off by default. With the profiler on, hanim_scan_after re-scanned every recent bone matrix after
+   every task: a dungeon corridor 108 ms -> 33 ms a frame (b163 on the PSP, frameskip on). */
 static unsigned bone_bad_logged;
 static int bone_row_ok(const V3 *r)
 {
@@ -4894,14 +5279,56 @@ static int bone_finite(const Matrix *m)
 static void bone_check(const void *skin_, const void *hierarchy_, int count);
 static const void *bone_check_geometry;
 int hanim_age(const void *h);
+/* out = a x b (RenderWare rows: a's rows through b) on the VFPU: b's rows in M400, a's rows with w 0, 0, 0, 1 in
+   M600, each row through E400 as guard_vfpu transforms points. 0 when a matrix is not 16-byte aligned. */
+static int multiply_vfpu(Matrix *out, const Matrix *a, const Matrix *b)
+{
+    if (((unsigned)out | (unsigned)a | (unsigned)b) & 15)
+        return 0;
+    __asm__ volatile(
+        "lv.q    C400, 0(%[b])\n lv.q C410, 16(%[b])\n lv.q C420, 32(%[b])\n lv.q C430, 48(%[b])\n"
+        "lv.q    C600, 0(%[a])\n lv.q C610, 16(%[a])\n lv.q C620, 32(%[a])\n lv.q C630, 48(%[a])\n"
+        "vzero.s S603\n vzero.s S613\n vzero.s S623\n vone.s S633\n"
+        "vtfm4.q C700, E400, C600\n"
+        "vtfm4.q C710, E400, C610\n"
+        "vtfm4.q C720, E400, C620\n"
+        "vtfm4.q C730, E400, C630\n"
+        "sv.q    C700, 0(%[o])\n sv.q C710, 16(%[o])\n sv.q C720, 32(%[o])\n sv.q C730, 48(%[o])\n"
+        : : [o] "r"(out), [a] "r"(a), [b] "r"(b) : "memory");
+    return 1;
+}
+static void anim_drawn(const void *hierarchy);
 static int skin_bones(const Skin *skin, const Hierarchy *hierarchy)
 {
+    anim_drawn(hierarchy);
     hierarchy_nodes_seen = hierarchy->numNodes;
     int count = skin->numBones < hierarchy->numNodes ? skin->numBones : hierarchy->numNodes;
     if (count > MAX_BONES)
         return -1;
-    for (int i = 0; i < count; i++)
-        multiply(&bones[i], &skin->skinToBone[i], &hierarchy->matrices[i]);
+    for (int i = 0; i < count; i++) {
+        if (!p4_skin_vfpu || !multiply_vfpu(&bones[i], &skin->skinToBone[i], &hierarchy->matrices[i])) {
+            skin_vfpu_unaligned += p4_skin_vfpu;
+            multiply(&bones[i], &skin->skinToBone[i], &hierarchy->matrices[i]);
+            continue;
+        }
+        if (p4_skin_vfpu_check) {
+            Matrix ref;
+            multiply(&ref, &skin->skinToBone[i], &hierarchy->matrices[i]);
+            const float *x = &bones[i].right.x, *y = &ref.right.x;
+            int differs = 0;
+            for (int k = 0; k < 16; k++) {
+                if ((k & 3) == 3)
+                    continue;
+                float d = fabsf(x[k] - y[k]) / (1 + fabsf(y[k]));
+                if (!(d <= 1e-4f))
+                    differs = 1;
+                if (d > skin_vfpu_max_diff)
+                    skin_vfpu_max_diff = d;
+            }
+            skin_vfpu_checks++;
+            skin_vfpu_diffs += differs;
+        }
+    }
     if (p4_bone_check)
         bone_check(skin, hierarchy, count);
     return count;
@@ -5226,13 +5653,25 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
     Mat4 m;
     prof_begin(PROF_SGUARD);
     guard_matrix(m, space);
+    {
+        const Matrix *root = &hierarchy->matrices[0]; /* its clip w: how far the character is, for p4_anim_far */
+        anim_seen_at(hierarchy, root->pos.x * m[0][3] + root->pos.y * m[1][3] + root->pos.z * m[2][3] + m[3][3], model);
+    }
+    float planes[5][4], plane_len[5];
+    if (p4_skin_guard_fast)
+        guard_sphere_planes(m, near, planes, plane_len);
     for (int i = 0; i < nbones; i++) {
         if (e->radius[i] <= 0)
             continue;
         const Matrix *pose = &hierarchy->matrices[i];
         float scale = sqrtf(pose->right.x * pose->right.x + pose->right.y * pose->right.y + pose->right.z * pose->right.z);
         float sphere[4] = { pose->pos.x, pose->pos.y, pose->pos.z, e->radius[i] * (scale > 1 ? scale : 1) };
-        if (!guard_sphere_inside(m, sphere, near)) {
+        int inside = p4_skin_guard_fast ? guard_sphere_inside_planes(planes, plane_len, sphere) : guard_sphere_inside(m, sphere, near);
+        if (p4_skin_guard_fast && p4_skin_guard_check) {
+            skin_guard_checks++;
+            skin_guard_diffs += inside != guard_sphere_inside(m, sphere, near);
+        }
+        if (!inside) {
             skin_ge_fallbacks++;
             prof_end(PROF_SGUARD);
             return 0;
@@ -5737,8 +6176,10 @@ static void *atomic_draw(void *atomic, Geometry *g, char *frame, const Matrix *m
         }
     }
     /* the morph target's sphere is in the geometry's space; skinned vertices are not */
+    draw_geometry = positions == g->morphTarget->verts ? g : 0; /* CPU-skinned arrays change without a lock */
     draw_meshes(g->mesh, positions, g->numTexCoordSets ? g->texCoords[0] : 0, g->preLit, g->numVertices, model, g->flags & 0x40, normals,
                 positions == g->morphTarget->verts && p4_guard_sphere ? g->morphTarget->sphere : 0);
+    draw_geometry = 0;
     return atomic;
 }
 

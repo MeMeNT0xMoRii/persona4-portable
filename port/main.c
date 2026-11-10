@@ -14,7 +14,7 @@ PSP_MAIN_THREAD_STACK_SIZE_KB(1024);
 PSP_HEAP_SIZE_KB(-1); /* the heap is claimed before main */
 PSP_HEAP_THRESHOLD_SIZE_KB(4096); /* left free: thread stacks */
 
-#define BUILD 165
+#define BUILD 176
 #define P4_IMAGE_SIZE 0x40B000 /* retail 0x52da00..0x938a00: data and bss */
 #define GAME_DIR "ms0:/PSP/GAME/P4/"
 #ifdef P4_HW_PROFILE
@@ -114,6 +114,149 @@ static void log_start(void)
 void p4_log_flush(void)
 {
     log_drain();
+}
+
+/* Memory census (b166): psp_link wraps malloc/calloc/realloc/memalign/free; live bytes are counted per caller (return
+   address, named by psp_log.py). The game's own allocations arrive through chkmemAllocate and RenderWare's malloc
+   wrapper, the port's from its own functions. Blocks libc allocates internally are not seen. */
+#include <malloc.h>
+#include <unistd.h>
+int p4_memstat = 0; /* 1 for a census build: it must be on from boot, the table takes 768 KB of heap */
+void *__real_malloc(size_t); void *__real_calloc(size_t, size_t); void *__real_realloc(void *, size_t);
+void *__real_memalign(size_t, size_t); void __real_free(void *);
+enum { MS_SLOTS = 1 << 16, MS_SITES = 1024 };
+typedef struct { void *p; unsigned size, site; } MsBlock;
+typedef struct { unsigned ra, live, peak, blocks; } MsSite;
+static MsBlock *ms_table; /* open addressing, backward-shift deletion */
+static MsSite ms_site[MS_SITES], ms_copy[MS_SITES];
+static unsigned ms_used, ms_live, ms_peak, ms_lost, ms_allocs;
+
+static unsigned ms_hash(unsigned v, unsigned bits) { return (v >> 3) * 2654435761u >> (32 - bits); }
+
+static void ms_add(void *p, unsigned size, unsigned ra)
+{
+    if (!p || !p4_memstat)
+        return;
+    if (!ms_table && !(ms_table = __real_calloc(MS_SLOTS, sizeof *ms_table))) /* not under the interrupt lock: malloc may wait */
+        p4_memstat = 0;
+    int intr = pspSdkDisableInterrupts();
+    if (!ms_table || ms_used >= MS_SLOTS / 8 * 7) {
+        ms_lost++;
+        pspSdkEnableInterrupts(intr);
+        return;
+    }
+    unsigned s = ms_hash(ra, 10);
+    while (ms_site[s].ra && ms_site[s].ra != ra)
+        s = (s + 1) & (MS_SITES - 1);
+    ms_site[s].ra = ra;
+    if ((ms_site[s].live += size) > ms_site[s].peak)
+        ms_site[s].peak = ms_site[s].live;
+    ms_site[s].blocks++;
+    if ((ms_live += size) > ms_peak)
+        ms_peak = ms_live;
+    ms_allocs++;
+    unsigned i = ms_hash((unsigned)p, 16);
+    while (ms_table[i].p)
+        i = (i + 1) & (MS_SLOTS - 1);
+    ms_table[i] = (MsBlock){ p, size, s };
+    ms_used++;
+    pspSdkEnableInterrupts(intr);
+}
+
+static void ms_remove(void *p)
+{
+    if (!p || !ms_table)
+        return;
+    int intr = pspSdkDisableInterrupts();
+    unsigned i = ms_hash((unsigned)p, 16);
+    while (ms_table[i].p && ms_table[i].p != p)
+        i = (i + 1) & (MS_SLOTS - 1);
+    if (ms_table[i].p) {
+        MsSite *site = &ms_site[ms_table[i].site];
+        site->live -= ms_table[i].size;
+        site->blocks--;
+        ms_live -= ms_table[i].size;
+        ms_used--;
+        for (unsigned j = i;;) { /* pull later entries of the run back over the hole */
+            j = (j + 1) & (MS_SLOTS - 1);
+            if (!ms_table[j].p)
+                break;
+            unsigned k = ms_hash((unsigned)ms_table[j].p, 16);
+            if (i <= j ? i < k && k <= j : i < k || k <= j)
+                continue;
+            ms_table[i] = ms_table[j];
+            i = j;
+        }
+        ms_table[i].p = 0;
+    }
+    pspSdkEnableInterrupts(intr);
+}
+
+#define MS_RA ((unsigned)__builtin_return_address(0))
+void *__wrap_malloc(size_t n) { void *p = __real_malloc(n); ms_add(p, n, MS_RA); return p; }
+void *__wrap_calloc(size_t a, size_t b) { void *p = __real_calloc(a, b); ms_add(p, a * b, MS_RA); return p; }
+void *__wrap_memalign(size_t a, size_t n) { void *p = __real_memalign(a, n); ms_add(p, n, MS_RA); return p; }
+void __wrap_free(void *p) { ms_remove(p); __real_free(p); }
+void *__wrap_realloc(void *old, size_t n)
+{
+    void *p = __real_realloc(old, n);
+    if (p || !n) {
+        ms_remove(old);
+        ms_add(p, n, MS_RA);
+    }
+    return p;
+}
+
+/* Heap the allocator has not taken from sbrk yet. mallinfo's fordblks counts only the arena already taken: in the b166
+   census the battle had 88 KB "free" there with ~5.7 MB of the heap block never touched. libcglue keeps the block's top
+   in a local static, so it is found once by asking sbrk (which refuses past the top), under malloc's lock. */
+void __malloc_lock(struct _reent *); void __malloc_unlock(struct _reent *);
+unsigned p4_heap_unclaimed(void)
+{
+    static char *top;
+    __malloc_lock(_REENT);
+    char *now = sbrk(0);
+    if (!top) {
+        unsigned lo = 0, hi = 64u << 20; /* lo fits, hi does not */
+        while (hi - lo > 4096) {
+            unsigned mid = (lo + hi) / 2 & ~15u;
+            if (sbrk(mid) != (void *)-1) {
+                sbrk(-(int)mid);
+                lo = mid;
+            } else
+                hi = mid;
+        }
+        top = now + lo;
+    }
+    __malloc_unlock(_REENT);
+    return top > now ? top - now : 0;
+}
+
+/* every 256 frames (rwsky.c): totals, then the 24 callers holding the most */
+void p4_memstat_report(void)
+{
+    if (!ms_table)
+        return;
+    struct mallinfo m = mallinfo();
+    int intr = pspSdkDisableInterrupts();
+    memcpy(ms_copy, ms_site, sizeof ms_copy);
+    unsigned live = ms_live, peak = ms_peak, used = ms_used, lost = ms_lost, allocs = ms_allocs;
+    pspSdkEnableInterrupts(intr);
+    p4_log("memstat live %u KB peak %u KB blocks %u allocs %u lost %u table %u KB\n", live >> 10, peak >> 10, used, allocs, lost,
+           (unsigned)(MS_SLOTS * sizeof(MsBlock)) >> 10);
+    p4_log("memstat heap arena %d KB used %d KB free %d KB unclaimed %u KB | sys free %d KB\n", m.arena >> 10, m.uordblks >> 10,
+           m.fordblks >> 10, p4_heap_unclaimed() >> 10, (int)sceKernelTotalFreeMemSize() >> 10);
+    for (int n = 0; n < 24; n++) {
+        int best = -1;
+        for (int s = 0; s < MS_SITES; s++)
+            if (ms_copy[s].ra && (best < 0 || ms_copy[s].live > ms_copy[best].live))
+                best = s;
+        if (best < 0 || !ms_copy[best].live)
+            break;
+        p4_log("memsite %6u KB peak %6u KB blocks %5u from %07x\n", ms_copy[best].live >> 10, ms_copy[best].peak >> 10,
+               ms_copy[best].blocks, ms_copy[best].ra - 8);
+        ms_copy[best].live = 0;
+    }
 }
 
 void p4_log(const char *fmt, ...)

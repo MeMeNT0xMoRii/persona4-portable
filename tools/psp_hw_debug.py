@@ -78,7 +78,8 @@ def main():
     rsp.write_text("".join('"' + p.as_posix() + '"\n' for p in objects), encoding="utf-8")
     elf = out / "p4.elf"
     port = [out / f"{name}.o" for name in (*PORT, *PORT_ASM)]
-    wraps = ["sdkSpriteRequestLoad", "sceGuGetMemory", "sceGeListUpdateStallAddr", "func_00397c40"]
+    wraps = ["sdkSpriteRequestLoad", "sceGuGetMemory", "sceGeListUpdateStallAddr", "func_00397c40",
+             "malloc", "calloc", "realloc", "memalign", "free"]  # b166 memory census (main.c), as psp_link
     if not args.release:
         wraps += ["mdlQueueModelForDraw", "mdlComputeIndexedAttachMatrix", "qsort",
                   "mdlEffectFlushWithTable", "mdlEffectAdvanceAndFlushWithTable",

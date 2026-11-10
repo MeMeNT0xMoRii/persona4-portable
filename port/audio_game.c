@@ -11,10 +11,14 @@ static unsigned slot_complete[6];
 static const char *table_name(unsigned address,unsigned index)
 { return *(const char **)(P4_K+address+index*12); }
 
+/* b176: ms0:/PSP/GAME/P4/NOSOUND present: the SAS player is never started (the game runs silent), to test whether
+   movies still hang after ten minutes of play without it (b169, b172, b174: the Media Engine stops answering). */
 void sdkSndInit(void)
 {
     current_cue=current_track=-1;
     for(int i=0;i<6;++i)slot_complete[i]=1;
+    SceIoStat st;
+    if(sceIoGetstat("ms0:/PSP/GAME/P4/NOSOUND",&st)>=0){p4_log("audio off: NOSOUND present\n");return;}
     p4_audio_init();
 }
 void sdkSndUpdate(void)

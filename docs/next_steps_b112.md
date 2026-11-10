@@ -378,3 +378,48 @@ In order:
    range is known to be all above or all below the reference (swizzle head alpha_min/max). Measure VU0-in-C work
    (`vu0 per frame`, peak ~9.5k instructions) and the P4_VU0_COUNT site lookup with the profiler on hardware.
 7. Rebuild the auto package (`P4-PSP-auto-b164`): it still has the psp_link alias bug.
+
+### Device session after b168 (2026-11-10)
+- Builds: `build/psplink_b168` (profile), b168 release in `build/psp_dist`. Scenes: Heaven stairs, station, the street.
+- Animation: `kinterp` (slerp/lerp callback: RpHAnim `p4r_00415bc0`, game `mdlKeyFrameInterpolateCopy`) against `kadd`
+  (whole AddAnimTime). If kinterp is most of kadd and its memory stall is small, move the slerp to the VFPU with an FPU
+  check; if the stall dominates (as kmat in b142), leave it.
+- Mesh key: `mkey`/`muvscan` with `p4_lock_memo` 1 and 0 (b167); `cache audit` must stay at 0 stale.
+- Cache budget: `mesh cache budget` lines should hold 6 MB now (b167 counts the untouched heap).
+- Guard: in PPSSPP the street needs ~100 boxes and ~140 vertices a frame, 0 triangles cut; check gclass/gloop there.
+
+### Device session 2026-11-10 (b168-b173)
+- **The profile builds since b159 were slow because of the bone check**: `hanim_scan_after` (p4_bone_check) re-scanned
+  every recent bone matrix after every task when the profiler is on. Dungeon corridor (b163) 108 -> 33 ms a frame,
+  Heaven stairs 117 -> 50 ms. b169: `p4_bone_check` 0 by default. Release builds never ran the scan.
+- Heaven stairs b169: 50 ms (3 vblanks), CPU ~49 ms. `kinterp` ~55% of `kadd`, stall ~10%. `p4_lock_memo` 1 vs 0:
+  mkey 421k -> 144k, CPU 50.3 -> 49.0 ms. Cache budget holds 6 MB. `cache audit` checks only entries built while it is
+  on (switch it on before entering a scene); not yet run on a fresh scene.
+- b169 hung going back to the title (movie P4CTOP2): `sceMpegCreate` never returned (user_main waiting in sceMpeg), the
+  MPEG work area was at 0x0a31b040 for the first time (heap after Heaven). b170: the player's buffers live in the 4 MB
+  volatile block (0x08400000, sceKernelVolatileMemTryLock; heap fallback). Boot movie plays from it; **the return to
+  the title after a long session is not yet tested**.
+- Classroom (many students), b170-b172: 50 ms (3 vblanks), CPU ~44-49 ms. Per drawn tick: mesh ~5.3M cycles (mhit 3.1,
+  mgdraw 2.0), geskin 3.7M, qmodel+alayer 6.2M (kadd ~1.1M, kmat ~1.5M), draw scene 3.8M.
+- b171: skinned guard spheres against planes built once per skin (`p4_skin_guard_fast`, 116k checks 0 diffs): sguard
+  936k -> 270k, CPU -1.6 ms. skin-to-bone x pose on the VFPU (`p4_skin_vfpu`, 440k checks 0 diffs): ~-0.3 ms, on by
+  default from b172. Counters `anim ...` (updates, unseen, far_due, depth bins of drawn skins).
+- b172: RpHAnim compressed-key interpolate (p4r_00415bc0) in C with the slerp on the VFPU (`p4_interp_fast`, off): max
+  quaternion diff 2.4e-4, but kinterp only -6%: 98% of nodes take the lerp branch (dot >= 0.999); the cost is reading
+  the keys (cache misses). Not worth it. AddAnimTime is now overridden in all builds (func_003d5bc0).
+- b172-b173: far animation LOD (`p4_anim_far` 1, `p4_anim_far_depth` 500 clip w, step 2, `p4_anim_far_kadd` 1: the
+  AddAnimTime step is kept and added on the next due tick): classroom qmodel 4.09M -> 3.10M, alayer 3.51M -> 2.47M,
+  CPU -1 ms (rest became GE wait). User: students move fine. `p4_anim_cull` (not drawn for 2 ticks) stays off: nobody
+  is off screen in the classroom; try it on the street.
+- Next: classroom needs ~15 ms less CPU for 2 vblanks: break down `draw scene` (resrcMngRenderTask) and the mesh hit
+  path (mhit ~20k cycles a mesh); street (`gclass`/`gloop`, p4_anim_cull); title return with the volatile video.
+
+### Movie hang traced to the SAS player (b174-b176, 2026-11-10)
+- The hang is not sceMpegCreate and not the buffer address: b174 reused one SceMpeg (`mpeg reused`, `init au` ok) and
+  still hung on the first Media Engine call after 604 s of play (EPC 0x0B9C6F1C inside sceMpeg).
+- b176 with `ms0:/PSP/GAME/P4/NOSOUND` (SAS never started): a movie after 2560 s (42 min) of play decoded fine. With
+  sound, movies hung after ~10 min (b169, b172, b174); short gaps always worked, sound or not.
+- Next (b177): a NOREVERB switch (`__sceSasRevType` off), SAS error codes in the log, NOSOUND removed; play 10+ min,
+  then a movie. If it still hangs: key off and stop SAS completely before a movie.
+- Far LOD: b175 holds only characters whose model has not moved for 8 ticks (`moving_kept` counter); the b174 Heaven
+  doubling (body lagging its shadow) is gone.

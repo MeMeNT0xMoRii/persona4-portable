@@ -44,6 +44,12 @@ int mwPlayerUpdate(unsigned char *owner)
     p4_video_on_frame = movie_frame;
     p4_video_buttons = movie_buttons;
     p4_audio_pause(1);
+    {
+        extern volatile unsigned p4_audio_blocks, p4_audio_errors, p4_audio_underruns, p4_audio_cpu_us;
+        int p4_audio_state(void);
+        p4_log("video audio state %d (1 running, 4 paused): blocks %u errors %u underruns %u cpu_us %u\n", p4_audio_state(),
+               p4_audio_blocks, p4_audio_errors, p4_audio_underruns, p4_audio_cpu_us);
+    }
     int result = p4_video_play("ms0:/PSP/GAME/P4/", stem, 0);
     p4_audio_pause(0);
     p4_video_on_frame = NULL; p4_video_buttons = NULL;

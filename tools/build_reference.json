@@ -28,6 +28,17 @@
         "p4data.bin": "f78ffd8a9437ab31edd6db7f316880cd7c47fa409aa1ad305b542c06474520dd",
         "p4str.bin": "4bc65004bf091811ee679342eed10efe1dea01ef0fd02c0e189da45adf6e7ee4"
       }
+    },
+    {
+      "id": "b176-clean-source-host",
+      "build": 176,
+      "kind": "host",
+      "scope": "Full host compilation from the release package with the downloaded toolchain. b176 profiling builds were tested on a PSP in selected scenes; this release EBOOT itself not yet.",
+      "files": {
+        "EBOOT.PBP": "b051f5f0227c09ce089a7d56e32961b0249f702afd799cfdae509327d8319bb4",
+        "p4data.bin": "fa366fe638bba587a00c23051ff6d985b031855275349a4f8383dd45d1fa32d6",
+        "p4str.bin": "4bc65004bf091811ee679342eed10efe1dea01ef0fd02c0e189da45adf6e7ee4"
+      }
     }
   ]
 }

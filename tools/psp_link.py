@@ -179,7 +179,7 @@ def main():
     rsp.write_text("\n".join('"' + p.as_posix() + '"' for p in objects) + "\n", encoding="utf-8")
     elf = OUT / "p4.elf"
     # ponytail: two CRI generations define the same names, first object wins; drop one set when audio lands.
-    run(BIN / "psp-gcc.exe", "-G0", f"-L{SDK / 'lib'}", "-Wl,-zmax-page-size=128", "-Wl,--allow-multiple-definition", "-Wl,--wrap=sdkSpriteRequestLoad", "-Wl,--wrap=sceGuGetMemory", "-Wl,--wrap=sceGeListUpdateStallAddr", "-Wl,--wrap=func_00397c40", f"-Wl,-T,{(OUT / 'image.ld').as_posix()}",
+    run(BIN / "psp-gcc.exe", "-G0", f"-L{SDK / 'lib'}", "-Wl,-zmax-page-size=128", "-Wl,--allow-multiple-definition", "-Wl,--wrap=sdkSpriteRequestLoad", "-Wl,--wrap=sceGuGetMemory", "-Wl,--wrap=sceGeListUpdateStallAddr", "-Wl,--wrap=func_00397c40", *(f"-Wl,--wrap={f}" for f in ("malloc", "calloc", "realloc", "memalign", "free")),f"-Wl,-T,{(OUT / 'image.ld').as_posix()}",
         *port_objects, OUT / "stubs.o", OUT / "reasm.o", f"@{rsp.as_posix()}", OUT / "symbols.ld", *LIB_FLAGS, "-o", elf)
     run(BIN / "psp-fixup-imports.exe", elf)
     check_import_ranges(elf)

@@ -21,6 +21,10 @@ def main():
     GAME.mkdir(parents=True, exist_ok=True)
     for f in DIST.iterdir():
         target = GAME / f.name
+        if f.is_dir():  # SOUND, VIDEO: copied once
+            if not target.exists():
+                shutil.copytree(f, target)
+            continue
         if not target.exists() or target.stat().st_size != f.stat().st_size or target.stat().st_mtime < f.stat().st_mtime:
             shutil.copy2(f, GAME)
     route = GAME / "route.txt"  # P4_ROUTE=tools/routes/x.txt: the game presses its buttons by the PSP clock (pad.c)

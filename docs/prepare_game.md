@@ -4,7 +4,7 @@
 
 The current utility builds **EBOOT.PBP on your PC**, then prepares resources from your original Persona 4 USA (`SLUS-21782`) ISO. New preparation packages contain our port sources and conversion tools. They contain **no prebuilt game EBOOT, compiled game objects, retail executable, rebased game data or build-specific numerical data recipe**. The pinned upstream decompilation is fetched separately.
 
-The older prebuilt-EBOOT b164 download has been withdrawn. These instructions describe its source-build replacement; creating a package locally does not publish it to GitHub.
+The older prebuilt-EBOOT b164 download has been withdrawn. The current source-build package is published as **P4-PSP-b176-windows-x64.zip** in the [b176 pre-release](https://github.com/dreikk91/persona4-psp/releases/tag/b176); creating a package locally does not publish it.
 
 1. Extract the complete new utility archive to a PC folder. Keep `Prepare P4.exe`, `_internal`, `helpers`, `source`, `prepare.json` and `toolchain` together.
 2. Run **Prepare P4.exe** and select your original USA ISO and an output folder outside the utility folder.

@@ -23,7 +23,8 @@ DEFAULTS = {'p4_probe_flags': 0, 'p4_probe_geometry': 0, 'p4_probe_keep_every': 
             'p4_probe_depth_mode': 0, 'p4_probe_depth_cut': 2000.0,
             'p4_mesh_frustum': 0, 'p4_exp_scissor': 0, 'p4_exp_ge_time': 0,
             'p4_ge_skin': 1, 'p4_ge_light': 1, 'p4_guard_clip': 1, 'p4_guard_compact': 1, 'p4_guard_near_ge': 0, 'p4_guard_clip_fast': 1, 'p4_guard_gnear': 1, 'p4_guard_boxes': 1, 'p4_uv_shift_step': 1, 'p4_cache_audit': 0, 'p4_cache_budget': 6291456,
-            'p4_gs_test': 1, 'p4_gs_test_skip': 1, 'p4_pipeline': 1, 'p4_mipmaps': 1, 'p4_cull_far': 0, 'p4_guard_world': 1, 'p4_guard_full_cache': 1, 'p4_instance_replay': 1, 'p4_fog': 0, 'p4_vsync_late': 1, 'p4_light_prelit': 1, 'p4_light_unprelit': 1, 'p4_gs_mesh_alpha': 1, 'p4_flip_event': 1, 'p4_cover_stats': 0, 'p4_bone_direct': 1, 'p4_list_cached': 1, 'p4_skin_alpha': 1, 'p4_alpha_x2': 0, 'p4_im3d': 1, 'p4_uv_memo': 1, 'p4_hanim_c': 0, 'p4_hanim_check': 0, 'p4_guard_chunk': 8, 'p4_guard_loop2': 1, 'p4_guard_box_vfpu': 1, 'p4_guard_box_check': 0, 'p4_probe_2d': 0, 'p4_frameskip': 1, 'p4_frameskip_max': 2, 'p4_frameskip_bones': 1, 'p4_uv_rebase': 1, 'p4_pose_plain': 0, 'p4_hanim_nan_fix': 1, 'p4_bone_check': 1, 'p4_dst_alpha_passes': 0}
+            'p4_gs_test': 1, 'p4_gs_test_skip': 1, 'p4_pipeline': 1, 'p4_mipmaps': 1, 'p4_cull_far': 0, 'p4_guard_world': 1, 'p4_guard_full_cache': 1, 'p4_instance_replay': 1, 'p4_fog': 0, 'p4_vsync_late': 1, 'p4_light_prelit': 1, 'p4_light_unprelit': 1, 'p4_gs_mesh_alpha': 1, 'p4_flip_event': 1, 'p4_cover_stats': 0, 'p4_bone_direct': 1, 'p4_list_cached': 1, 'p4_skin_alpha': 1, 'p4_alpha_x2': 0, 'p4_im3d': 1, 'p4_uv_memo': 1, 'p4_hanim_c': 0, 'p4_hanim_check': 0, 'p4_guard_chunk': 8, 'p4_guard_loop2': 1, 'p4_guard_box_vfpu': 1, 'p4_guard_box_check': 0, 'p4_probe_2d': 0, 'p4_frameskip': 1, 'p4_frameskip_max': 2, 'p4_frameskip_bones': 1, 'p4_uv_rebase': 1, 'p4_pose_plain': 0, 'p4_hanim_nan_fix': 1, 'p4_bone_check': 0, 'p4_dst_alpha_passes': 0, 'p4_lock_memo': 1, 'p4_rtt': 1, 'p4_skin_guard_fast': 1, 'p4_skin_guard_check': 0, 'p4_skin_vfpu': 1, 'p4_skin_vfpu_check': 0, 'p4_anim_cull': 0, 'p4_anim_far': 1, 'p4_anim_far_step': 2, 'p4_anim_far_depth': 500.0, 'p4_interp_fast': 0, 'p4_interp_check': 0, 'p4_anim_far_kadd': 1}
+FLOATS = {'p4_probe_depth_cut', 'p4_anim_far_depth'}
 
 
 def main():
@@ -63,10 +64,10 @@ def main():
             ap.error('unsupported control: ' + name)
         if name not in symbols:
             ap.error('control absent in this build: ' + name)
-        changes[name] = float(value) if name == 'p4_probe_depth_cut' else int(value, 0)
+        changes[name] = float(value) if name in FLOATS else int(value, 0)
 
     def bits(name, value):
-        return struct.unpack('<I', struct.pack('<f', value))[0] if name == 'p4_probe_depth_cut' else value & 0xffffffff
+        return struct.unpack('<I', struct.pack('<f', value))[0] if name in FLOATS else value & 0xffffffff
 
     def send(commands):
         with queue.open('a', encoding='utf-8') as f:

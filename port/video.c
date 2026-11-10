@@ -8,6 +8,7 @@
 #include <pspmpeg.h>
 #include <psputility.h>
 #include <psppower.h>
+#include <pspsuspend.h>
 #include <malloc.h>
 #include <stdio.h>
 #include <string.h>
@@ -116,6 +117,42 @@ static unsigned movie_time(int has_audio)
     return (unsigned)((unsigned long long)(submitted - rest) * 1000000 / 44100);
 }
 
+
+/* The volatile block: ddr (2 MB, 4 MB aligned at its base), the three output frames, the packet, the MPEG work area,
+   the parameter sets. 0 when it cannot be locked or is too small: the caller takes the heap as before. */
+enum { VOL_WORK_MAX = 0x10000 + 256 + 4096 };
+static void *vol_ddr, *vol_output, *vol_packet, *vol_work, *vol_params;
+/* b174: sceMpegCreate hung twice after a long stretch of play since the last movie (b169 P4CTOP2, b172 P4CT004, both
+   waiting in sceMpeg), with the buffers in the heap and in the volatile block alike; back-to-back movies never did.
+   p4_video_keep: the SceMpeg made for the first movie (and the volatile block it lives in) stays for the session;
+   later movies reuse it, so Create runs once. A movie that fails drops it. */
+int p4_video_keep = 1;
+static int vol_held, kept;
+static SceMpeg kept_mpeg;
+static unsigned last_movie_end;
+static int volatile_carve(unsigned params_bytes)
+{
+    if (vol_held)
+        return 1;
+    void *base = NULL;
+    int size = 0;
+    int r = sceKernelVolatileMemTryLock(0, &base, &size);
+    if (r < 0) { log_line("volatile lock %08x", r); return 0; }
+    unsigned at = (unsigned)base, end = at + (unsigned)size;
+    vol_ddr = base; at += 2 * 1024 * 1024; /* 0x08400000: 4 MB aligned, as the heap's memalign gave it */
+    vol_output = (void *)at; at += FRAME_BYTES * 3;
+    vol_packet = (void *)at; at += MAX_PACKET;
+    vol_work = (void *)at; at += VOL_WORK_MAX;
+    vol_params = (void *)at; at = (at + params_bytes + 63) & ~63u;
+    if (at > end) {
+        log_line("volatile block %p size %x too small (need %x)", base, size, at - (unsigned)base);
+        sceKernelVolatileMemUnlock(0);
+        return 0;
+    }
+    vol_held = 1;
+    return 1;
+}
+
 int p4_video_play(const char *directory, const char *name, int muted)
 {
     video_dir = directory; stem = name; mute = muted;
@@ -123,12 +160,12 @@ int p4_video_play(const char *directory, const char *name, int muted)
     audio_channel = -1; audio_submitted = audio_end_wall = started = 0;
     video_frame = video_shown = video_step = 0;
     int result = -1, created = 0, rb_created = 0;
-    int decoder_started = 0, drained = 0;
+    int decoder_started = 0, drained = 0, volatile_locked = 0, heap_work = 0;
     SceUID audio_thread = -1, fd = -1;
     int audio_running = 0;
     void *work = NULL, *ddr = NULL, *packet = NULL, *params = NULL, *output = NULL;
     SceMpeg mpeg = NULL;
-    SceMpegRingbuffer rb; memset(&rb, 0, sizeof rb);
+    static SceMpegRingbuffer rb; /* static: a kept SceMpeg points at it */
     Header h;
     char path[256]; snprintf(path, sizeof path, "%sVIDEO/%s.p4v", video_dir, stem);
     fd = sceIoOpen(path, PSP_O_RDONLY, 0);
@@ -139,8 +176,15 @@ int p4_video_play(const char *directory, const char *name, int muted)
         (h.samples && (h.rate != 44100 || h.channels != 2))) {
         log_line("unsupported P4V header"); goto done;
     }
-    params = memalign(64, h.sps_size + h.pps_size + 256);
-    packet = memalign(64, MAX_PACKET);
+    /* b170: the player's buffers live in the 4 MB volatile block (0x08400000), locked for the movie. From the
+       heap, a long session put the MPEG work area at 0x0a31b040 and sceMpegCreate never returned (b169, back to the
+       title after Heaven); the movies that played had it below 0x0a000000. */
+    volatile_locked = volatile_carve(h.sps_size + h.pps_size + 256);
+    if (!volatile_locked) {
+        params = memalign(64, h.sps_size + h.pps_size + 256);
+        packet = memalign(64, MAX_PACKET);
+    } else
+        params = vol_params, packet = vol_packet;
     if (!params || !packet || exact(fd, params, h.sps_size + h.pps_size) < 0) goto done;
     int r;
     if (!codec_loaded) {
@@ -158,17 +202,33 @@ int p4_video_play(const char *directory, const char *name, int muted)
     }
     int work_size = sceMpegQueryMemSize(4);
     if (work_size <= 0) goto done;
-    work = memalign(64, work_size + 256);
-    ddr = memalign(4 * 1024 * 1024, 2 * 1024 * 1024);
-    output = memalign(64, FRAME_BYTES * 3);
+    if (volatile_locked && work_size + 256 <= VOL_WORK_MAX) {
+        work = vol_work, ddr = vol_ddr, output = vol_output;
+    } else {
+        if (volatile_locked) log_line("volatile work too small for %x", work_size);
+        work = memalign(64, work_size + 256);
+        ddr = memalign(4 * 1024 * 1024, 2 * 1024 * 1024);
+        output = memalign(64, FRAME_BYTES * 3);
+        heap_work = 1;
+    }
     if (!work || !ddr || !output) { log_line("allocation failed work %p ddr %p output %p", work, ddr, output); goto done; }
     memset((char *)work + work_size, 0xa5, 256);
     memset((char *)params + h.sps_size + h.pps_size, 0xa5, 256);
-    log_line("work %p size %x packet %p params %p mute %d", work, work_size, packet, params, mute);
-    r = sceMpegRingbufferConstruct(&rb, 0, NULL, 0, NULL, NULL);
-    if (r < 0) { log_line("ringbuffer %08x", r); goto done; } rb_created = 1;
-    r = sceMpegCreate(&mpeg, work, work_size, &rb, 512, 4, (int)ddr);
-    log_line("mpeg create %08x ddr %p", r, ddr); if (r < 0) goto done; created = 1;
+    log_line("work %p size %x packet %p params %p ddr %p output %p volatile %d mute %d", work, work_size, packet, params, ddr, output, volatile_locked, mute);
+    log_line("start: %u ms since the last movie, keep %d kept %d", last_movie_end ? (sceKernelGetSystemTimeLow() - last_movie_end) / 1000 : 0,
+             p4_video_keep, kept);
+    if (kept && volatile_locked && !heap_work) {
+        mpeg = kept_mpeg; created = rb_created = 1;
+        log_line("mpeg reused");
+    } else {
+        memset(&rb, 0, sizeof rb);
+        r = sceMpegRingbufferConstruct(&rb, 0, NULL, 0, NULL, NULL);
+        if (r < 0) { log_line("ringbuffer %08x", r); goto done; } rb_created = 1;
+        log_line("mpeg create begin");
+        r = sceMpegCreate(&mpeg, work, work_size, &rb, 512, 4, (int)ddr);
+        log_line("mpeg create %08x ddr %p", r, ddr); if (r < 0) goto done; created = 1;
+        if (p4_video_keep && volatile_locked && !heap_work) kept = 1, kept_mpeg = mpeg;
+    }
     memset(&au_storage, 0xff, sizeof au_storage);
     r = sceMpegInitAu(&mpeg, (char *)ddr + 0x10000, &au);
     log_line("init au %08x es %08x", r, au.iEsBuffer); if (r < 0) goto done;
@@ -274,9 +334,14 @@ done:
         log_line("close drain r %08x pictures %ld", r, pictures);
         if (r < 0) result = -1;
     }
-    if (created) sceMpegDelete(&mpeg);
-    if (rb_created) sceMpegRingbufferDestruct(&rb);
-    free(ddr); free(work); free(packet); free(params); free(output);
+    if (kept && result < 0) { log_line("dropping the kept mpeg after a failure"); kept = 0; }
+    int keep_now = kept && created && mpeg == kept_mpeg;
+    if (created && !keep_now) sceMpegDelete(&mpeg);
+    if (rb_created && !keep_now) sceMpegRingbufferDestruct(&rb);
+    if (heap_work || !volatile_locked) { free(ddr); free(work); free(output); }
+    if (!volatile_locked) { free(packet); free(params); }
+    if (volatile_locked && !kept) { sceKernelVolatileMemUnlock(0); vol_held = 0; }
+    last_movie_end = sceKernelGetSystemTimeLow();
     if (fd >= 0) sceIoClose(fd);
     log_line("probe finished result %d", result);
     return result;
@@ -284,6 +349,8 @@ done:
 
 void p4_video_shutdown(void)
 {
+    if (kept) { sceMpegDelete(&kept_mpeg); kept = 0; }
+    if (vol_held) { sceKernelVolatileMemUnlock(0); vol_held = 0; }
     if (initialized) sceMpegFinish();
     if (base_loaded) sceUtilityUnloadAvModule(PSP_AV_MODULE_MPEGBASE);
     if (codec_loaded == 1) sceUtilityUnloadAvModule(PSP_AV_MODULE_AVCODEC);

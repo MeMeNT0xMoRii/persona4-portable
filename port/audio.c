@@ -570,6 +570,7 @@ int p4_audio_init(void)
     p4_log("audio SAS ready: %u streams indexed, grain %d, Output2\n",index_count,GRAIN);return 0;
 error:p4_log("audio init error %08x\n",result);p4_audio_shutdown();return -1;
 }
+int p4_audio_state(void) { return initialized ? (running ? 1 : 2) | (pause_ack ? 4 : 0) : 0; }
 void p4_audio_pause(int pause)
 {
     if(!initialized)return;

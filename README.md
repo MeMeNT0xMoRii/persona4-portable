@@ -8,7 +8,7 @@ You must supply your own legally obtained USA disc image. Game executables, arch
 
 Use the **source-build** preparation package: extract the entire archive, run `Prepare P4.exe`, select your original USA ISO and an output folder, then copy the resulting `P4` folder to `PSP/GAME/` on your memory card. The utility downloads the PSP compiler on the first build; no separate Python or PSPDEV setup is needed. See [the preparation guide](docs/prepare_game.md) for building the package and using it.
 
-The utility compiles EBOOT and matching data locally from your ISO and pinned upstream sources. It needs Internet access for the first upstream download, or a verified offline source ZIP. The older **P4-PSP-b164-windows-x64.zip** download was withdrawn because it contained a prebuilt EBOOT. The source-build utility is implemented in `main`, but its replacement Windows download has not been published yet. Build a local package using the preparation guide below.
+Download **P4-PSP-b176-windows-x64.zip** from the [b176 pre-release](https://github.com/dreikk91/persona4-psp/releases/tag/b176). The utility compiles EBOOT and matching data locally from your ISO and pinned upstream sources. It needs Internet access for the first upstream download, or a verified offline source ZIP. The older prebuilt-EBOOT b164 download was withdrawn.
 
 ## Build and install
 
@@ -16,11 +16,11 @@ The utility compiles EBOOT and matching data locally from your ISO and pinned up
 - **Prepare resources and install:** the same guide covers extraction, audio/movie conversion and copying the complete installation to `PSP/GAME/P4`.
 - **Windows preparation utility:** [Build and prepare](docs/prepare_game.md) describes the source-build GUI/CLI. Frozen source packages include the compiler and build EBOOT locally.
 
-A [clean source-build check](docs/build_validation_b164.md) successfully produced an EBOOT. Its output differs from the older local b164 binary; the fresh build has not yet been tested on PSP.
+The b176 utility was checked by a clean `--build-only` build from the release package; the build tool reports when your EBOOT matches that host build. b176 profiling builds were tested on a PSP in selected scenes (see Status); the release EBOOT from the utility has not been run on a PSP yet.
 
 The [source-build utility validation](docs/source_build_validation_b164.md) also covers the frozen Windows runtime, build caching and hidden compiler processes.
 
-The current working-tree build is **b164**. The source build currently targets Windows and a Windows PSPSDK toolchain. A PSP with 64 MB RAM and firmware capable of running homebrew is required; PSP-1000 support is not established.
+The current working-tree build is **b176**. The source build currently targets Windows and a Windows PSPSDK toolchain. A PSP with 64 MB RAM and firmware capable of running homebrew is required; PSP-1000 support is not established.
 
 ## Status
 
@@ -30,6 +30,8 @@ This is a work in progress, with hardware testing of selected scenes, saves, bat
 - Some scenes, including Dojima's room, have reached about 30 FPS on hardware at 333 MHz. Heavy scenes remain slower. Frameskip aims to keep the game clock near real time; this does not mean 30 displayed frames per second everywhere.
 - Audio uses PSP SAS and streamed resources converted from the disc. Some sequenced sound behavior still needs fidelity checks.
 - All 23 movies can be converted for hardware AVC playback, with separate PCM audio and movie skipping.
+- Known issue (b176): after about 10 minutes of play with sound, the next movie can hang inside `sceMpeg`. Creating an empty file `PSP/GAME/P4/NOSOUND` disables the SAS player and avoids the hang (movies decoded fine after 42 minutes). A fix is in progress.
+- b166-b176 performance work: about 50 ms a frame in Heaven and the classroom (was over 100 ms in profiling builds), cheaper skinning and guard checks, far-distance animation LOD for still characters, movie buffers in volatile memory.
 
 Hardware measurements and remaining issues are recorded in [development notes](docs/next_steps_b112.md), [audio notes](docs/audio_resources.md) and [video notes](docs/video_resources.md). Historical build numbers in these notes describe particular experiments.
 
