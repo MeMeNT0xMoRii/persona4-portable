@@ -172,6 +172,28 @@ class SourceBuildTests(unittest.TestCase):
             self.assertEqual(builder.find_pspdev(self.bundle), bundled.resolve())
             self.assertEqual(builder.find_pspdev(self.bundle, other), other.resolve())
 
+    def test_compiler_download_is_verified_extracted_once_and_cleaned(self):
+        import io
+        payload = io.BytesIO()
+        with zipfile.ZipFile(payload, 'w') as archive:
+            archive.writestr('pspdev/bin/psp-gcc.exe', 'gcc')
+        data = payload.getvalue()
+        url = 'https://github.com/dreikk91/persona4-psp/releases/download/toolchain-gcc15.2/pspdev.zip'
+        config = dict(reference=dict(recommended_toolchain=dict(url=url, archive_sha256='0' * 64)))
+        root = builder.prepare_cache(self.cache)
+        with patch('urllib.request.urlopen', return_value=io.BytesIO(data)):
+            with self.assertRaises(RuntimeError):
+                builder.download_toolchain(root, config)
+        self.assertFalse((root / 'toolchain').exists())
+        config['reference']['recommended_toolchain']['archive_sha256'] = hashlib.sha256(data).hexdigest()
+        with patch('urllib.request.urlopen', return_value=io.BytesIO(data)) as fetch:
+            compiler = builder.download_toolchain(root, config)
+            self.assertEqual(builder.download_toolchain(root, config), compiler)
+        fetch.assert_called_once()
+        self.assertEqual((compiler / 'bin/psp-gcc.exe').read_text(), 'gcc')
+        builder.clean_cache(self.cache, include_downloads=True)
+        self.assertFalse((root / 'toolchain').exists())
+
 
 class WindowedWorkers(unittest.TestCase):
     def test_source_cli_uses_the_worker_bootstrap_too(self):

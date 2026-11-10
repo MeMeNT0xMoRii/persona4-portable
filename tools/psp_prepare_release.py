@@ -120,7 +120,7 @@ def main():
     parser.add_argument('--release', type=Path, help='Existing release, only with --legacy-prebuilt')
     parser.add_argument('--legacy-prebuilt', action='store_true', help='Explicitly create the older package containing EBOOT')
     parser.add_argument('--pspdev', type=Path, help='Windows PSPDEV to include in the preparation package')
-    parser.add_argument('--bundle-toolchain', action='store_true', help='Include PSPDEV (automatic for frozen source packages)')
+    parser.add_argument('--bundle-toolchain', action='store_true', help='Include PSPDEV; by default the utility downloads it')
     parser.add_argument('--retail-elf', type=Path, default=ROOT / 'build/SLUS_217.82')
     parser.add_argument('--vgmstream', type=Path, required=True, help='Directory containing the complete Windows vgmstream CLI distribution')
     parser.add_argument('--out', type=Path, required=True)
@@ -144,7 +144,8 @@ def main():
         parser.error('--release requires --legacy-prebuilt; source packages do not read a prebuilt release')
     if not (args.vgmstream / 'vgmstream-cli.exe').is_file():
         raise ValueError('Missing vgmstream-cli.exe.')
-    compiler = find_pspdev(out, args.pspdev) if args.bundle_toolchain or (args.freeze and not args.legacy_prebuilt) else None
+    # The utility downloads the recommended compiler from the toolchain release; bundle only on request.
+    compiler = find_pspdev(out, args.pspdev) if args.bundle_toolchain else None
     out.mkdir(parents=True, exist_ok=True)
     if args.freeze:
         with tempfile.TemporaryDirectory(prefix='p4-freeze-') as temporary:
@@ -188,8 +189,9 @@ def main():
     (out / 'THIRD_PARTY.md').write_text(
         'This package includes Python, Tcl/Tk, PyInstaller runtime, PyAV, FFmpeg and vgmstream.\n'
         'License texts are in licenses/ and helpers/vgmstream/COPYING.\n'
-        'Bundled PSPDEV/PSPSDK notices and build versions are in toolchain/pspdev/licenses/ '
-        'and toolchain/pspdev/BUILDINFO.txt (if included).\n'
+        'The PSP compiler (PSPDEV/PSPSDK) is not included: the utility downloads it on first build from '
+        'https://github.com/dreikk91/persona4-psp/releases/tag/toolchain-gcc15.2, '
+        'where its corresponding source is published next to it.\n'
         'Upstream projects and source: https://www.python.org/ https://www.tcl.tk/ '
         'https://pyinstaller.org/ https://github.com/PyAV-Org/PyAV '
         'https://ffmpeg.org/ https://github.com/vgmstream/vgmstream '

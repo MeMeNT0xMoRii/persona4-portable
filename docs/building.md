@@ -16,7 +16,7 @@ The [2026-11-08 clean-build record](build_validation_b164.md) confirms that the 
 - Sufficient PC storage for the ISO, extracted containers, conversion intermediates and final installation. Audio conversion processes over 17,000 streams, so reserve substantially more space than just the EBOOT size.
 - For hardware playback: a homebrew-capable PSP with 64 MB RAM and enough memory-card space for the complete installation. The release sets `MEMSIZE=1`; PSP-1000 support has not been established.
 
-Obtain PSP tools from [PSPDEV](https://github.com/pspdev) / [PSPSDK](https://github.com/pspdev/pspsdk). The tested Windows toolchain was a local build; a verified public download of that exact package is not established. Its local `BUILDINFO.txt` records:
+Obtain PSP tools from [PSPDEV](https://github.com/pspdev) / [PSPSDK](https://github.com/pspdev/pspsdk). The tested Windows toolchain is published as the [toolchain release](https://github.com/dreikk91/persona4-psp/releases/tag/toolchain-gcc15.2) (`pspdev-windows-x64-gcc15.2.zip`, with corresponding source). Its local `BUILDINFO.txt` records:
 
 | Component | Reference |
 | --- | --- |

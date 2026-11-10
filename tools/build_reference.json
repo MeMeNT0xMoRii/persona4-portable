@@ -1,8 +1,10 @@
 {
   "version": 1,
   "recommended_toolchain": {
-    "description": "Local Windows PSP GCC 15.2.0 / binutils 2.44 / PSPSDK build",
-    "sha256": "fb1eba5ce4bacb8c9e383b542a2d49fe071b42756dd84b1602ee217e2ef6f1e3"
+    "description": "Windows x64 build of pspdev GCC 15.2.0 / binutils 2.44 / PSPSDK 09f02b88b9f3",
+    "sha256": "d4fae13c7a66bee10f607b4c1dd07d5f83c5e3ee93f52ff1ee846d10838a1181",
+    "url": "https://github.com/dreikk91/persona4-psp/releases/download/toolchain-gcc15.2/pspdev-windows-x64-gcc15.2.zip",
+    "archive_sha256": "ba3adc5a33a9119b59b029f7d10df17f2658dc89f9c3fcec660b235a91ff5020"
   },
   "profiles": [
     {

@@ -515,7 +515,12 @@ def main():
             if source_build:
                 from psp_build import verify_payload, find_pspdev
                 verify_payload(args.bundle, recipe)
-                find_pspdev(args.bundle, args.pspdev)
+                try:
+                    find_pspdev(args.bundle, args.pspdev)
+                except ValueError:
+                    # A package without toolchain/ downloads the recommended compiler on first build.
+                    if args.pspdev or not recipe.get('reference', {}).get('recommended_toolchain', {}).get('url'):
+                        raise
             av.CodecContext.create('h264', 'r')
             window = tkinter.Tk(); window.withdraw(); window.update_idletasks(); window.destroy()
             for name in ('helpers/ffmpeg.exe', 'helpers/audio_vag_encoder.exe', 'helpers/vgmstream/vgmstream-cli.exe'):

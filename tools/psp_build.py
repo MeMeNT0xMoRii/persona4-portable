@@ -125,9 +125,14 @@ def clean_cache(cache=None, include_downloads=False):
                 raise ValueError('Refusing to clean redirected downloads.')
             for path in downloads.iterdir():
                 if not path.is_file() or path.is_symlink() or not re.fullmatch(
-                        r'persona4-[0-9a-f]{40}\.(zip|lock|download)', path.name):
+                        r'(persona4-[0-9a-f]{40}|pspdev-[0-9a-f]{64})\.(zip|lock|download)', path.name):
                     raise ValueError('Unknown download-cache entry. No files were removed.')
                 targets.append(path)
+        toolchains = root / 'toolchain'
+        if include_downloads and toolchains.exists():
+            if toolchains.resolve() != toolchains or toolchains.is_symlink():
+                raise ValueError('Refusing to clean a redirected compiler cache.')
+            targets.append(toolchains)
         # Older preparers hold job locks but do not know about cache.lock.
         with ExitStack() as locks:
             for target in targets:
@@ -324,6 +329,51 @@ def upstream_archive(cache, config, supplied=None):
     return path
 
 
+def download_toolchain(cache, config):
+    """Fetch the recommended Windows PSPDEV once into the cache and return its root."""
+    wanted = config.get('reference', {}).get('recommended_toolchain', {})
+    url, archive_sha = wanted.get('url', ''), wanted.get('archive_sha256', '')
+    if not url.startswith('https://github.com/dreikk91/persona4-psp/releases/download/') or len(archive_sha) != 64:
+        raise ValueError('This package has no compiler download. Pass --pspdev with a PSPDEV root.')
+    target = cache / 'toolchain' / archive_sha
+    if (target / 'complete').is_file():
+        return target / 'pspdev'
+    path = cache / 'downloads' / f'pspdev-{archive_sha}.zip'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.is_file() or digest(path) != archive_sha:
+        print('Downloading the PSP compiler (about 100 MB, once)...', flush=True)
+        temporary = path.with_suffix('.download')
+        try:
+            with urllib.request.urlopen(url, timeout=60) as response, temporary.open('wb') as out:
+                shutil.copyfileobj(response, out, 1 << 20)
+            if digest(temporary) != archive_sha:
+                raise ValueError('compiler archive SHA256 mismatch')
+        except (OSError, ValueError, urllib.error.URLError) as error:
+            temporary.unlink(missing_ok=True)
+            raise RuntimeError(f'Unable to download the PSP compiler: {error}\n'
+                               f'Retry with Internet access, or download {url} yourself, extract it '
+                               'and pass --pspdev with its pspdev folder.') from error
+        os.replace(temporary, path)
+    print('Extracting the PSP compiler...', flush=True)
+    partial = target.with_name(archive_sha + '.partial')
+    shutil.rmtree(partial, ignore_errors=True)
+    with zipfile.ZipFile(path) as source:
+        for entry in source.infolist():
+            name = safe_relative(entry.filename)
+            if name.parts[0] != 'pspdev' or (entry.external_attr >> 16) & 0o170000 == 0o120000:
+                raise ValueError(f'Unexpected compiler archive entry: {entry.filename}')
+            if not entry.is_dir():
+                out = partial.joinpath(*name.parts)
+                out.parent.mkdir(parents=True, exist_ok=True)
+                with source.open(entry) as src, out.open('wb') as dst:
+                    shutil.copyfileobj(src, dst)
+    (partial / 'complete').write_text(url + '\n')
+    shutil.rmtree(target, ignore_errors=True)
+    os.replace(partial, target)
+    path.unlink()
+    return target / 'pspdev'
+
+
 def extract_upstream(archive, destination):
     with zipfile.ZipFile(archive) as source:
         for path, entry in archive_files(source):
@@ -426,7 +476,12 @@ def _build_eboot(iso, bundle, pspdev=None, cache=None, archive=None):
     elf = extract(iso)
     if hashlib.sha1(elf).hexdigest() != RETAIL_SHA1:
         raise ValueError('Unsupported executable. Use the original Persona 4 USA ISO.')
-    compiler = find_pspdev(bundle, pspdev)
+    try:
+        compiler = find_pspdev(bundle, pspdev)
+    except ValueError:
+        if pspdev:
+            raise
+        compiler = download_toolchain(cache, config)
     toolchain = toolchain_identity(compiler)
     cache = cache_path(cache)
     archive_path = upstream_archive(cache, config, archive)

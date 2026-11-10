@@ -6,7 +6,7 @@ You must supply your own legally obtained USA disc image. Game executables, arch
 
 ## Windows preparation tool
 
-Use the **source-build** preparation package: extract the entire archive, run `Prepare P4.exe`, select your original USA ISO and an output folder, then copy the resulting `P4` folder to `PSP/GAME/` on your memory card. Packages with `toolchain/pspdev` include the compiler; no separate Python or PSPDEV setup is needed. See [the preparation guide](docs/prepare_game.md) for building the package and using it.
+Use the **source-build** preparation package: extract the entire archive, run `Prepare P4.exe`, select your original USA ISO and an output folder, then copy the resulting `P4` folder to `PSP/GAME/` on your memory card. The utility downloads the PSP compiler on the first build; no separate Python or PSPDEV setup is needed. See [the preparation guide](docs/prepare_game.md) for building the package and using it.
 
 The utility compiles EBOOT and matching data locally from your ISO and pinned upstream sources. It needs Internet access for the first upstream download, or a verified offline source ZIP. The older **P4-PSP-b164-windows-x64.zip** download was withdrawn because it contained a prebuilt EBOOT. The source-build utility is implemented in `main`, but its replacement Windows download has not been published yet. Build a local package using the preparation guide below.
 
