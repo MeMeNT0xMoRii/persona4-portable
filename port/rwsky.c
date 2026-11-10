@@ -371,8 +371,7 @@ int func_0042ba70(void) { return 0; }
 int FldShadow_InstallIntcHandler(void) { return 1; }
 
 /* shortcut: omit TV-world noise/vignette; restore when the GE path supports its interpolated alpha mask cheaply. */
-static int field_noise_active;
-int FldNoiseUpdate(void *task) { field_noise_active = 1; return 0; }
+int FldNoiseUpdate(void *task) { return 0; }
 
 /* Everything RenderWare reads from a raster, at its retail offsets. */
 typedef struct {
@@ -570,6 +569,8 @@ static void pipe_texture_wait(void)
 }
 static void begin_frame(void);
 static void gu_dirty(void);
+extern int p4_probe_2d;
+static int census2d_shown;
 static int ge_time_begin(void);
 static unsigned ge_time_end(int started, int category);
 extern int p4_exp_ge_time;
@@ -963,6 +964,104 @@ static void unswizzle_raster(Raster *r)
 
 /* rwSTANDARDRASTERCREATE: retail's validation, then plain memory the GE can read. */
 int p4r_003f7a70(void *out, Raster *r, int flags);
+/* Render to texture (b165). A camera whose frame buffer is a camera texture (RenderWare type 5) draws into its own
+   VRAM rectangle, and binding that raster samples the rectangle directly. Seen: 512x256x16 in a battle skill (PS0C2,
+   skill 08C), 128x128x32 in event f007_002. Before this every camera drew onto the screen. VRAM: two frame buffers,
+   depth, then the screen copy for feedback effects up to RTT_TAIL; only the tail (~136 KB) is free. The camera texture
+   shares the screen's depth buffer: its clear and draws overwrite the top-left of the main scene's depth. */
+enum { TYPE_CAMERA_TEXTURE = 5, RTT_SLOTS = 4, VRAM_END = 0x200000,
+       RTT_FULL_BASE = 2 * STRIDE * SCREEN_H * 4 + STRIDE * SCREEN_H * 2, /* = HALF_VRAM, the screen copy */
+       RTT_TAIL = (RTT_FULL_BASE + STRIDE * (SCREEN_H + 1) * 4 + 0x1fff) & ~0x1fff };
+int p4_rtt = 1;       /* 0: camera textures draw onto the screen, as before b165 */
+int p4_rtt_scale = 0; /* 0: full size if the free VRAM tail holds it, else half; 1: full size, taking the screen
+                         copy's VRAM (feedback effects then copy the screen to RAM, p4_feedback_half 0); 2: half */
+extern int p4_feedback_half;
+typedef struct { Raster *raster; unsigned offset, bytes; int w, h, psm, scale; } RttSlot;
+static RttSlot rtt[RTT_SLOTS];
+static RttSlot *rtt_target; /* the camera texture being drawn into; 0: the screen */
+static int rtt_restore;     /* a target vanished outside a list: the next list starts by binding the screen */
+static unsigned rtt_passes, rtt_clears, rtt_atomics, rtt_2d; /* per 256 frames, for the log */
+static int target_w = SCREEN_W, target_h = SCREEN_H;
+static float target_sx = SCREEN_W / 640.0f, target_sy = SCREEN_H / 448.0f; /* game 2D coordinates to target pixels */
+
+static RttSlot *rtt_find(const Raster *r)
+{
+    for (int i = 0; r && i < RTT_SLOTS; i++)
+        if (rtt[i].raster == r)
+            return &rtt[i];
+    return 0;
+}
+static int rtt_place(unsigned base, unsigned bytes, unsigned *at)
+{
+    unsigned candidates[RTT_SLOTS + 1];
+    int n = 0;
+    candidates[n++] = base;
+    for (int i = 0; i < RTT_SLOTS; i++)
+        if (rtt[i].raster && rtt[i].offset + rtt[i].bytes >= base)
+            candidates[n++] = (rtt[i].offset + rtt[i].bytes + 0x1fff) & ~0x1fffu;
+    for (int c = 0; c < n; c++) {
+        unsigned a = candidates[c];
+        int ok = a + bytes <= VRAM_END;
+        for (int i = 0; ok && i < RTT_SLOTS; i++)
+            if (rtt[i].raster && a < rtt[i].offset + rtt[i].bytes && rtt[i].offset < a + bytes)
+                ok = 0;
+        if (ok) {
+            *at = a;
+            return 1;
+        }
+    }
+    return 0;
+}
+static RttSlot *rtt_get(Raster *r)
+{
+    RttSlot *s = rtt_find(r), *free_slot = 0;
+    if (s || !p4_rtt || !r || (r->cType & TYPE_MASK) != TYPE_CAMERA_TEXTURE)
+        return s;
+    for (int i = 0; i < RTT_SLOTS && !free_slot; i++)
+        if (!rtt[i].raster)
+            free_slot = &rtt[i];
+    int bpp = r->depth == 16 ? 2 : 4, full_w = 8, full_h = 8;
+    while (full_w < r->width && full_w < 512)
+        full_w <<= 1;
+    while (full_h < r->height && full_h < 512)
+        full_h <<= 1;
+    for (int scale = p4_rtt_scale == 2 ? 2 : 1; free_slot && scale <= 2; scale++) {
+        int w = full_w / scale, h = full_h / scale;
+        unsigned bytes = w * h * bpp, base = scale == 1 && p4_rtt_scale == 1 ? RTT_FULL_BASE : RTT_TAIL, at;
+        if (!rtt_place(base, bytes, &at))
+            continue;
+        if (base == RTT_FULL_BASE)
+            p4_feedback_half = 0;
+        *free_slot = (RttSlot){ r, at, bytes, w, h, bpp == 2 ? GU_PSM_5551 : GU_PSM_8888, scale };
+        p4_log("rtt raster %x %dx%dx%d -> %dx%d at vram %x scale %d\n", (unsigned)r, r->width, r->height, r->depth, w, h, at, scale);
+        return free_slot;
+    }
+    static int refused;
+    if (refused++ < 4)
+        p4_log("rtt raster %x %dx%dx%d: no VRAM, drawn on the screen\n", (unsigned)r, r->width, r->height, r->depth);
+    return 0;
+}
+/* Point the GE at a camera texture (s) or back at the screen (0). Needs an open list. */
+static void rtt_bind_target(RttSlot *s)
+{
+    gu_dirty(); /* raw sceGu below: the mesh state cache no longer holds */
+    if (rtt_target && rtt_target != s)
+        sceGuTexFlush(); /* the texture cache may hold the rectangle as it was before this pass */
+    rtt_target = s;
+    rtt_passes += s != 0;
+    target_w = s ? s->w : SCREEN_W;
+    target_h = s ? s->h : SCREEN_H;
+    target_sx = s ? (float)s->w / s->raster->width : SCREEN_W / 640.0f;
+    target_sy = s ? (float)s->h / s->raster->height : SCREEN_H / 448.0f;
+    if (s)
+        sceGuDrawBufferList(s->psm, (void *)s->offset, s->w);
+    else
+        sceGuDrawBufferList(GU_PSM_8888, draw_buffer, STRIDE);
+    sceGuOffset(2048 - target_w / 2, 2048 - target_h / 2);
+    sceGuViewport(2048, 2048, target_w, target_h);
+    sceGuScissor(0, 0, target_w, target_h);
+}
+
 int func_003f98a0(void *out, Raster *r, int flags)
 {
     if (!p4r_003f7a70(out, r, flags)) {
@@ -985,6 +1084,14 @@ int func_003f98a0(void *out, Raster *r, int flags)
 /* rwSTANDARDRASTERDESTROY */
 int func_003fb830(void *out, Raster *r)
 {
+    RttSlot *slot = rtt_find(r);
+    if (slot) {
+        if (rtt_target == slot && in_frame)
+            rtt_bind_target(0);
+        else if (rtt_target == slot)
+            rtt_target = 0, rtt_restore = 1; /* begin_frame binds the screen in the next list */
+        slot->raster = 0;
+    }
     if (!(r->cFlags & DONT_ALLOCATE)) {
         free(swizzle_head(r->originalPixels) ? r->originalPixels - SWIZZLE_HEAD : r->originalPixels);
         free(r->palette);
@@ -1005,6 +1112,8 @@ int func_003f6a10(void *out, void *camera)
     gu_dirty(); /* raw sceGu below: the mesh state cache no longer holds */
     current_camera = camera;
     begin_frame();
+    if (p4_probe_2d == 3 && census2d_shown < 64)
+        census2d_shown++, p4_log("census2d camera begin %x raster %x\n", (unsigned)camera, *(unsigned *)((char *)camera + 0x60));
     {
         static void *seen[16];
         static int seen_n;
@@ -1020,12 +1129,20 @@ int func_003f6a10(void *out, void *camera)
             else
                 p4_log("camera %x raster 0\n", (unsigned)camera);
         }
+        RttSlot *slot = rtt_get(fb);
+        if (slot != rtt_target)
+            rtt_bind_target(slot);
     }
     return 1;
 }
 
-/* rwSTANDARDCAMERAENDUPDATE */
-int func_003f73d0(void *out, void *camera) { return 1; }
+/* rwSTANDARDCAMERAENDUPDATE: a camera texture pass hands the GE back to the screen. */
+int func_003f73d0(void *out, void *camera)
+{
+    if (rtt_target && in_frame)
+        rtt_bind_target(0);
+    return 1;
+}
 
 /* A clear as 32-pixel-wide sprites: the GE fills one 8888 texture-cache-wide column at a time, a full-screen sprite
    walks across rows (PPSSPP docs, GE performance: "never clear using a single rectangle"). The colour carries the
@@ -1035,15 +1152,16 @@ static void clear_striped(int bits, unsigned colour, unsigned short depth)
 {
     gu_dirty(); /* raw sceGu below: the mesh state cache no longer holds */
     typedef struct { unsigned colour; short x, y, z, pad; } ClearVertex;
-    enum { STRIPE = 32, COUNT = (SCREEN_W + STRIPE - 1) / STRIPE * 2 };
-    ClearVertex *v = sceGuGetMemory(COUNT * sizeof *v);
-    for (int i = 0; i < COUNT / 2; i++) {
-        int x1 = (i + 1) * STRIPE < SCREEN_W ? (i + 1) * STRIPE : SCREEN_W;
+    enum { STRIPE = 32 };
+    const int count = (target_w + STRIPE - 1) / STRIPE * 2;
+    ClearVertex *v = sceGuGetMemory(count * sizeof *v);
+    for (int i = 0; i < count / 2; i++) {
+        int x1 = (i + 1) * STRIPE < target_w ? (i + 1) * STRIPE : target_w;
         v[2 * i] = (ClearVertex){ colour, i * STRIPE, 0, depth, 0 };
-        v[2 * i + 1] = (ClearVertex){ colour, x1, SCREEN_H, depth, 0 };
+        v[2 * i + 1] = (ClearVertex){ colour, x1, target_h, depth, 0 };
     }
     sceGuSendCommandi(211, (bits & 7) << 8 | 1); /* CLEARMODE on, with the buffers to write */
-    sceGuDrawArray(GU_SPRITES, GU_COLOR_8888 | GU_VERTEX_16BIT | GU_TRANSFORM_2D, COUNT, 0, v);
+    sceGuDrawArray(GU_SPRITES, GU_COLOR_8888 | GU_VERTEX_16BIT | GU_TRANSFORM_2D, count, 0, v);
     sceGuSendCommandi(211, 0);
 }
 
@@ -1053,6 +1171,9 @@ int func_003f7490(void *camera, unsigned *colour, int mask)
     if (SKIPPING)
         return 1;
     gu_dirty(); /* raw sceGu below: the mesh state cache no longer holds */
+    rtt_clears += rtt_target != 0;
+    if (p4_probe_2d == 3 && census2d_shown < 64)
+        census2d_shown++, p4_log("census2d camera clear mask %d colour %08x\n", mask, *colour);
     int bits = (mask & 1 ? GU_COLOR_BUFFER_BIT | GU_STENCIL_BUFFER_BIT : 0) | (mask & 2 ? GU_DEPTH_BUFFER_BIT : 0);
     begin_frame();
     int timed = ge_time_begin();
@@ -1181,19 +1302,18 @@ int func_003f79b0(void *raster, void *device, int flags)
     vertex_used = index_used = 0;
     cache_frame++;
     feedback_captured = 0;
-    /* Removing the noise pass must not double the field's frame-based game logic. */
+    /* The game advances a fixed 1/30 s a frame everywhere (PS2: 60 VPS, 30 FPS): never show more than one frame per two vblanks. */
     unsigned elapsed = (unsigned)sceDisplayGetVcount() - last_vblank;
-    int wait = field_noise_active && frames && elapsed < 2 ? 2 - elapsed : 1;
+    int wait = frames && elapsed < 2 ? 2 - elapsed : 1;
     if (pipe) /* the flip thread waits for the vblank; here only a frame faster than that waits */
-        wait = (field_noise_active ? 2 : 1) - (int)elapsed;
-    else if (!p4_vsync_late && frames && elapsed >= (field_noise_active ? 2u : 1u))
+        wait = 2 - (int)elapsed;
+    else if (!p4_vsync_late && frames && elapsed >= 2u)
         wait = 0; /* already slower than the cap: show it now (may tear) rather than idle up to a vblank (b86: ~10 ms) */
     prof_begin(PROF_VBLANK);
     while (wait-- > 0)
         sceDisplayWaitVblankStart();
     prof_end(PROF_VBLANK);
     last_vblank = sceDisplayGetVcount();
-    field_noise_active = 0;
     void *other = draw_buffer ? (void *)0 : (void *)(STRIDE * SCREEN_H * 4);
     if (pipe) {
         if (in_frame) {
@@ -1265,6 +1385,12 @@ int func_003f79b0(void *raster, void *device, int flags)
         p4_log("frames %d atomics %d skipped %d ptanks %d/%d sectors %d skinned %d other %d tests %d out %d af48 %d\n", frames, atomics_drawn, atomics_skipped, ptanks_drawn, particles_drawn, sectors_drawn, skinned_drawn, pipeline_other, frustum_tests, frustum_out, G32(0xaf48 - 0x10000));
         p4_log("guard on %d meshes %d clipped %d dropped %d spheres %d vertices %d uvrebase %d uvmemo %d hits %u dstalpha_skipped %d\n", p4_guard_clip, guard_meshes, guard_clipped, guard_dropped, guard_spheres, guard_vertices, uv_rebased, p4_uv_memo, uv_memo_hits, dst_alpha_skipped);
         uv_memo_hits = 0;
+        if (rtt_passes)
+            p4_log("rtt passes %u clears %u atomics %u 2d %u\n", rtt_passes, rtt_clears, rtt_atomics, rtt_2d);
+        rtt_passes = rtt_clears = rtt_atomics = rtt_2d = 0;
+        { extern void p4_blend_report(void); p4_blend_report(); }
+        { extern void p4_census3d_report(void); p4_census3d_report(); }
+        { extern unsigned p4_gs_alpha_splits(void); unsigned n = p4_gs_alpha_splits(); if (n) p4_log("gs alpha fb_only splits %u\n", n); }
         p4_log("guard near_ge %d triangles %u clip_fast %d checks %u diffs %u gnear %d offscreen %u\n", p4_guard_near_ge, guard_near_ge, p4_guard_clip_fast, guard_clip_checks, guard_clip_diffs, p4_guard_gnear, guard_offscreen);
         p4_log("guard boxes %d meshes whole %u chunks inside %u partial %u culled %u builds %u lazy vertices %u vfpu %d checks %u diffs %u\n", p4_guard_boxes, guard_box_whole, guard_box_inside, guard_box_partial, guard_box_culled, guard_box_builds, guard_lazy_vertices, p4_guard_box_vfpu, guard_box_checks, guard_box_diffs);
         guard_box_checks = guard_box_diffs = 0;
@@ -1628,8 +1754,32 @@ static void bind_depth(void)
     }
 }
 
+/* GS destination alpha test (DATE, ATEST_1 bits 14-15) inside camera-texture passes (b165). The PSP's alpha byte is
+   the stencil: draws without DATE set it to 0xFF where they pass ("alpha bit 7 set"), DATE draws pass where bit 7
+   equals DATM. Field shadows need it: the silhouette marks its pixels, the gradient bands (0x3C803) fill only those. */
+int p4_rtt_date = 1;
+static int date_emulated(void)
+{
+    if (!rtt_target || !p4_rtt_date)
+        return 0;
+    unsigned t = sky_state[3];
+    st_pixel_mask(pixel_mask);
+    st_enable(GU_STENCIL_TEST, 1);
+    gs.stencil_known = 0; /* the stencil function below is not the cached pixel-mask one */
+    if (t & 1 << 14) {
+        sceGuStencilFunc(GU_EQUAL, t & 1 << 15 ? 0x80 : 0, 0x80);
+        sceGuStencilOp(GU_KEEP, GU_KEEP, GU_KEEP);
+    } else {
+        sceGuStencilFunc(GU_ALWAYS, 0xff, 0xff);
+        sceGuStencilOp(GU_KEEP, GU_KEEP, GU_REPLACE);
+    }
+    return 1;
+}
+
 static void bind_mask(unsigned alpha)
 {
+    if (date_emulated())
+        return;
     st_pixel_mask(pixel_mask);
     if (pixel_mask) {
         st_enable(GU_STENCIL_TEST, 1);
@@ -1966,6 +2116,19 @@ static void bind_raster(Raster *r, int wrap)
         texture_h = SCREEN_H;
         return;
     }
+    const RttSlot *drawn = rtt_find(r);
+    if (drawn) { /* a camera texture: sample its VRAM rectangle, power-of-two sized so 0..1 UVs cover it */
+        st_enable(GU_TEXTURE_2D, 1);
+        sceGuTexMode(drawn->psm, 0, 0, 0);
+        sceGuTexImage(0, drawn->w, drawn->h, drawn->w, (void *)(0x04000000 + drawn->offset));
+        sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
+        sceGuTexFilter(GU_LINEAR, GU_LINEAR);
+        sceGuTexLevelMode(GU_TEXTURE_AUTO, 0);
+        sceGuTexWrap(wrap, wrap);
+        texture_w = drawn->w;
+        texture_h = drawn->h;
+        return;
+    }
     if (!r || !r->originalPixels) {
         st_enable(GU_TEXTURE_2D, 0);
         texture_w = texture_h = 1;
@@ -2003,30 +2166,62 @@ static void bind_texture(void) { bind_raster((Raster *)render_state[1], GU_CLAMP
 /* ALPHA_1 is (A - B) * C + D with 0 source, 1 destination, 2 zero. */
 enum { BLEND_NORMAL = 0x44, BLEND_ADD = 0x48, BLEND_SUBTRACT = 0x42, BLEND_REVERSE = 0x06 };
 
+/* Any ALPHA_1 (b165; before, seven known values and the rest drawn as normal alpha, so the field Shadow's dark
+   "black hole" drew as an opaque yellow cylinder). A, B, D: 0 source colour, 1 destination, 2 zero; C: 0 source
+   alpha, 1 destination alpha, 2 FIX (taken as 1.0: the word kept here has no FIX byte). The result is
+   Cs * ks + Cd * kd, each k being (a - b) * F + d, mapped onto the GE's ADD / SUBTRACT / REVERSE_SUBTRACT with
+   F, 1 - F, 0 or 1 as factors. Only 1 + F has no GE factor: drawn as 1. */
+enum { K_ZERO, K_ONE, K_F, K_ONE_MINUS_F };
+int p4_blend_fix = 0; /* ALPHA_1's FIX, GS scale (0x80 = 1.0); 0 as the game's 32-bit state words leave it */
+static unsigned blend_unusual[8], blend_unusual_n; /* modes outside the old seven, for the log */
+void p4_blend_report(void)
+{
+    static unsigned reported;
+    if (blend_unusual_n > reported) {
+        for (unsigned i = reported; i < blend_unusual_n; i++)
+            p4_log("blend new ALPHA_1 mode %02x\n", blend_unusual[i]);
+        reported = blend_unusual_n;
+    }
+}
+static void blend_factor(int a, int b, int d, int *kind, int *negative)
+{
+    int f = a - b;
+    *negative = 0;
+    if (!f)
+        *kind = d ? K_ONE : K_ZERO;
+    else if (f > 0)
+        *kind = d ? K_ONE : K_F; /* 1 + F: no GE factor */
+    else if (d)
+        *kind = K_ONE_MINUS_F;
+    else
+        *kind = K_F, *negative = 1;
+}
 static void set_blend(unsigned alpha)
 {
-    switch (alpha & 0xff) {
-    case BLEND_ADD: /* Cs * As + Cd */
-        sceGuBlendFunc(GU_ADD, GU_SRC_ALPHA, GU_FIX, 0, 0xffffff);
-        break;
-    case BLEND_SUBTRACT: /* Cd - Cs * As */
-        sceGuBlendFunc(GU_REVERSE_SUBTRACT, GU_SRC_ALPHA, GU_FIX, 0, 0xffffff);
-        break;
-    case BLEND_REVERSE: /* Cs - Cd * As */
-        sceGuBlendFunc(GU_SUBTRACT, GU_FIX, GU_SRC_ALPHA, 0xffffff, 0);
-        break;
-    case 0x52: /* Cd - Cs * Ad */
-        sceGuBlendFunc(GU_REVERSE_SUBTRACT, GU_DST_ALPHA, GU_FIX, 0, 0xffffff);
-        break;
-    case 0x54: /* Cs * Ad + Cd * (1 - Ad) */
-        sceGuBlendFunc(GU_ADD, GU_DST_ALPHA, GU_ONE_MINUS_DST_ALPHA, 0, 0);
-        break;
-    case 0x58: /* Cs * Ad + Cd */
-        sceGuBlendFunc(GU_ADD, GU_DST_ALPHA, GU_FIX, 0, 0xffffff);
-        break;
-    default:
-        sceGuBlendFunc(GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
+    unsigned m = alpha & 0xff, A = m & 3, B = m >> 2 & 3, C = m >> 4 & 3, D = m >> 6 & 3;
+    if (m != 0x44 && m != 0x48 && m != 0x42 && m != 0x06 && m != 0x52 && m != 0x54 && m != 0x58) {
+        int seen = 0;
+        for (unsigned i = 0; i < blend_unusual_n; i++)
+            seen |= blend_unusual[i] == m;
+        if (!seen && blend_unusual_n < 8)
+            blend_unusual[blend_unusual_n++] = m;
     }
+    int ks, kd, ns, nd;
+    blend_factor(A == 0, B == 0, D == 0, &ks, &ns);
+    blend_factor(A == 1, B == 1, D == 1, &kd, &nd);
+    int f = C == 1 ? GU_DST_ALPHA : GU_SRC_ALPHA, omf = C == 1 ? GU_ONE_MINUS_DST_ALPHA : GU_ONE_MINUS_SRC_ALPHA;
+    /* C = FIX: a constant, GE GU_FIX colours. The game passes ALPHA_1's low word only (0x64 in mdlDrawSkyPass), so
+       FIX, bits 32-39 of the register, is 0 on the PS2: the arena floor's sky pass changes no colour. */
+    unsigned fix = p4_blend_fix * 2 > 255 ? 255 : p4_blend_fix * 2, fix_rgb = fix * 0x010101u, omfix_rgb = (255 - fix) * 0x010101u;
+    if (C == 2)
+        f = omf = GU_FIX;
+    int src = ks == K_F ? f : ks == K_ONE_MINUS_F ? omf : GU_FIX, dst = kd == K_F ? f : kd == K_ONE_MINUS_F ? omf : GU_FIX;
+    unsigned src_fix = ks == K_ONE ? 0xffffff : C == 2 && ks == K_F ? fix_rgb : C == 2 && ks == K_ONE_MINUS_F ? omfix_rgb : 0;
+    unsigned dst_fix = kd == K_ONE ? 0xffffff : C == 2 && kd == K_F ? fix_rgb : C == 2 && kd == K_ONE_MINUS_F ? omfix_rgb : 0;
+    int op = ns && !nd ? GU_REVERSE_SUBTRACT : nd && !ns ? GU_SUBTRACT : GU_ADD;
+    if (ns && nd) /* both negative: the GS clamps to 0 */
+        src = dst = GU_FIX, src_fix = dst_fix = 0;
+    sceGuBlendFunc(op, src, dst, src_fix, dst_fix);
 }
 
 static void bind_blend(void)
@@ -2047,6 +2242,10 @@ static void begin_frame(void)
         sceGuStart(GU_DIRECT, list);
         list_to_cached();
         sceGuDrawBufferList(GU_PSM_8888, draw_buffer, STRIDE); /* buffers alternate here, not through sceGuSwapBuffers */
+        if (rtt_restore) {
+            rtt_restore = 0;
+            rtt_bind_target(0);
+        }
     }
 }
 
@@ -2060,8 +2259,8 @@ static void put_vertex(GuVertex *out, const Vertex2D *in)
     out->u = in->u * texture_w;
     out->v = in->v * texture_h;
     out->colour = byte_colour(in->r) | byte_colour(in->g) << 8 | byte_colour(in->b) << 16 | byte_colour(in->a) << 24;
-    out->x = in->x * (SCREEN_W / 640.0f);
-    out->y = in->y * (SCREEN_H / 448.0f);
+    out->x = in->x * target_sx;
+    out->y = in->y * target_sy;
     out->z = in->z <= 0 ? 0 : in->z >= 65535 ? 65535 : in->z;
 }
 
@@ -2078,6 +2277,7 @@ static int draw(int prim, const Vertex2D *vertices, const unsigned short *indice
     if (gate_closed)
         gate_poll();
     int timed = ge_time_begin();
+    rtt_2d += rtt_target != 0;
     int r = draw_body(prim, vertices, indices, count);
     ge_time_end(timed, GT_2D);
     prof_end(PROF_2D);
@@ -2088,7 +2288,7 @@ static int draw(int prim, const Vertex2D *vertices, const unsigned short *indice
    boxes (a proxy for fill). The title's logo phase: ~36 ms of GE in 2D a frame. */
 int p4_probe_2d = 0;
 typedef struct { const void *raster; unsigned blend, mask, prim, calls, w, h; float area; } Census2D;
-static Census2D census2d[64];
+static Census2D census2d[64]; /* census2d_shown (declared above): single draws logged in this window */
 static void census2d_note(int prim, const Vertex2D *vertices, const unsigned short *indices, int count)
 {
     float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
@@ -2101,6 +2301,16 @@ static void census2d_note(int prim, const Vertex2D *vertices, const unsigned sho
     }
     const void *raster = (const void *)render_state[1];
     unsigned blend = sky_state[2] & 0xff, mask = pixel_mask;
+    /* b165: single draws for the empty minimap. 2: draws smaller than 1/16 of the screen; 3: every draw. */
+    if (p4_probe_2d >= 2 && census2d_shown < 64 && (p4_probe_2d == 3 || (x1 - x0) * (y1 - y0) < 640 * 448 / 16)) {
+        const Vertex2D *v = &vertices[indices ? indices[0] : 0];
+        const Raster *tr = raster && raster != (const void *)&display_raster ? raster : 0;
+        census2d_shown++;
+        p4_log("census2d draw prim %d n %d box %d,%d-%d,%d raster %p %dx%d uv %d,%d blend %02x mask %08x rgba %d %d %d %d z %d ztest %d zwrite %d at %08x\n",
+               prim, count, (int)x0, (int)y0, (int)x1, (int)y1, raster, tr ? tr->width : 0, tr ? tr->height : 0,
+               (int)(v->u * 1000), (int)(v->v * 1000), blend, mask, (int)v->r, (int)v->g, (int)v->b, (int)v->a, (int)v->z,
+               render_state[RS_ZTEST], render_state[RS_ZWRITE], sky_state[3]);
+    }
     for (int i = 0; i < 64; i++) {
         Census2D *e = &census2d[i];
         if (e->calls && (e->raster != raster || e->blend != blend || e->mask != mask))
@@ -2132,6 +2342,18 @@ static void census2d_report(unsigned census2d_frames)
         best->calls = 0;
     }
     memset(census2d, 0, sizeof census2d);
+    census2d_shown = 0;
+}
+
+/* GS alpha test with AFAIL = FB_ONLY on a draw that writes depth: the only case where ignoring ATEST changes depth. */
+int p4_gs_alpha_test = 1; /* 0: ATEST ignored in 2D, as before b165 */
+static unsigned gs_alpha_splits;
+unsigned p4_gs_alpha_splits(void) { unsigned n = gs_alpha_splits; gs_alpha_splits = 0; return n; }
+static int gs_alpha_fb_only(void)
+{
+    unsigned at = sky_state[3];
+    return p4_gs_alpha_test && (at & 1) && (at >> 1 & 7) != 1 && (at >> 12 & 3) == 1 && render_state[RS_ZWRITE] &&
+           !(p4_alpha_write_test && pixel_mask == 0x00ffffff);
 }
 
 static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *indices, int count)
@@ -2188,6 +2410,26 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
         GuVertex *strips = sceGuGetMemory(P4_FEEDBACK_MAX_VERTICES * sizeof *strips);
         int n = p4_feedback_emit(strips, &rect);
         sceGuDrawArray(GU_SPRITES, GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D, n, 0, strips);
+    } else if (gs_alpha_fb_only()) {
+        /* GS ATEST with AFAIL = FB_ONLY (b165): pixels that fail write colour but no depth. The minimap's frame
+           (ATEST_1 0x717FB: alpha >= 0x7F) left its see-through middle free of depth, so the map tiles behind it
+           (z 65535 - 60000) drew; written whole it hid them. Pass 1: passing pixels, depth as set; pass 2: the rest,
+           colour only. */
+        unsigned at = sky_state[3];
+        static const unsigned char gu_atst[8] = { GU_NEVER, GU_ALWAYS, GU_LESS, GU_LEQUAL, GU_EQUAL, GU_GEQUAL, GU_GREATER, GU_NOTEQUAL };
+        static const unsigned char gu_fail[8] = { GU_ALWAYS, GU_NEVER, GU_GEQUAL, GU_GREATER, GU_NOTEQUAL, GU_LESS, GU_LEQUAL, GU_EQUAL };
+        int ref = (at >> 4 & 0xff) * 2; /* the GS's alpha 0x80 is 1.0, the GE's 0xff */
+        if (ref > 255)
+            ref = 255;
+        sceGuEnable(GU_ALPHA_TEST);
+        sceGuAlphaFunc(gu_atst[at >> 1 & 7], ref, 0xff);
+        sceGuDrawArray(gu_prim[prim], GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D, count, 0, out);
+        sceGuAlphaFunc(gu_fail[at >> 1 & 7], ref, 0xff);
+        sceGuDepthMask(GU_TRUE);
+        sceGuDrawArray(gu_prim[prim], GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D, count, 0, out);
+        sceGuDepthMask(GU_FALSE);
+        sceGuDisable(GU_ALPHA_TEST);
+        gs_alpha_splits++;
     } else {
         sceGuDrawArray(gu_prim[prim], GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D, count, 0, out);
     }
@@ -2748,6 +2990,7 @@ static void draw_tested(int prim, int vtype, int count, const void *indices, con
 }
 
 static void draw_mesh_vertices(int prim, int vtype, int count, const void *indices, const void *vertices, const Material *material, int modulate, const SceneLight *light);
+static int census3d_skip(const Material *material, int vtype, int count, int modulate);
 static inline signed char normal_s8(float c);
 
 /* A mesh whose array has corners beyond the guard band: inside triangles stay indexed, the rest are cut on the CPU.
@@ -3296,8 +3539,53 @@ static inline void put_lit_vertex(Vertex3DN *v, const V3 *position, float (*uv)[
 }
 
 /* draw_tested of a compact or cached mesh; vtype with normals means GE-lit */
+/* b165 census of 3D draws (p4_probe_3d, poke it live): per material, its texture name, blend, colour, flags and the
+   words after the material (RenderWare plugin data such as MatFX), to tell the arena floor, chests and Shadows. */
+int p4_probe_3d = 0;
+unsigned p4_hide_material; /* debug: this material is not drawn (identify a surface by hiding it) */
+typedef struct { const Material *material; unsigned blend, test, vtype, calls, triangles; int modulate; unsigned mask; } Census3D;
+enum { CENSUS3D = 160 };
+static Census3D census3d[CENSUS3D];
+static void census3d_note(const Material *material, int vtype, int count, int modulate)
+{
+    for (int i = 0; i < CENSUS3D; i++) {
+        Census3D *e = &census3d[i];
+        if (e->calls && (e->material != material || e->blend != (sky_state[2] & 0xff) || e->test != sky_state[3]))
+            continue;
+        if (!e->calls)
+            *e = (Census3D){ material, sky_state[2] & 0xff, sky_state[3], vtype, 0, 0, modulate, pixel_mask };
+        e->calls++;
+        e->triangles += count / 3;
+        return;
+    }
+}
+void p4_census3d_report(void)
+{
+    if (!p4_probe_3d)
+        return;
+    for (int i = 0; i < CENSUS3D && census3d[i].calls; i++) {
+        const Census3D *e = &census3d[i];
+        const unsigned *m = (const unsigned *)e->material;
+        const char *texture = m && m[0] ? (const char *)m[0] + 0x10 : "-";
+        p4_log("census3d %08x %-20.20s blend %02x test %05x colour %08x mod %d vtype %x draws %u tris %u plugin %08x %08x %08x %08x\n",
+               (unsigned)e->material, texture, e->blend, e->test & 0xfffff, m ? m[1] : 0, e->modulate, e->vtype, e->calls, e->triangles,
+               m ? m[6] : 0, m ? m[7] : 0, m ? m[8] : 0, m ? m[9] : 0);
+    }
+    memset(census3d, 0, sizeof census3d);
+}
+
+/* Census and the debug hide for every 3D path (material draws, CPU-vertex meshes, skinned batches). */
+static int census3d_skip(const Material *material, int vtype, int count, int modulate)
+{
+    if (p4_probe_3d)
+        census3d_note(material, vtype, count, modulate);
+    return p4_hide_material && (unsigned)material == p4_hide_material;
+}
+
 static void draw_mesh_vertices(int prim, int vtype, int count, const void *indices, const void *vertices, const Material *material, int modulate, const SceneLight *light)
 {
+    if (census3d_skip(material, vtype, count, modulate))
+        return;
     prof_begin(PROF_DLIGHT);
     if (vtype & GU_NORMAL_8BIT) {
         bind_ge_light(material, modulate, light);
@@ -4185,6 +4473,8 @@ static void draw_meshes_body(MeshHeader *header, const V3 *position, float (*uv)
             previous_colour = colour;
             previous_material = mesh->material;
         }
+        if (census3d_skip(mesh->material, VT_3D, mesh->numIndices, modulate))
+            continue;
         void **texture = mesh->material->texture;
         bind_mask(mesh->material->colour >> 24);
         bind_raster(texture ? *texture : 0, GU_REPEAT);
@@ -5007,6 +5297,8 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
         } else {
             draw_alpha_known = 0; /* the batch's colours are not scanned */
         }
+        if (census3d_skip(material, batch->vtype, batch->indices, modulate))
+            continue;
         prof_begin(PROF_STEST);
         draw_tested(GU_TRIANGLES, batch->vtype, batch->indices, batch->idx, batch->v);
         prof_end(PROF_STEST);
@@ -5340,6 +5632,7 @@ static void *atomic_render_body(void *atomic)
     Geometry *g = *(Geometry **)((char *)atomic + ATOMIC_GEOMETRY);
     char *frame = *(char **)((char *)atomic + ATOMIC_FRAME);
     char *tank = PTANK_OF_ATOMIC(atomic);
+    rtt_atomics += rtt_target != 0;
     if (tank && frame && current_camera) {
         draw_ptank(atomic, tank, g, frame);
         return atomic;

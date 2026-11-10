@@ -315,3 +315,66 @@ Next:
 - User/developer instructions: `docs/prepare_game.md`. Package generation is local; no GitHub publication is performed.
 - Host verification: 3 preparation tests, 3 audio tests and 5 movie tests passed. Frozen runtime was checked against the real ISO with Python removed from PATH.
 - Full clean-install preparation and gameplay coverage remain separate from the small frozen converter smoke test. Review bundled third-party corresponding-source requirements before publication.
+
+## 2026-11-09: open rendering gaps (found in PPSSPP, b165 work)
+
+- **MatFX is not implemented.** `port/rwsky.c` has no RpMatFX support: environment maps and dual-texture materials draw
+  their base colour only. Seen: Heaven's treasure chests are flat yellow blocks. Needs the MatFX plugin data per
+  material (effect type, env-map texture, coefficient, frame) and a second GE pass or a sphere-map UV pass.
+- **Heaven minimap is empty.** The dark frame at the bottom left draws; its content does not, and the player's green
+  arrow is at the top left. `p4_probe_2d` = 2 logs single small 2D draws (box, raster, UV, alpha, z test).
+- **Heaven's orange fog is not visible.** The game draws a full-screen grid of 80x64 additive untextured tiles
+  (RGBA 172 49 0 122, blend 0x48, 54 draws a frame). The TV-world noise/vignette pass (`FldNoiseUpdate`) is still off.
+- **Render to texture (camera type 5) is new in b165**: 128x128x32 in event f007_002, 512x256x16 (drawn at 256x128)
+  in battle skills. Not yet checked by eye.
+- **Rise's navigator portrait** is missing in battle; it does not use a camera texture (bust-up `b34` loads).
+- **Destination-alpha effects are the largest visual gap.** On the PSP the frame buffer's alpha byte is the stencil:
+  one value per draw, no interpolation. Seen against PCSX2 (2026-11-09): the battle-entry swirl draws its noise
+  opaque instead of only where the mask is; the TV-world haze (`FldNoiseUpdate`, still off) is a centre-weighted
+  ring mask written to destination alpha and read by blend 0x54. A shared approach: keep the mask geometry with its
+  vertex alpha and redraw it with the pass that reads destination alpha.
+- **Battle floor** shows bright rainbow stripes; PCSX2 shows a dark glossy floor with reflections (likely MatFX).
+- **Megidolaon**: the falling object is still missing after the colour-pack fixes (b165).
+- **Field Shadow** symbol: a red ring and small purple bits instead of the dark smoke blob.
+- **Minimap corridors**: PCSX2 draws white explored corridors; the port draws only icons.
+- **Destination alpha test (GS DATE) is ignored everywhere.** Field shadows (`FldShadow_DrawBlobPacket`,
+  k_shadow.c:648) render the silhouette into a 128x128 camera texture, then gradient bands with ATEST_1 0x3C803
+  (DATE on, DATM 1: only where the silhouette left alpha bit 7 set), and project the texture onto the floor. Without
+  DATE the bands fill the whole square. The user, comparing with PCSX2: on the battle arena the rainbow should show
+  only inside the characters' shadows; in the port it covers the floor. Characters draw with ATEST_1 0x7F06B (DATE on
+  too). Plan: emulate alpha bit 7 with the stencil (it is the frame buffer's alpha byte on the PSP): draws without
+  DATE write stencil 0xFF where they pass (REPLACE), DATE draws test it (EQUAL, ref DATM << 7, mask 0x80); first
+  inside camera-texture passes only, since the screen's stencil already carries the pixel-mask emulation.
+- Tools from b165: `p4_probe_3d` (census of 3D draws per material; read `census3d` from memory, the log drops
+  lines), `p4_hide_material` (one material not drawn), `p4_probe_2d` 2/3 (single 2D draws, camera begins, clears).
+  The rainbow floor did not disappear when any of 48 materials was hidden: it may come from a 49th entry or a path
+  not yet counted.
+- **A character's head is missing** in a battle view (b165 session); not yet looked at.
+
+## Plan after 2026-11-09 (b165, PPSSPP session with the user comparing against PCSX2)
+
+State at the end of the day. Fixed and seen working in PPSSPP: infinite recursion through the p4r_00397c40 alias (black
+movie, p4_audio crash), 30 FPS cap everywhere (title ran at 60 game frames/s), movies visible (sceDmacMemcpy), minimap
+(GS ATEST FB_ONLY in 2D; s64 vec2 parameters kept 64-bit for the player arrow; corridors now show). Built but not
+confirmed by eye: render to texture, DATE inside camera textures, generic ALPHA_1 with FIX = 0, VU0 colour packs and
+particle trails, pexew, the ring stack temporaries. Nothing from today is on a real PSP yet.
+`build/psp_dist` holds a build with the 3D census widened to 160 entries; the one installed in PPSSPP has 48.
+
+In order:
+1. **Battle arena: rainbow only inside the characters' shadows.** In the original the floor is dark and the
+   characters' shadows show the rainbow. Install the current build, enter a battle, run `python tools/psp_census3d.py`
+   and `... hide DIR` to find the rainbow draw and the shadow draws (look for DATE, pixel mask and blends 0x52/54/58).
+   Then design one model of the screen's alpha on the stencil that serves both the existing pixel-mask/destination-
+   alpha blends (GE scale, 1.0 = 255) and GS DATE (bit 7 of the PS2 alpha, 0x80 = 1.0).
+2. **Destination-alpha effects** with that model: battle-entry swirl (noise should show only through the mask), the
+   TV-world haze (`FldNoiseUpdate`, off since b44; ring mask with interpolated alpha: redraw the ring geometry with the
+   pass that reads Ad), the Shadow enemy's dark smoke.
+3. **Megidolaon's falling object** still missing: list the effect types in skill 18A, check `P4_EE_ASM` traps that
+   remain (20 in src) and effects drawn through paths without colour.
+4. **MatFX** (environment maps, dual textures): chests (blue in PCSX2, flat yellow here), the battle floor's reflections.
+   The census prints the words after each material; find the MatFX plugin offset first.
+5. **A character's head missing** in a battle view; **Rise's navigator portrait** in battle (bust-up b34 loads).
+6. **Cost on the PSP**: the FB_ONLY double pass runs ~74 times a frame (mostly HUD); skip it when the texture's alpha
+   range is known to be all above or all below the reference (swizzle head alpha_min/max). Measure VU0-in-C work
+   (`vu0 per frame`, peak ~9.5k instructions) and the P4_VU0_COUNT site lookup with the profiler on hardware.
+7. Rebuild the auto package (`P4-PSP-auto-b164`): it still has the psp_link alias bug.

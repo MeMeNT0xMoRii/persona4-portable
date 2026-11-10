@@ -33,7 +33,7 @@ def main():
         run(binpath / 'psp-gcc.exe', '-G0', f'-L{sdk / "lib"}', '-Wl,-zmax-page-size=128',
             f'-specs={sdk / "lib/prxspecs"}', f'-Wl,-q,-T{sdk / "lib/linkfile.prx"}',
             work / 'probe.o', work / 'video.o', work / 'nal.o', sdk / 'lib/prxexports.o',
-            '-lpspmpeg', '-Wl,-u,sceUtilityGetSystemParamInt', '-lpsputility', '-lpspaudio', '-lpspdisplay', '-lpspctrl',
+            '-lpspmpeg', '-lpspdmac', '-Wl,-u,sceUtilityGetSystemParamInt', '-lpsputility', '-lpspaudio', '-lpspdisplay', '-lpspctrl',
             '-lpspdebug', '-lpspge', '-lpsppower', '-o', elf)
         run(binpath / 'psp-fixup-imports.exe', elf)
         check_import_ranges(elf)

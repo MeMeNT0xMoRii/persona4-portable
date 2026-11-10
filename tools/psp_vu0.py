@@ -114,6 +114,8 @@ class Block:
             raise Unknown("fixed stack or small-data slot")
         if re.match(r"^%\d+$", base) and "m" in self.ops[int(base[1:])][0]:
             return f"({self.address(base)} + ({m[1] or 0}))"
+        if IDENT.match(base) and not re.match(r"^(zero|at|v[01]|a[0-3]|t\d|s[0-8]|k[01]|gp|sp|fp|ra)$", base):
+            return f"((char *)({base}) + ({m[1] or 0}))"  # MWCC: a C pointer named as the base register
         return f"((char *){self.gpr(base)}.w[0] + ({m[1] or 0}))"
 
     def line(self, line):
@@ -169,6 +171,8 @@ class Block:
         if op in SIMPLE:
             d, s, t = (self.gpr(a) for a in args)
             return f"p4_{op}(&{d}, &{s}, &{t});"
+        if op == "pexew":
+            return f"p4_pexew(&{self.gpr(args[0])}, &{self.gpr(args[1])});"
         if op == "prot3w":
             return f"p4_prot3w(&{self.gpr(args[0])}, &{self.gpr(args[1])});"
         if op == "lw":
@@ -263,6 +267,11 @@ def main():
     c = translate('"lqc2 $vf10, 0($5)"', ("effect", "value"))
     assert c and "p4vu.r[5].w[0] = (unsigned)(value);" in c, c
     assert translate('"lqc2 $vf10, 0($5)"') is None
+    c = translate('"lqc2 $vf10, 0(anchor)" : : : "$vf10", "memory"')  # mdlEffectUpdateParticleTrail: trail positions
+    assert c and "((char *)(anchor) + (0))" in c, c
+    assert translate('"lqc2 $vf10, 0(a0)"') is None and translate('"lqc2 $vf10, 0(s3)"') is None
+    c = translate(r'"qmfc2.ni %0, $vf10 \n" "pexew %0, %0 \n" "mtc1 %0, %1 \n" "nop \n" : "=&r"(transfer), "=f"(value)')
+    assert c and "p4_pexew(&o0, &o0);" in c, c  # effectVuGetZ10
     c = translate('"lw $5, 0(%0)\\n" "qmtc2.ni $5, $vf1\\n" : : "r"(p)')
     assert c and "(unsigned)" not in c.split("t0")[0], c
     print("ok")

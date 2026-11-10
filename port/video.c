@@ -2,6 +2,7 @@
 #include <pspkernel.h>
 #include <pspdebug.h>
 #include <pspdisplay.h>
+#include <pspdmac.h>
 #include <pspctrl.h>
 #include <pspaudio.h>
 #include <pspmpeg.h>
@@ -224,12 +225,14 @@ int p4_video_play(const char *directory, const char *name, int muted)
                 elapsed = movie_time(audio_running);
                 if (elapsed > clock_last) clock_last = elapsed;
             }
-            void *display = (void *)(0x44000000u + (shown & 1) * FRAME_BYTES);
+            void *display = (void *)(0x04000000u + (shown & 1) * FRAME_BYTES);
             video_step = 5;
-            sceKernelDcacheInvalidateRange(buffer[picture], FRAME_BYTES);
-            memcpy(display, buffer[picture], FRAME_BYTES);
+            /* DMA, not a CPU memcpy: PPSSPP only sees VRAM writes it is told about (a memcpy showed black, 0 FPS). */
+            sceKernelDcacheWritebackInvalidateRange(buffer[picture], FRAME_BYTES);
+            if (sceDmacMemcpy(display, buffer[picture], FRAME_BYTES) < 0)
+                memcpy((void *)((unsigned)display | 0x40000000u), buffer[picture], FRAME_BYTES);
             sceDisplayWaitVblankStart();
-            sceDisplaySetFrameBuf((void *)((unsigned)display & ~0x40000000u), 512,
+            sceDisplaySetFrameBuf(display, 512,
                                  PSP_DISPLAY_PIXEL_FORMAT_8888, PSP_DISPLAY_SETBUF_IMMEDIATE);
             shown++;
             video_shown = shown;

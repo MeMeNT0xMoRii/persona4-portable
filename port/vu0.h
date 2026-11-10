@@ -151,6 +151,15 @@ static __inline__ void p4_pextuw(P4Reg *d, const P4Reg *s, const P4Reg *t)
     *d = r;
 }
 
+/* PEXEW rd, rt: words 0 and 2 change places (effectVuGetZ10 takes VF10.z this way). */
+static __inline__ void p4_pexew(P4Reg *d, const P4Reg *t)
+{
+    P4Reg r = *t;
+    r.w[0] = t->w[2];
+    r.w[2] = t->w[0];
+    *d = r;
+}
+
 static __inline__ void p4_ppach(P4Reg *d, const P4Reg *s, const P4Reg *t)
 {
     P4Reg r;

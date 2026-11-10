@@ -25,7 +25,7 @@ PORT = ("main", "platform", "rwsky", "rwdata", "rwmath", "files", "ee", "pad", "
 PORT_ASM = ("video_nal",)
 # video_nal.S supplies the first sceMpeg stub. Its remaining stubs must follow
 # immediately: psp-fixup-imports describes each library as one contiguous range.
-LIB_FLAGS = ["-lpspmpeg", "-lpspsascore", "-lpspgum", "-lpspgu", "-lpspdebug", "-lpspdisplay", "-lpspge", "-lpspctrl", "-lpsppower", "-lpspaudio", "-Wl,-u,sceUtilityGetSystemParamInt", "-lpsputility", "-lm"]
+LIB_FLAGS = ["-lpspmpeg", "-lpspdmac", "-lpspsascore", "-lpspgum", "-lpspgu", "-lpspdebug", "-lpspdisplay", "-lpspge", "-lpspctrl", "-lpsppower", "-lpspaudio", "-Wl,-u,sceUtilityGetSystemParamInt", "-lpsputility", "-lm"]
 
 
 def check_import_ranges(elf):
@@ -141,10 +141,12 @@ def main():
     # What has no C but a retail body comes from the executable.
     native = {a: n for a, n in retail_to_native({n: n for n in defined | libs}).items() if inside(CODE, a)}
     roots = {}
+    # A port override calling p4r_ at its own address wants the retail body: an alias would recurse forever.
+    port_wants = {n for path in port_objects for n in symbols(path)[2] if n.startswith("p4r_")}
     for n in stubs:
         a = stub_address(n, names)
         if a and inside(CODE, a):
-            if a in native:  # the same function under a name C does not use
+            if a in native and not (n in port_wants and native[a] in ours):  # the same function under a name C does not use
                 aliases[n] = native[a]
             else:
                 roots.setdefault(a, []).append(n)

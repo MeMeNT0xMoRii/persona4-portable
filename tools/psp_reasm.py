@@ -466,7 +466,7 @@ def reassemble(roots, native, image, starts):
 
     while todo:
         addr = todo.pop()
-        if addr in seen or addr in native:
+        if addr in seen or (addr in native and addr not in roots):
             continue
         seen.add(addr)
         if addr not in spans:

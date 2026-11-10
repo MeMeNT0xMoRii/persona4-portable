@@ -211,7 +211,8 @@ def trap_ee_asm(text):
             inner = text[m.end():i - 1].replace("\\\n", "\n")
             # A following volatile reload names the local behind MWCC's fixed stack output slot.
             following = re.match(r";\s*(?:/\*.*?\*/\s*)*([^;]*);", text[i:i + 1200], re.S)
-            output = re.search(r"\*\s*\(\s*volatile\s+(?:s32|u32)\s*\*\s*\)\s*&\s*(\w+)", following[1]) if following else None
+            # b165: also without volatile (FallingFunnelWindPackColors, the Flash*PackColors: Megidolaon's colours)
+            output = re.search(r"\*\s*\(\s*(?:volatile\s+)?(?:s32|u32)\s*\*\s*\)\s*&\s*(\w+)", following[1]) if following else None
             if output and len(re.findall(r"\$(?:sp|29)\b", inner)) == 1:
                 inner = re.sub(r"(\bsw\s+\$\w+,\s*)(?:0x[0-9a-fA-F]+|\d+)\(\$(?:sp|29)\)", lambda match: match[1] + output[1], inner)
             translated = translate_vu0(inner, enclosing_arguments(text, m.start()))
@@ -268,7 +269,11 @@ def void_quad_setters(text):
 # shifts every argument after it, against both the real definition and reassembled retail code: they become 32-bit.
 PROTOTYPE = re.compile(r"^([ \t]*(?:(?:extern|static)[ \t]+)?[A-Za-z_][\w \t*]*?[ \t*](\w+)[ \t]*\()([^;{}()]*)(\)[ \t]*(?:;|\{|$))", re.M)
 WIDE_PARAMETER = re.compile(r"\b([su])64\b(?![ \t]*\*)")
-REALLY_64_BIT = {"gsPackGifTag", "mdlEffectEmitValuePacket", "dpsub", "RunningStatAdd", "RFMAI_CnvS64toU32plusU32", "sprintf"}
+REALLY_64_BIT = {"gsPackGifTag", "mdlEffectEmitValuePacket", "dpsub", "RunningStatAdd", "RFMAI_CnvS64toU32plusU32", "sprintf",
+                 # b165: an s64 that carries two floats (x low, y high; callers pass *(s64 *)&vec2). Narrowed, y was
+                 # lost: the minimap's player arrow drew at y ~0, above the map.
+                 "mapSymbolMarkerDraw", "taskRecordSetPosition", "H_Dbprt_FmtAt", "sflDataDrawPersonaPanel",
+                 "sflDataDrawByteValuePanel", "sflDataDrawNumberValue", "sflDataDrawTitledIcon", "sflDataDrawLevelBadge"}
 
 
 def narrow_parameters(text):
@@ -277,7 +282,23 @@ def narrow_parameters(text):
     return PROTOTYPE.sub(narrow, text)
 
 
+# Edits to inline asm itself: applied before trap_ee_asm translates it (FIXES run after).
+ASM_FIXES = {
+    # b165: the ring colour pack keeps temporaries in the retail frame, colourStack at sp + 0x40: name the array.
+    "src/Graphics/Effect/effPolygonRing.c": [
+        ('"sw          %1, 0x44($sp)       \\n"', '"sw          %1, 4(%3)           \\n"'),
+        ('"addiu       $2, $sp, 0x44       \\n"', '"addiu       $2, %3, 4           \\n"'),
+        ('"sw          $3, 0x40($sp)       \\n"', '"sw          $3, 0(%3)           \\n"'),
+        (': "r"(baseColor), "r"((u32)value), "f"(scale)\n        : "$2", "$3", "memory");',
+         ': "r"(baseColor), "r"((u32)value), "f"(scale), "r"(colourStack)\n        : "$2", "$3", "memory");'),
+    ],
+}
+
+
 def shim(text, rel=""):
+    for old, new in ASM_FIXES.get(rel, ()):
+        assert old in text, (rel, old)
+        text = text.replace(old, new)
     # scr_internal.h defines a 32-bit result; stale s64 prototypes shift arguments of unprototyped calls.
     text = re.sub(r"\bs64(\s+scrGetParamInt\s*\()", r"s32\1", text)
     text = MODE_TI_TYPEDEF.sub(r"typedef struct p4_q \1;", trap_ee_asm(drop_asm_bodies(void_quad_setters(quad_loaders_return(narrow_parameters(text))))))

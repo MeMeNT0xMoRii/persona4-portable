@@ -31,6 +31,13 @@ CUTIN_TABLE = range(0x5DC8CC, 0x5DC920, 4)
 FUSION_RECIPES = range(0x642F00, 0x642F28, 8)
 # K_TestMenu_Update passes ten 32-byte KWindowEntryDescriptors to sdkLboxAddDescriptors.
 TEST_MENU_NAMES = range(0x5F55B0, 0x5F56F0, 0x20)
+# Aligned, evidence-free and not text, yet not pointers: rebasing them corrupts the value.
+NOT_POINTERS = {
+    0x5BC4D8, 0x5BF388, 0x5BF3B8, 0x5BFC58, 0x5BFE38, 0x5C0BE8, 0x5C55C8,  # file table: size, sector, name
+    0x641C64,  # D_00641C40 s16[][19] fusion inheritance weights: row 1 starts with 144
+    0x714BF4,  # descending s16 pair table 01cc01ec ... 00200028
+    0x72A9E4, 0x72AB40,  # packed s16 keyframe-like records
+}
 
 
 def word(image, va):
@@ -55,7 +62,7 @@ def collect(image, starts, vu):
     for a, b in DATA:
         for va in range(a, b, 4):
             v = word(image, va)
-            if not v or inside(vu, va) or inside(vu, v):
+            if not v or va in NOT_POINTERS or inside(vu, va) or inside(vu, v):
                 continue
             if (va in TERRAIN_TABLE or va in PANEL_TABLE or va in CUTIN_TABLE or va in FUSION_RECIPES) and DATA[0][0] <= v < END:
                 proven[va] = v
