@@ -22,7 +22,8 @@ in its hashed inputs, so artwork changes invalidate its build cache too.
 
 The actual b176-xmb-home1 EBOOT contains these exact images and title;
 all three sections were extracted and compared byte-for-byte with their
-source PNGs. XMB appearance still needs a check on the PSP-3000.
+source PNGs. The tester subsequently confirmed the artwork and exact title
+on the PSP-3000.
 Branding does not fix the in-game startup logo or other rendering issues.
 The same build contains a separate HOME implementation; see the
 [build record](build_b176_xmb_home1.md) for its validation limits.

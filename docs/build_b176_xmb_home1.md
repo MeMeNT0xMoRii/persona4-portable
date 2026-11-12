@@ -1,7 +1,9 @@
 # b176-xmb-home1 test build
 
 Built on 2026-11-12 for the existing US installation on PSP-3000.
-This is a compiled test candidate, not a hardware-validated release.
+This was delivered as a compiled test candidate. In a subsequent PSP-3000
+report, the tester confirmed HOME, saving/loading, XMB artwork and title.
+Full-game validation remains outstanding.
 
 ## Source and changes
 
@@ -78,7 +80,14 @@ validated a complete playthrough.
 The HOME test uses a pthread-backed kernel stub. It does not validate the
 actual PSP HOME menu, firmware scheduling, cancelling exit, real memory-card
 behavior, boot, graphics or save compatibility on the device. Those checks
-remain for the tester. No PSP or emulator execution was performed here.
+were pending when the build was delivered. The tester subsequently confirmed
+the basic functions listed above; cancellation and save-in-flight behavior
+were not separately detailed. No PSP or emulator execution was performed here.
+
+The same follow-up reports an early exit after moving into CAT_Ports and
+switching from the ARK5 custom launcher to normal XMB. The source still has
+fixed `ms0:/PSP/GAME/P4/` paths; the startup-message photo is pending. Track
+this separately as P4-019 in the [playtest backlog](playtest.md).
 
 ## Matching installation files
 

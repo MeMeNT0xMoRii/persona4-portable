@@ -3,13 +3,14 @@
 This playtest branch builds on [dreikk91/persona4-psp](https://github.com/dreikk91/persona4-psp).
 It uses **upstream b176** with the local save-recovery fix, the
 [custom XMB presentation](docs/xmb.md), and a PSP HOME exit callback.
-The **b176-xmb-home1** test build has been compiled and checked on the host;
-see the [build record and installation checks](docs/build_b176_xmb_home1.md).
-Hardware playtesting of
-our earlier b165 build reached Yosuke's Persona awakening; b176 and a complete
-playthrough have not been validated by our tester.
+The tester has confirmed **HOME, save/load, the XMB artwork and title** on
+PSP-3000 with **b176-xmb-home1**. Moving the installation into `CAT_Ports`
+and launching from XMB causes an early exit; investigation is pending the
+startup message. See the [build record](docs/build_b176_xmb_home1.md).
+Earlier b165 playtesting reached Yosuke's Persona awakening; a complete
+playthrough has not been validated.
 
-Our hardware baseline is **b165 with save recovery**. The
+Our previous hardware reference is **b165 with save recovery**. The
 [`playthrough/b165-tested`](https://github.com/MeMeNT0xMoRii/persona4-portable/tree/playthrough/b165-tested)
 branch preserves it. This branch, `playthrough/b176-xmb-home`, carries the next
 build. The [hardware test backlog](docs/playtest.md) retains the original b165
