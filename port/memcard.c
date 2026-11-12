@@ -171,10 +171,15 @@ int func_00432288(int socket, const char *name, const void *data, unsigned offse
 int func_004323a8(int socket, const char *name)
 {
     p4_mc_calls[4]++;
-    char path[256];
+    char path[256], backup[264];
     struct stat st;
     if (!card_path(path, socket, name)) return complete(1, MC_IO);
     if (stat(path, &st) == 0) return complete(1, S_ISREG(st.st_mode) ? 0 : MC_IO);
+    if (errno != ENOENT) return complete(1, MC_IO);
+    /* An interrupted replacement can leave the committed slot in .bak.
+       Readers use that copy until the next successful save installs a primary. */
+    snprintf(backup, sizeof backup, "%s.bak", path);
+    if (stat(backup, &st) == 0) return complete(1, S_ISREG(st.st_mode) ? 0 : MC_IO);
     if (errno != ENOENT) return complete(1, MC_IO);
     FILE *f = fopen(path, "wb");
     return complete(1, f && fclose(f) == 0 ? 0 : MC_IO);
