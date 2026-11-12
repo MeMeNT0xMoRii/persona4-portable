@@ -1,9 +1,13 @@
-# PSP-3000 playtest backlog
+# PSP hardware playtest backlog
 
 Updated 2026-11-12. The 333 MHz replay passed the TV-world return and reached
 the next save point. The latest PSP Go run froze after confirming HOME at
 333 MHz (P4-033). [home4](build_b176_xmb_home4.md) is ready for a hardware
 check of HOME and rain.
+
+The new playthrough will collect [replay saves by in-game date](replay_saves.md)
+for fast comparisons of the reported scenes. Hardware results for home4 are
+pending.
 
 ## Tested build and progress
 
