@@ -12,7 +12,7 @@
 #include <math.h>
 #include "audio.h"
 
-#define DIR "ms0:/PSP/GAME/P4/SOUND/"
+#include "paths.h"
 #define GRAIN 512
 #define STREAMS 5
 #define RING_BLOCKS 2048
@@ -189,7 +189,7 @@ static int read_exact(int fd,void *data,unsigned size)
 }
 static unsigned char *load_file(const char *name,unsigned *size)
 {
-    char path[128];snprintf(path,sizeof path,DIR "%s",name);
+    char path[P4_PATH_MAX];snprintf(path,sizeof path,"%s%s",p4_sound_dir,name);
     int fd=sceIoOpen(path,PSP_O_RDONLY,0);if(fd<0)return NULL;
     long long n=sceIoLseek(fd,0,PSP_SEEK_END);sceIoLseek(fd,0,PSP_SEEK_SET);
     unsigned char *p=n>0&&n<4*1024*1024?memalign(64,(unsigned)n):NULL;
@@ -276,9 +276,9 @@ static int refill(Stream *s)
 static int open_stream(Stream *s)
 {
     const Index *row=find(s->id);if(!row)return -1;
-    char name[128];
-    if(row->part==0xffffffffu)snprintf(name,sizeof name,DIR "%08x.p4a",s->id);
-    else snprintf(name,sizeof name,DIR "AUDIO.%u",row->part);
+    char name[P4_PATH_MAX];
+    if(row->part==0xffffffffu)snprintf(name,sizeof name,"%s%08x.p4a",p4_sound_dir,s->id);
+    else snprintf(name,sizeof name,"%sAUDIO.%u",p4_sound_dir,row->part);
     s->fd=sceIoOpen(name,PSP_O_RDONLY,0);if(s->fd<0)return -1;
     s->data_offset=row->offset;
     if(sceIoLseek(s->fd,s->data_offset,PSP_SEEK_SET)<0)return -1;

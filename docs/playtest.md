@@ -45,7 +45,7 @@ not included in this document.
 | P4-016 | Triangle-button tutorial in Dojima's living room | Large gap before the triangle symbol | Photo; text layout issue, not a report of triangle input failing. |
 | P4-017 | Various early-game scenes | Slowdowns and stutters | Report; no FPS/frame-time measurements or precise triggers yet. |
 | P4-018 | 04/15 rainy school route | Missing/transparent parts of umbrella canopies | Photo; pale umbrellas show gaps. Investigate separately from missing rain. |
-| P4-019 | Move installation into CAT_Ports and launch from normal XMB | Game appears in XMB, then exits during startup | New b176-xmb-home1 report. Previously launched from GAME through ARK5 custom launcher with Categories Lite installed. Photo of startup message pending. Fixed `ms0:/PSP/GAME/P4/` paths exist in boot, archive, audio, video, log and save code. Launcher and location both changed; exact failure not yet established. |
+| P4-019 | Move installation into CAT_Ports and launch from normal XMB | Early exit loading data from fixed paths | Photo: HOME callback ready and boot-memory guard passed, then negative data/list results. b176-xmb-home2 replaces fixed runtime paths with the launch directory. Host checks pass; categorized XMB hardware retest pending. |
 
 ## Next development checks
 
@@ -95,10 +95,14 @@ See [XMB presentation](xmb.md) for artwork dimensions and packaging details.
 
 The tester used the ARK5 custom launcher while P4 was under GAME because of
 their Categories Lite arrangement. After moving it into CAT_Ports, it appears
-in the normal XMB but exits by itself. The exact full destination and startup
-message have not yet been supplied. Do not attribute this to Categories Lite
-itself, and do not infer a save failure from this startup exit.
+in the normal XMB but exits by itself. The startup photo shows the HOME callback
+and boot-memory check succeeded, followed by negative data/list load results.
+The data error is 0x80010002. Source inspection confirms fixed old install paths.
 
-Read-only source inspection confirms hard-coded installation paths. The boot
-code also has an extra-memory guard, so the promised photo is needed to
-distinguish the immediate error before preparing a folder-portability fix.
+b176-xmb-home2 resolves the installation directory once from argv[0], with a
+working-directory fallback, before starting game threads. Boot data, archive
+index/parts, SOUND, VIDEO, NOSOUND, logs and saves use that directory.
+Move the entire installation, including saves. No fallback reads an old copy.
+Memory-stick paths only (ms0:); unsupported or overlong paths fail explicitly.
+Retest XMB startup, existing save load, fresh save/reload, sound, movies and HOME.
+The known upstream long-session movie/audio issue is unchanged.

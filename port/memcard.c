@@ -14,7 +14,12 @@
 #endif
 
 #ifndef P4_CARD_ROOT
-#define P4_CARD_ROOT "ms0:/PSP/GAME/P4/saves"
+#ifdef __psp__
+#include "paths.h"
+#define P4_CARD_ROOT p4_save_dir
+#else
+#define P4_CARD_ROOT "saves"
+#endif
 #endif
 
 enum { MC_MISSING = (int)0x80000002u, MC_IO = (int)0x80000013u };

@@ -5,8 +5,9 @@ It uses **upstream b176** with the local save-recovery fix, the
 [custom XMB presentation](docs/xmb.md), and a PSP HOME exit callback.
 The tester has confirmed **HOME, save/load, the XMB artwork and title** on
 PSP-3000 with **b176-xmb-home1**. Moving the installation into `CAT_Ports`
-and launching from XMB causes an early exit; investigation is pending the
-startup message. See the [build record](docs/build_b176_xmb_home1.md).
+and launching from XMB failed when loading data from fixed paths.
+**b176-xmb-home2** resolves game files and saves from the launch directory;
+Categories Lite hardware verification is pending. See the [build record](docs/build_b176_xmb_home2.md).
 Earlier b165 playtesting reached Yosuke's Persona awakening; a complete
 playthrough has not been validated.
 

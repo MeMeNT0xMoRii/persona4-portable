@@ -22,7 +22,7 @@ TAIL = re.compile(r"([0-9A-Fa-f]{8})$")
 NO_SOUND = "src__cri__"  # ponytail: CRI needs the IOP; every call into it returns 0 until audio has its own mixer
 # RenderWare exists three times, twice in C and in retail, each with its own statics. Retail keeps the data consistent.
 RETAIL_WORLD = ("src__renderware__", "src__rw__")
-PORT = ("main", "lifecycle", "platform", "rwsky", "rwdata", "rwmath", "files", "ee", "pad", "memcard", "video", "video_game", "audio", "audio_game")
+PORT = ("main", "lifecycle", "paths", "platform", "rwsky", "rwdata", "rwmath", "files", "ee", "pad", "memcard", "video", "video_game", "audio", "audio_game")
 PORT_ASM = ("video_nal",)
 # video_nal.S supplies the first sceMpeg stub. Its remaining stubs must follow
 # immediately: psp-fixup-imports describes each library as one contiguous range.

@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define GAME_DIR "ms0:/PSP/GAME/P4/"
+#include "paths.h"
 #define SECTOR 0x800
 #define NUM_CONTAINERS 5
 #define NUM_HANDLES 16
@@ -57,7 +57,9 @@ static const Row *find(unsigned hash)
 
 static int open_index(void)
 {
-    SceUID fd = sceIoOpen(GAME_DIR "p4files.idx", PSP_O_RDONLY, 0);
+    char index_path[P4_PATH_MAX];
+    snprintf(index_path, sizeof index_path, "%sp4files.idx", p4_game_dir);
+    SceUID fd = sceIoOpen(index_path, PSP_O_RDONLY, 0);
     if (fd < 0)
         return 0;
     int size = (int)sceIoLseek(fd, 0, PSP_SEEK_END);
@@ -68,8 +70,8 @@ static int open_index(void)
     num_rows = size / sizeof(Row);
     for (int i = 0; i < NUM_CONTAINERS; i++)
         for (int part = 0; part < MAX_PARTS; part++) {
-            char path[64];
-            sprintf(path, GAME_DIR "%s.%d", containers[i], part);
+            char path[P4_PATH_MAX];
+            snprintf(path, sizeof path, "%s%s.%d", p4_game_dir, containers[i], part);
             fds[i][part] = sceIoOpen(path, PSP_O_RDONLY, 0);
         }
     p4_log("disc index %d files, DATA part 0 %x\n", num_rows, fds[0][0]);

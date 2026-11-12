@@ -7,6 +7,7 @@
 #include <ctype.h>
 #include "video.h"
 #include "audio.h"
+#include "paths.h"
 
 extern void p4_log(const char *fmt, ...);
 extern int iGpffffbaf8;
@@ -32,8 +33,8 @@ int mwPlayerUpdate(unsigned char *owner)
         stem[length] = toupper((unsigned char)base[length]); length++;
     }
     stem[length] = 0;
-    char converted[128]; SceIoStat stat;
-    snprintf(converted, sizeof converted, "ms0:/PSP/GAME/P4/VIDEO/%s.p4v", stem);
+    char converted[P4_PATH_MAX]; SceIoStat stat;
+    snprintf(converted, sizeof converted, "%sVIDEO/%s.p4v", p4_game_dir, stem);
     if (sceIoGetstat(converted, &stat) < 0) {
         p4_log("video missing %s; continuing\n", converted); return -1;
     }
@@ -50,7 +51,7 @@ int mwPlayerUpdate(unsigned char *owner)
         p4_log("video audio state %d (1 running, 4 paused): blocks %u errors %u underruns %u cpu_us %u\n", p4_audio_state(),
                p4_audio_blocks, p4_audio_errors, p4_audio_underruns, p4_audio_cpu_us);
     }
-    int result = p4_video_play("ms0:/PSP/GAME/P4/", stem, 0);
+    int result = p4_video_play(p4_game_dir, stem, 0);
     p4_audio_pause(0);
     p4_video_on_frame = NULL; p4_video_buttons = NULL;
     if (display && stride > 0)
