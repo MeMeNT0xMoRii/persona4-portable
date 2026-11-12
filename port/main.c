@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include "lifecycle.h"
 
 PSP_MODULE_INFO("P4", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
@@ -379,6 +380,13 @@ int main(void)
     __asm__ volatile("move $gp, %0" : : "r"(P4_GP)); /* reassembled code reads small data off $gp; threads inherit it */
     scePowerSetClockFrequency(333, 333, 166);
     pspDebugScreenInit();
+    int lifecycle = p4_lifecycle_init();
+    if (lifecycle < 0) {
+        p4_log("HOME callback setup failed %x\n", (unsigned)lifecycle);
+        stop();
+        return 1;
+    }
+    p4_log("Persona4 PORTABLE b176-xmb-home1: HOME exit callback ready\n");
 #ifdef P4_HW_PROFILE
     extern char p4_image[];
     if ((unsigned)p4_image != P4_IMAGE) {

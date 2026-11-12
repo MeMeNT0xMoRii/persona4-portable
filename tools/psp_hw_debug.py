@@ -20,6 +20,7 @@ from psp_data_census import ROOT, load
 from psp_link import PORT, PORT_ASM, LIB_FLAGS, run, check_import_ranges
 from psp_make_data import K, PSP_IMAGE, build
 from psp_xref import find_gp
+from psp_xmb import ARTWORK, TITLE, pack_eboot
 
 LOAD_BASE = 0x08804000  # main checks the loader used this base before touching retail data
 
@@ -103,15 +104,16 @@ def main():
     (out / data_name).write_bytes(data)
     (out / "p4str.bin").write_bytes(struct.pack(f"<{len(strings)}I", *strings))
     assert (out / "p4str.bin").read_bytes() == (base / "p4str.bin").read_bytes()
-    title = f"Persona 4 b{build_number}" if args.release else f"Persona 4 HW Debug b{build_number}"
-    run(binpath / "mksfoex.exe", "-d", "MEMSIZE=1", title, out / "PARAM.SFO")
-    run(binpath / "pack-pbp.exe", out / "EBOOT.PBP", out / "PARAM.SFO", "NULL", "NULL", "NULL", "NULL", "NULL", out / "p4.prx", "NULL")
+    title = TITLE if args.release else f"{TITLE} HW Debug b{build_number}"
+    pack_eboot(ROOT, out, binpath, run, out / "p4.prx", title=title)
     print(run(binpath / "psp-size.exe", elf).strip())
     destination.mkdir(parents=True, exist_ok=True)
     for name in ("p4.elf", "p4.prx", "EBOOT.PBP", data_name, "p4str.bin"):
         shutil.copyfile(out / name, destination / name)
     for path in (ROOT / "port").glob("*.h"):
         source_hashes[str(path.relative_to(ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()
+    for name in (*ARTWORK, "tools/psp_xmb.py"):
+        source_hashes[name] = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
     manifest = {"build": build_number, "release": args.release, "source_sha256": source_hashes, "artifact_sha256": {
         name: hashlib.sha256((destination / name).read_bytes()).hexdigest()
         for name in ("p4.elf", "p4.prx", "EBOOT.PBP", data_name, "p4str.bin")}}

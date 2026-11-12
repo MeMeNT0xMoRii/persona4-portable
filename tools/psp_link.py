@@ -10,6 +10,7 @@ from psp_link_census import OBJ, symbols
 from psp_make_data import K, PSP_IMAGE, START, retail_to_native, build as build_data
 from psp_reasm import reassemble, write_report
 from psp_xref import find_gp, load, sources, stub_address, symbol_addresses
+from psp_xmb import pack_eboot
 
 PSPDEV = Path(os.environ["PSPDEV"])
 BIN = PSPDEV / "bin"
@@ -21,7 +22,7 @@ TAIL = re.compile(r"([0-9A-Fa-f]{8})$")
 NO_SOUND = "src__cri__"  # ponytail: CRI needs the IOP; every call into it returns 0 until audio has its own mixer
 # RenderWare exists three times, twice in C and in retail, each with its own statics. Retail keeps the data consistent.
 RETAIL_WORLD = ("src__renderware__", "src__rw__")
-PORT = ("main", "platform", "rwsky", "rwdata", "rwmath", "files", "ee", "pad", "memcard", "video", "video_game", "audio", "audio_game")
+PORT = ("main", "lifecycle", "platform", "rwsky", "rwdata", "rwmath", "files", "ee", "pad", "memcard", "video", "video_game", "audio", "audio_game")
 PORT_ASM = ("video_nal",)
 # video_nal.S supplies the first sceMpeg stub. Its remaining stubs must follow
 # immediately: psp-fixup-imports describes each library as one contiguous range.
@@ -196,9 +197,8 @@ def main():
     (OUT / "p4str.bin").write_bytes(struct.pack(f"<{len(string_offsets)}I", *string_offsets))
     from psp_address_audit import main as audit_addresses
     audit_addresses()
-    run(BIN / "mksfoex.exe", "-d", "MEMSIZE=1", "Persona 4", OUT / "PARAM.SFO")
     run(BIN / "psp-strip.exe", elf, "-o", OUT / "strip.elf")
-    run(BIN / "pack-pbp.exe", OUT / "EBOOT.PBP", OUT / "PARAM.SFO", "NULL", "NULL", "NULL", "NULL", "NULL", OUT / "strip.elf", "NULL")
+    pack_eboot(ROOT, OUT, BIN, run, OUT / "strip.elf")
     DIST.mkdir(parents=True, exist_ok=True)
     for name in ("EBOOT.PBP", "p4data.bin", "p4str.bin"):
         (DIST / name).write_bytes((OUT / name).read_bytes())

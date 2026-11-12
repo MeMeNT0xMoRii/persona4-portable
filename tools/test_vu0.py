@@ -39,6 +39,10 @@ class QuadMemory(unittest.TestCase):
 #include <string.h>
 #include "vu0.h"
 struct P4Vu p4vu;
+static unsigned profiled_ops;
+void p4_vu0_site(unsigned short *id, const char *file, int line, int ops) {
+    profiled_ops += ops;
+}
 static P4Reg input[3], output;
 int main(void) {
     assert((uintptr_t)input <= UINT32_MAX && (uintptr_t)&output <= UINT32_MAX);
@@ -48,8 +52,8 @@ int main(void) {
         for code in generated:
             harness += 'memset(&output, 0, sizeof output);\n' + code
             harness += '\nassert(memcmp(&output, input + 1, 16) == 0);\n'
-        harness += '}\n'
-        with tempfile.TemporaryDirectory(dir=root / 'build') as temporary:
+        harness += f'assert(profiled_ops == {2 * len(templates)});\n}}\n'
+        with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary)
             (path / 'check.c').write_text(harness)
             # Generated PSP addresses are 32-bit; keep this host test's static buffers below 4 GB.

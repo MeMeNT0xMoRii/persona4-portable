@@ -20,13 +20,15 @@ import urllib.error
 import urllib.request
 import zipfile
 
+from psp_xmb import ARTWORK
+
 UPSTREAM_COMMIT = '363eab8a966d60a9773b45f330f2344329ec4f0a'
 UPSTREAM_URL = f'https://codeload.github.com/Raikaru/Persona4-Decompilation/zip/{UPSTREAM_COMMIT}'
 RETAIL_SHA1 = '4eeec0360cf2715535d9f7e52eb69d786fb0158c'
 BUILD_TOOLS = ('psp_census', 'psp_vu0', 'psp_data_census', 'psp_make_data',
                'psp_ptr_proof', 'psp_xref', 'psp_link', 'psp_link_census',
                'psp_reasm', 'psp_address_audit', 'psp_hw_debug', 'psp_build',
-               'psp_prepare', 'extract_elf')
+               'psp_prepare', 'extract_elf', 'psp_xmb')
 WORKER_SCRIPTS = {'psp_census.py', 'psp_ptr_proof.py', 'psp_link.py',
                   'psp_make_data.py', 'psp_address_audit.py', 'psp_hw_debug.py'}
 TOOLS = ('psp-gcc', 'psp-nm', 'psp-as', 'psp-ld', 'psp-objcopy', 'psp-objdump',
@@ -246,6 +248,7 @@ def payload_files(root):
     files = list((root / 'port').glob('*.c')) + list((root / 'port').glob('*.h'))
     files += list((root / 'port').glob('*.S'))
     files += [root / 'tools' / (name + '.py') for name in BUILD_TOOLS]
+    files += [root / name for name in ARTWORK]
     return sorted(files)
 
 
@@ -255,7 +258,8 @@ def verify_payload(bundle, config):
         raise ValueError('Source package has no source manifest.')
     for name, wanted in expected.items():
         path = safe_relative(name)
-        if path.parts[0] not in ('port', 'tools') or path.suffix not in ('.c', '.h', '.S', '.py'):
+        is_source = path.parts[0] in ('port', 'tools') and path.suffix in ('.c', '.h', '.S', '.py')
+        if not is_source and path.as_posix() not in ARTWORK:
             raise ValueError(f'Unexpected build input: {name}')
         source = Path(bundle) / 'source' / str(path)
         if not source.is_file() or digest(source) != wanted:

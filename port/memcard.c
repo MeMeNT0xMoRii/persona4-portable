@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <sys/stat.h>
+#include "lifecycle.h"
 #ifdef __psp__
 #include <pspiofilemgr.h>
 #endif
@@ -40,6 +41,13 @@ static int complete(int cmd, int value)
     return 0;
 }
 
+static int complete_card_io(int cmd, int value)
+{
+    int status = complete(cmd, value);
+    p4_card_io_end();
+    return status;
+}
+
 int sceMc2CheckAsync(int *cmd, int *value)
 {
     if (!pending)
@@ -73,13 +81,14 @@ static int card_path(char *out, int socket, const char *name)
 
 int sceMc2GetInfoAsync(int socket, int *info)
 {
+    if (!p4_card_io_begin()) return complete(1, MC_IO);
     p4_mc_calls[0]++;
     char path[256];
     int ok = card_path(path, socket, "probe");
     info[0] = ok ? 2 : 0;
     info[1] = ok ? 1 : 0;
     info[2] = ok ? 8192 : 0;
-    return complete(1, ok ? 0 : MC_IO);
+    return complete_card_io(1, ok ? 0 : MC_IO);
 }
 
 static FILE *open_saved(const char *path)
@@ -96,45 +105,48 @@ static FILE *open_saved(const char *path)
 /* Get file information: the retail caller reads the file size at offset 0x10. */
 int func_00431d78(int socket, const char *name, void *info)
 {
+    if (!p4_card_io_begin()) return complete(1, MC_IO);
     p4_mc_calls[1]++;
     char path[256];
-    if (!card_path(path, socket, name)) return complete(1, MC_IO);
+    if (!card_path(path, socket, name)) return complete_card_io(1, MC_IO);
     FILE *f = open_saved(path);
-    if (!f) return complete(1, errno == ENOENT ? MC_MISSING : MC_IO);
+    if (!f) return complete_card_io(1, errno == ENOENT ? MC_MISSING : MC_IO);
     int ok = fseek(f, 0, SEEK_END) == 0;
     long size = ok ? ftell(f) : -1;
     if (fclose(f) != 0) size = -1;
-    if (size < 0 || size > INT_MAX) return complete(1, MC_IO);
+    if (size < 0 || size > INT_MAX) return complete_card_io(1, MC_IO);
     memset(info, 0, 64);
     ((unsigned *)info)[4] = (unsigned)size;
-    return complete(1, 0);
+    return complete_card_io(1, 0);
 }
 
 /* Read a file or its serialized summary. */
 int func_00431f28(int socket, const char *name, void *data, unsigned offset, unsigned size)
 {
+    if (!p4_card_io_begin()) return complete(5, MC_IO);
     p4_mc_calls[2]++;
     p4_mc_bytes += size;
     char path[256];
-    if (!card_path(path, socket, name) || offset > INT_MAX) return complete(5, MC_IO);
+    if (!card_path(path, socket, name) || offset > INT_MAX) return complete_card_io(5, MC_IO);
     FILE *f = open_saved(path);
-    if (!f) return complete(5, errno == ENOENT ? MC_MISSING : MC_IO);
+    if (!f) return complete_card_io(5, errno == ENOENT ? MC_MISSING : MC_IO);
     int ok = fseek(f, offset, SEEK_SET) == 0 && fread(data, 1, size, f) == size;
     if (fclose(f) != 0) ok = 0;
-    return complete(5, ok && size <= INT_MAX ? (int)size : MC_IO);
+    return complete_card_io(5, ok && size <= INT_MAX ? (int)size : MC_IO);
 }
 
 /* Write to a temporary file first; retain the previous committed save if any step fails. */
 int func_00432288(int socket, const char *name, const void *data, unsigned offset, unsigned size)
 {
+    if (!p4_card_io_begin()) return complete(6, MC_IO);
     p4_mc_calls[3]++;
     char path[256], temp[264], backup[264];
     if (!card_path(path, socket, name) || size > INT_MAX || offset > INT_MAX - size)
-        return complete(6, MC_IO);
+        return complete_card_io(6, MC_IO);
     snprintf(temp, sizeof temp, "%s.tmp", path);
     snprintf(backup, sizeof backup, "%s.bak", path);
     FILE *f = fopen(temp, "wb");
-    if (!f) return complete(6, MC_IO);
+    if (!f) return complete_card_io(6, MC_IO);
     int ok = 1;
     if (offset) {
         FILE *old = open_saved(path);
@@ -165,24 +177,31 @@ int func_00432288(int socket, const char *name, const void *data, unsigned offse
     }
     if (ok) ok = sync_card();
     if (!ok) remove(temp);
-    return complete(6, ok ? (int)size : MC_IO);
+    return complete_card_io(6, ok ? (int)size : MC_IO);
 }
 
 int func_004323a8(int socket, const char *name)
 {
+    if (!p4_card_io_begin()) return complete(1, MC_IO);
     p4_mc_calls[4]++;
-    char path[256];
+    char path[256], backup[264];
     struct stat st;
-    if (!card_path(path, socket, name)) return complete(1, MC_IO);
-    if (stat(path, &st) == 0) return complete(1, S_ISREG(st.st_mode) ? 0 : MC_IO);
-    if (errno != ENOENT) return complete(1, MC_IO);
+    if (!card_path(path, socket, name)) return complete_card_io(1, MC_IO);
+    if (stat(path, &st) == 0) return complete_card_io(1, S_ISREG(st.st_mode) ? 0 : MC_IO);
+    if (errno != ENOENT) return complete_card_io(1, MC_IO);
+    /* An interrupted replacement can leave the committed slot in .bak.
+       Readers use that copy until the next successful save installs a primary. */
+    snprintf(backup, sizeof backup, "%s.bak", path);
+    if (stat(backup, &st) == 0) return complete_card_io(1, S_ISREG(st.st_mode) ? 0 : MC_IO);
+    if (errno != ENOENT) return complete_card_io(1, MC_IO);
     FILE *f = fopen(path, "wb");
-    return complete(1, f && fclose(f) == 0 ? 0 : MC_IO);
+    return complete_card_io(1, f && fclose(f) == 0 ? 0 : MC_IO);
 }
 
 int func_004326b8(int socket, const char *name)
 {
+    if (!p4_card_io_begin()) return complete(1, MC_IO);
     p4_mc_calls[5]++;
     char path[256];
-    return complete(1, card_path(path, socket, name) && directory(path) ? 0 : MC_IO);
+    return complete_card_io(1, card_path(path, socket, name) && directory(path) ? 0 : MC_IO);
 }

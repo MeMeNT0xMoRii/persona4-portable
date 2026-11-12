@@ -162,7 +162,7 @@ def main():
     else:
         # Developer package: public packages should use --freeze.
         for name in ('psp_prepare.py', 'psp_audio.py', 'psp_video.py', 'psp_disc.py', 'psp_data_census.py',
-                     'psp_build.py', 'extract_elf.py', 'audio_vag_encoder.cs'):
+                     'psp_build.py', 'psp_xmb.py', 'extract_elf.py', 'audio_vag_encoder.cs'):
             target = out / 'tools' / name
             target.parent.mkdir(exist_ok=True); shutil.copyfile(ROOT / 'tools' / name, target)
     if args.legacy_prebuilt:

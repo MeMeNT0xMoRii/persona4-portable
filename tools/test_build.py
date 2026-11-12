@@ -136,8 +136,11 @@ class SourceBuildTests(unittest.TestCase):
         self.assertNotIn('words', config)
         self.assertNotIn('eboot_sha256', config)
         self.assertFalse((self.bundle / 'P4').exists())
-        self.assertTrue(all(path.suffix in ('.c', '.h', '.S', '.py')
+        artwork = {'assets/xmb/ICON0.png', 'assets/xmb/PIC0.png', 'assets/xmb/PIC1.png'}
+        self.assertTrue(all(path.suffix in ('.c', '.h', '.S', '.py') or
+                            path.relative_to(self.bundle / 'source').as_posix() in artwork
                             for path in (self.bundle / 'source').rglob('*') if path.is_file()))
+        self.assertTrue(artwork.issubset(config['source_sha256']))
         builder.verify_payload(self.bundle, config)
 
     def test_bundled_toolchain_keeps_provenance_without_local_install_paths(self):

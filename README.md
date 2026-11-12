@@ -1,4 +1,20 @@
-# Persona 4 for PSP
+# Persona4 PORTABLE
+
+This playtest branch builds on [dreikk91/persona4-psp](https://github.com/dreikk91/persona4-psp).
+It uses **upstream b176** with the local save-recovery fix, the
+[custom XMB presentation](docs/xmb.md), and a PSP HOME exit callback.
+The **b176-xmb-home1** test build has been compiled and checked on the host;
+see the [build record and installation checks](docs/build_b176_xmb_home1.md).
+Hardware playtesting of
+our earlier b165 build reached Yosuke's Persona awakening; b176 and a complete
+playthrough have not been validated by our tester.
+
+Our hardware baseline is **b165 with save recovery**. The
+[`playthrough/b165-tested`](https://github.com/MeMeNT0xMoRii/persona4-portable/tree/playthrough/b165-tested)
+branch preserves it. This branch, `playthrough/b176-xmb-home`, carries the next
+build. The [hardware test backlog](docs/playtest.md) retains the original b165
+observations until each is retested. b176 has a known movie hang after longer
+play with sound; see Status below. Sound stays enabled by default.
 
 An experimental native PSP port of **Shin Megami Tensei: Persona 4** (PlayStation 2, USA, `SLUS_217.82`). The port combines recovered C, locally translated retail routines and PSP implementations of graphics, input, files, saves, audio and movie playback.
 
@@ -20,7 +36,7 @@ The b176 utility was checked by a clean `--build-only` build from the release pa
 
 The [source-build utility validation](docs/source_build_validation_b164.md) also covers the frozen Windows runtime, build caching and hidden compiler processes.
 
-The current working-tree build is **b176**. The source build currently targets Windows and a Windows PSPSDK toolchain. A PSP with 64 MB RAM and firmware capable of running homebrew is required; PSP-1000 support is not established.
+The current working-tree build is **b176 plus save recovery, XMB branding and HOME support**. The source preparation tool targets Windows and a Windows PSPSDK toolchain. A PSP with 64 MB RAM and firmware capable of running homebrew is required; PSP-1000 support is not established.
 
 ## Status
 
