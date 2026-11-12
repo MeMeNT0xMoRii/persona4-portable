@@ -52,7 +52,8 @@ static pthread_t cb_thread;
 static pthread_mutex_t events = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t changed = PTHREAD_COND_INITIALIZER;
 static int exit_requested, exit_waiting, rename_waiting, allow_rename, hold_rename;
-static atomic_int exited, synced_on_exit;
+static atomic_int exited, save_syncs;
+static int installed_saves;
 static const char *failure;
 
 static void wait_event(int *flag) {
@@ -115,11 +116,13 @@ int sceKernelSleepThreadCB(void) {
 }
 int sceIoSync(const char *path, unsigned flags) {
     assert(!strcmp(path, "ms0:") && flags == 0);
-    if (pthread_equal(pthread_self(), cb_thread)) atomic_store(&synced_on_exit, 1);
+    assert(!pthread_equal(pthread_self(), cb_thread));
+    int syncs = atomic_fetch_add(&save_syncs, 1);
+    assert(installed_saves == (syncs + 1) / 2);
     return 0;
 }
 void sceKernelExitGame(void) {
-    assert(atomic_load(&synced_on_exit));
+    assert(atomic_load(&save_syncs) == (hold_rename ? 4 : 0));
     atomic_store(&exited, 1);
     pthread_exit(0);
 }
@@ -127,11 +130,15 @@ void sceKernelExitGame(void) {
 int __real_rename(const char *, const char *);
 int __wrap_rename(const char *from, const char *to) {
     size_t length = strlen(from);
-    if (hold_rename && length >= 4 && !strcmp(from + length - 4, ".tmp")) {
+    int installing = length >= 4 && !strcmp(from + length - 4, ".tmp");
+    if (installing) assert(atomic_load(&save_syncs) == installed_saves * 2 + 1);
+    if (hold_rename && installing) {
         set_event(&rename_waiting);
         wait_event(&allow_rename);
     }
-    return __real_rename(from, to);
+    int status = __real_rename(from, to);
+    if (installing && status == 0) installed_saves++;
+    return status;
 }
 
 int func_004326b8(int, const char *);
@@ -183,7 +190,7 @@ int main(int argc, char **argv) {
     wait_event(&rename_waiting);
     set_event(&exit_requested);
     wait_event(&exit_waiting);
-    assert(!atomic_load(&exited) && !atomic_load(&synced_on_exit));
+    assert(!atomic_load(&exited) && atomic_load(&save_syncs) == 3);
     assert(!p4_card_io_begin());
     assert(func_00432288(0, "/rejected", original, 0, sizeof original) == 0);
     assert(result() < 0);

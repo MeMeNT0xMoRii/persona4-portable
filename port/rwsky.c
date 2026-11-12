@@ -5808,9 +5808,9 @@ static inline char *PTANK_OF_ATOMIC(void *atomic)
 enum {
     PT_ACTIVE = 4, PT_CLUSTERS = 0x54, PT_USERDATA = 0x9c, PT_DATAFLAGS = 0xa8, PT_SRCBLEND = 0xac, PT_DSTBLEND = 0xb0,
     PT_CSIZE = 0xc0, PT_CROTATE = 0xc8, PT_CCOLOR = 0xcc, PT_CUV = 0xe0, PT_INSTFLAGS = 0x40,
-    PD_POSITION = 1, PD_COLOR = 2, PD_SIZE = 4, PD_ROTATE = 0x20, PD_UV2 = 0x80, PD_CNSROTATE = 0x20000,
+    PD_POSITION = 1, PD_COLOR = 2, PD_SIZE = 4, PD_MATRIX = 8, PD_ROTATE = 0x20, PD_UV2 = 0x80, PD_CNSROTATE = 0x20000,
     /* cluster slots follow RPPTANKSIZE*, not the flag bits */
-    PC_POSITION = 0, PC_SIZE = 3, PC_COLOR = 4, PC_ROTATE = 6, PC_UV2 = 7,
+    PC_POSITION = 0, PC_MATRIX = 1, PC_SIZE = 3, PC_COLOR = 4, PC_ROTATE = 6, PC_UV2 = 7,
     PI_ALPHABLENDING = 0x10000000, PS2_ALPHA = 184, PS2_TEST = 200,
 };
 typedef struct { unsigned char *data; int stride; } Cluster;
@@ -5853,7 +5853,8 @@ static int gu_factor(int rw, unsigned *fix)
     }
 }
 
-/* ponytail: camera-facing quads built on the CPU, per-vertex colour/UV and matrix particles ignored; add them when a tank asks (the TRACE line says). */
+/* Build quads from position billboards or per-particle matrices such as the
+   field rain trails. Four-corner colour and UV clusters still need support. */
 static void draw_ptank_body(void *atomic, char *tank, Geometry *g, void *frame);
 static void draw_ptank(void *atomic, char *tank, Geometry *g, void *frame)
 {
@@ -5882,9 +5883,13 @@ static void draw_ptank_body(void *atomic, char *tank, Geometry *g, void *frame)
             break;
         }
     }
-    if (count <= 0 || !(flags & PD_POSITION) || !cluster[0].data || !in_ram(frame) || *(unsigned char *)frame != 0 /* rwFRAME */)
+    int matrix_particles = (flags & PD_MATRIX) != 0;
+    const Cluster *placement = &cluster[matrix_particles ? PC_MATRIX : PC_POSITION];
+    if (count <= 0 || !(flags & (PD_POSITION | PD_MATRIX)) ||
+        !placement->data || placement->stride < (int)(matrix_particles ? sizeof(Matrix) : sizeof(V3)) ||
+        !in_ram(frame) || *(unsigned char *)frame != 0 /* rwFRAME */)
         return;
-    if (vertex_used + count * CLIP_MAX_OUT > MAX_VERTICES) {
+    if (count > (MAX_VERTICES - vertex_used) / CLIP_MAX_OUT) {
         p4_log("TRACE vertex pool full\n");
         return;
     }
@@ -5915,13 +5920,17 @@ static void draw_ptank_body(void *atomic, char *tank, Geometry *g, void *frame)
     void **texture = material ? material->texture : 0;
     bind_raster(texture ? *texture : 0, GU_CLAMP);
 
-    /* World axes of the view's x and of screen up (the view's y runs down the screen). */
     const Matrix *view = (const Matrix *)((char *)current_camera + CAMERA_VIEW);
-    V3 right = { view->right.x, view->up.x, view->at.x }, up = { -view->right.y, -view->up.y, -view->at.y };
-    /* The view matrix carries the view window's scale; particle sizes are in world units. */
-    float rl = sqrtf(right.x * right.x + right.y * right.y + right.z * right.z), ul = sqrtf(up.x * up.x + up.y * up.y + up.z * up.z);
-    if (rl > 0) { right.x /= rl; right.y /= rl; right.z /= rl; }
-    if (ul > 0) { up.x /= ul; up.y /= ul; up.z /= ul; }
+    V3 right, up;
+    if (!matrix_particles) {
+        /* The view's y points down and the view window scales both axes. */
+        right = (V3){ view->right.x, view->up.x, view->at.x };
+        up = (V3){ -view->right.y, -view->up.y, -view->at.y };
+        float rl = sqrtf(right.x * right.x + right.y * right.y + right.z * right.z);
+        float ul = sqrtf(up.x * up.x + up.y * up.y + up.z * up.z);
+        if (rl > 0) { right.x /= rl; right.y /= rl; right.z /= rl; }
+        if (ul > 0) { up.x /= ul; up.y /= ul; up.z /= ul; }
+    }
     const Matrix *model = p4r_003e9700(frame);
     float near = *(float *)((char *)current_camera + CAMERA_NEAR) * 1.01f;
     static const float whole[4] = { 0, 0, 1, 1 };
@@ -5930,15 +5939,26 @@ static void draw_ptank_body(void *atomic, char *tank, Geometry *g, void *frame)
         cuv = whole;
     Vertex3D *out = vertex_pool + vertex_used;
     for (int i = 0; i < count; i++) {
-        V3 centre = transform((const V3 *)(cluster[PC_POSITION].data + i * cluster[PC_POSITION].stride), model);
-        const float *size = flags & PD_SIZE ? (const float *)(cluster[PC_SIZE].data + i * cluster[PC_SIZE].stride) : (const float *)(tank + PT_CSIZE);
+        const unsigned char *particle = placement->data + i * placement->stride;
+        V3 centre, x, y;
+        if (matrix_particles) {
+            const Matrix *matrix = (const Matrix *)particle;
+            centre = transform(&matrix->pos, model);
+            V3 matrix_right = rotate(&matrix->right, model);
+            V3 matrix_up = rotate(&matrix->up, model);
+            x = (V3){ matrix_right.x * 0.5f, matrix_right.y * 0.5f, matrix_right.z * 0.5f };
+            y = (V3){ matrix_up.x * 0.5f, matrix_up.y * 0.5f, matrix_up.z * 0.5f };
+        } else {
+            centre = transform((const V3 *)particle, model);
+            const float *size = flags & PD_SIZE ? (const float *)(cluster[PC_SIZE].data + i * cluster[PC_SIZE].stride) : (const float *)(tank + PT_CSIZE);
+            float angle = flags & PD_ROTATE ? *(float *)(cluster[PC_ROTATE].data + i * cluster[PC_ROTATE].stride) : flags & PD_CNSROTATE ? *(float *)(tank + PT_CROTATE) : 0;
+            float c = cosf(angle), s = sinf(angle), w = size[0] * 0.5f, h = size[1] * 0.5f;
+            x = (V3){ (right.x * c + up.x * s) * w, (right.y * c + up.y * s) * w, (right.z * c + up.z * s) * w };
+            y = (V3){ (up.x * c - right.x * s) * h, (up.y * c - right.y * s) * h, (up.z * c - right.z * s) * h };
+        }
         unsigned colour = flags & PD_COLOR ? *(unsigned *)(cluster[PC_COLOR].data + i * cluster[PC_COLOR].stride) : *(unsigned *)(tank + PT_CCOLOR);
-        float angle = flags & PD_ROTATE ? *(float *)(cluster[PC_ROTATE].data + i * cluster[PC_ROTATE].stride) : flags & PD_CNSROTATE ? *(float *)(tank + PT_CROTATE) : 0;
         const float *uv = flags & PD_UV2 ? (const float *)(cluster[PC_UV2].data + i * cluster[PC_UV2].stride) : cuv;
         unsigned tint = modulate_colour(colour, material_colour);
-        float c = cosf(angle), s = sinf(angle), w = size[0] * 0.5f, h = size[1] * 0.5f;
-        V3 x = { (right.x * c + up.x * s) * w, (right.y * c + up.y * s) * w, (right.z * c + up.z * s) * w };
-        V3 y = { (up.x * c - right.x * s) * h, (up.y * c - right.y * s) * h, (up.z * c - right.z * s) * h };
         static const signed char corner[4][2] = { { -1, 1 }, { 1, 1 }, { 1, -1 }, { -1, -1 } }; /* around the edge */
         Vertex3D quad[4];
         float depth[4];
@@ -5961,6 +5981,11 @@ static void draw_ptank_body(void *atomic, char *tank, Geometry *g, void *frame)
         return;
     sceKernelDcacheWritebackRange(vertices, emitted * sizeof *vertices);
     sceGuDrawArray(GU_TRIANGLES, GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D, emitted, 0, vertices);
+    static int traced_matrix_draw;
+    if (matrix_particles && !traced_matrix_draw) {
+        traced_matrix_draw = 1;
+        p4_log("TRACE ptank matrix drawn flags %x n%d v%d\n", flags, count, emitted);
+    }
     ptanks_drawn++;
     particles_drawn += count;
 }

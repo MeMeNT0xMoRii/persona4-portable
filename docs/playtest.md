@@ -1,8 +1,9 @@
 # PSP-3000 playtest backlog
 
 Updated 2026-11-12. The 333 MHz replay passed the TV-world return and reached
-the next save point. The tester reported intermittent freezes when leaving
-through HOME on PSP-3000 with home2 and on PSP Go with home3 (P4-033).
+the next save point. The latest PSP Go run froze after confirming HOME at
+333 MHz (P4-033). [home4](build_b176_xmb_home4.md) is ready for a hardware
+check of HOME and rain.
 
 ## Tested build and progress
 
@@ -17,8 +18,8 @@ through HOME on PSP-3000 with home2 and on PSP Go with home3 (P4-033).
   home and saved. In the new run the footage shows Yukiko's Castle Gate, 1F
   and 2F, Chie's Persona awakening, and the Fool Social Link starting on 04/17.
   A first crash was reported after leaving the TV world (P4-029).
-- The tester confirmed normal XMB launch from `CAT_Ports`. The latest log
-  session identifies b176-xmb-home2 under `ms0:/PSP/GAME/CAT_Ports/P4/`.
+- The tester confirmed normal XMB launch from `CAT_Ports`. The PSP Go
+  log identifies b176-xmb-home3 under `ms0:/PSP/GAME/CAT_Ports/P4/`.
   A 403 MHz setting was selected for the first time. The actual clock
   during the crash was not measured.
 - The original delivered EBOOT SHA-256 is
@@ -29,14 +30,14 @@ through HOME on PSP-3000 with home2 and on PSP Go with home3 (P4-033).
 
 | ID | Scene / trigger | Observation | Evidence / current status |
 | --- | --- | --- | --- |
-| P4-001 | Logo immediately after Atlus at startup | Large white rectangle instead of a recognizable logo | Repeated report; photo. Logo identity not yet established. |
+| P4-001 | CRI logo immediately after Atlus at startup | Large white rectangle instead of the logo | Photo. The US startup task loads `title/cri_logo01.tmx` from `title/logo.bin` for the second logo. Check its texture decoding and draw state. |
 | P4-002 | Igor's introduction and card animation | White screen flashes | Report; timing needs a replay or video. |
 | P4-003 | HOME/PS button during gameplay | No visible response or normal exit in b165 | Resolved in the tester's b176-xmb-home1 follow-up: HOME now works. Separate cancel/confirm and save-in-flight scenarios were not individually described. |
 | P4-004 | Calendar/day transition, including 04/15 to 04/16 | Background briefly disappears; large overlapping weather icons and changing background tiles | Repeated report and two photos; compare the full animation with the original. |
 | P4-005 | First TV-world eerie-room visit, Yosuke's bathroom scene | Camera angle/foreground occlusion looks wrong | Photo with Chie's “Like I care…” dialogue; compare camera and occlusion separately. |
 | P4-006 | Question-mark emotion on characters | Symbol appears at floor level | Previously photographed at Teddie's feet on 04/15. A second photo shows a question mark on the floor during a 04/17 daytime scene. |
 | P4-007 | Leaving the TV world after the transition | Brief green screen | Two photos, including a green TV frame and a nearly full-screen green field. Duration unknown. |
-| P4-008 | 04/15 school route and 04/16 evening scene with the young detective | Rain is reported missing despite the rainy weather indicator | Photos identify both scenes. Check the animation in a replay. |
+| P4-008 | 04/15 school route and 04/16 evening scene with the young detective | Rain is reported missing despite the rainy weather indicator | The field rain task supplies per-particle matrices. home4 draws this PTank layout. Check visible rain and frame pacing in a replay. |
 | P4-009 | 04/15 school assembly | Protagonist body appears corrupted | Seen in the first run, absent in the replay. Keep open as intermittent; photos show different dialogue moments. |
 | P4-010 | Battle action selection | Green tint/overlay across battle scene | Photo. |
 | P4-011 | Shadows appear at battle entry or dissolve on defeat | Large rectangular patches in the effect | Defeat shown about 4.6–4.9 s into the earlier clip. The tester reports a similar shape on entry. Compare both effects on US PS2. |
@@ -61,18 +62,22 @@ through HOME on PSP-3000 with home2 and on PSP Go with home3 (P4-033).
 | P4-030 | Ground Shadows outside combat | Face or mask absent | The home3 retest reports no visible improvement for Shadows. |
 | P4-031 | Party members during battle | Heads intermittently missing | Earlier photo of the battle menu. Heads still disappear occasionally in home3. |
 | P4-032 | First Shuffle Time | Cards appeared blank | Blank cards and identical backs during shuffling are normal in the PS2 release. Verify whether a front is missing for a card that grants a Persona. |
-| P4-033 | HOME exit to XMB | Intermittent freeze | PSP-3000 home2 logs a completed save and over 2,000 later frames before the reported freeze. PSP Go home3 froze on the first exit attempt and succeeded on the next. The later home3 retest reports another failed exit. Latest log requested. |
+| P4-033 | HOME exit to XMB | Intermittent freeze | Seen on PSP-3000/home2 and on PSP Go/home3. Latest Go log at a 333 MHz setting reaches frame 21,760. The tester reports a freeze after Yes. home4 removes device sync from the exit callback and still waits for an active save to finish. |
 
 ## Next development checks
 
-1. If P4-033 repeats, note whether the HOME dialog accepted the confirmation
-   and what stayed on screen. Compare the corresponding build session in
-   the new log.
-2. Compare the same Shadow, chest and battle views between home2 and home3
-   at 333 MHz. Record recovered and exhausted guard-pool counts. Recheck
-   startup from `CAT_Ports`, load an existing save, then save and exit normally.
-3. Compare the All-Out Attack portraits and battle entry/defeat effects
-   against US PS2 footage. Record Shuffle Time card fronts and the outcome.
+1. On home4 at 333 MHz, load and save from `CAT_Ports`. Check HOME after
+   confirming Yes shortly after loading and after playing and saving. If it
+   stalls, keep the log from that session and record the screen state.
+2. Revisit the rainy 04/15 school route or 04/16 evening scene. Record visible
+   rain, umbrella gaps and frame pacing. Look for `TRACE ptank matrix drawn`.
+3. Compare All-Out Attack, battle entry and defeat at the same animation
+   frames with the US PS2 version. Inspect the skipped destination-alpha
+   passes and portrait draws. Replay 04/15 to 04/16 for the calendar and
+   capture the second logo after a cold start. Check Shuffle Time fronts
+   when a card grants a Persona.
+4. Reproduce the same Shadow, chest and missing battle head views. Correlate
+   the affected draws with geometry and material state.
 
 ## Branches and prepared XMB change
 
@@ -84,7 +89,8 @@ through HOME on PSP-3000 with home2 and on PSP Go with home3 (P4-033).
 - `playthrough/b176-xmb-home`: b176 plus save recovery, supplied artwork,
   **Persona4 PORTABLE** title and HOME exit support. Selected explicitly by
   the tester for the next build. Sound remains enabled. Earlier rendering
-  reports are from b165. The last 04/16–04/17 session log identifies home2.
+  reports are from b165. home3 has follow-up reports for the castle and
+  home4 is the current test build.
 
 XMB packaging was checked with actual PSPSDK packaging tools: title and
 MEMSIZE verified, all three PNGs recovered byte-for-byte from the expected
@@ -162,6 +168,14 @@ failed attempt's log.
 
 In a subsequent home3 retest, the castle entrance and the door before the
 Chie fight looked better. Shadows and chests looked the same, and heads
-were still missing in some battle views. A matching log can show whether
-the guarded draw path recovered meshes in that run. The tester also
-reported another failed exit to XMB.
+were still missing in some battle views. The matching home3 PSP Go log
+records 4,299 recovered draw submissions and zero pool exhaustions in its
+16 reported intervals. This verifies that the guard recovered draws during
+the session. Identifying individual Shadow, chest or head draws requires
+a scene capture.
+
+The same Go session reached frame 21,760 and ended with a battle trace.
+There are no HOME phase markers. The 333 MHz setting and freeze after Yes
+come from the tester. The log cannot tell whether the callback reached the
+card lock, device sync or firmware exit. See the
+[home4 build notes](build_b176_xmb_home4.md) for the test change.

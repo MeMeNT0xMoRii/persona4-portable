@@ -26,15 +26,11 @@ void p4_card_io_end(void)
 static int exit_callback(int arg1, int arg2, void *common)
 {
     (void)arg1; (void)arg2; (void)common;
-    /* The callback runs only after the user confirms HOME -> Yes.
-       Stop new card commands and let the current synchronous command finish,
-       including its temporary-file/backup renames. Do not close another thread's
-       FILE or terminate that thread midway through a save. */
+    /* Stop new card commands after HOME confirmation. The in-flight command
+       holds this lock through its file renames and save sync. */
     closing = 1;
-    if (sceKernelWaitSema(card_lock, 1, 0) >= 0)
-        sceIoSync("ms0:", 0);
-    /* No logging or video/audio teardown here: those threads may be blocked in
-       the system dialog. The firmware owns process teardown after ExitGame. */
+    sceKernelWaitSema(card_lock, 1, 0);
+    /* The firmware owns teardown. Keep file and device I/O in the game threads. */
     sceKernelExitGame();
     return 0;
 }

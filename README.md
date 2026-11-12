@@ -9,10 +9,10 @@ and launching from XMB failed when loading data from fixed paths.
 **b176-xmb-home2** resolves game files and saves from the launch directory.
 The tester confirmed launch from the normal XMB in `CAT_Ports` on PSP-3000.
 See the [build record](docs/build_b176_xmb_home2.md).
-[b176-xmb-home3](docs/build_b176_xmb_home3.md) is the next test build for
-missing geometry near the camera.
-Earlier b165 playtesting reached Yosuke's Persona awakening; a complete
-playthrough has not been validated.
+[b176-xmb-home3](docs/build_b176_xmb_home3.md) improved the reported views
+near Yukiko's Castle entrance and the door before the Chie fight.
+[b176-xmb-home4](docs/build_b176_xmb_home4.md) tests the HOME exit and rain.
+Hardware playtesting has reached Chie's Persona awakening and the next save.
 
 Our previous hardware reference is **b165 with save recovery**. The
 [`playthrough/b165-tested`](https://github.com/MeMeNT0xMoRii/persona4-portable/tree/playthrough/b165-tested)
