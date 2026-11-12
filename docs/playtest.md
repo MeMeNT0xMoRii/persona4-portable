@@ -1,7 +1,8 @@
 # PSP-3000 playtest backlog
 
-Updated 2026-11-12. This records reports from PSP-3000 hardware. The latest
-round covers 04/16–04/17, with ten photos and six short clips.
+Updated 2026-11-12. The 333 MHz replay passed the TV-world return and reached
+the next save point. The tester then reported an intermittent freeze while
+leaving the game through HOME (P4-033).
 
 ## Tested build and progress
 
@@ -37,7 +38,7 @@ round covers 04/16–04/17, with ten photos and six short clips.
 | P4-008 | 04/15 school route and 04/16 evening scene with the young detective | Rain is reported missing despite the rainy weather indicator | Photos identify both scenes. Check the animation in a replay. |
 | P4-009 | 04/15 school assembly | Protagonist body appears corrupted | Seen in the first run, absent in the replay. Keep open as intermittent; photos show different dialogue moments. |
 | P4-010 | Battle action selection | Green tint/overlay across battle scene | Photo. |
-| P4-011 | Defeated enemy disappears in a castle battle | Dissolve shows large orange-red rectangular patches | Visible about 4.6–4.9 s into the new clip. Compare the same defeat effect on US PS2. |
+| P4-011 | Shadows appear at battle entry or dissolve on defeat | Large rectangular patches in the effect | Defeat shown about 4.6–4.9 s into the earlier clip. The tester reports a similar shape on entry. Compare both effects on US PS2. |
 | P4-012 | Level-up screen | Black/white bars cover the character image | Level-2 screen photo. |
 | P4-013 | Text containing inserted player name or stat value | Excessive spacing after the name or in “knowledge … increased” | Name spacing visible in photo; level text also has a large gap before punctuation. Cause unknown. |
 | P4-014 | TV-world liquor-store scene | Briefly wrong camera angle/foreground obstruction | Photo. Keep separate from P4-005 until compared. |
@@ -52,21 +53,25 @@ round covers 04/16–04/17, with ten photos and six short clips.
 | P4-023 | Yukiko's Castle 1F, flying Shadow outside combat | Only purple hand or arm shapes are visible in the reported encounter | Photo. Check how early the Shadow is visible when approaching it. |
 | P4-024 | Yukiko's Castle 1F, treasure chest near the circular carpet | Chest shows disconnected red panels | Photo. Chest interaction was not reported. |
 | P4-025 | Yukiko's Castle 2F, walk around the room before Chie's awakening | Large bright panels appear at the sides near windows as the camera moves | Visible near 2.7 s and 5.7 s in the room clip. |
-| P4-026 | All-Out Attack in Yukiko's Castle | Reported distortion in the sequence, with the attack effect washing out much of the scene | Clip captures the transition and attack. Compare the pattern and brightness with the same move on PS2. |
+| P4-026 | All-Out Attack in Yukiko's Castle | Missing character cut-ins and washed-out attack effects | New clip shows a black wedge in the prompt around 7 s and no portraits in the orange transition and exclamation sequence around 8.3–9.6 s. Compare the same sequence on PS2. |
 | P4-027 | Chie's Persona awakening | Blue and white light effects look wrong to the tester | Clip shows the aura and Chie taking on a bright cyan tint. Compare intensity and timing with PS2. |
 | P4-028 | Fool Social Link starts, 04/17 daytime in the TV-world hub | Card height looks too low and the card overlaps Teddie | Photo. Compare the same animation frame with the US PS2 version. |
-| P4-029 | 04/17, after returning from the TV world following Chie's awakening | First reported crash at the "Daytime" loading screen | The latest session completes all three logged movies and ends during setup of event `E175_001` in field `F007_002`. One occurrence with 403 MHz selected. Effective clock and failing operation are unconfirmed. 333 MHz replay pending. |
+| P4-029 | 04/17, after returning from the TV world following Chie's awakening | First reported crash at the "Daytime" loading screen | The 403 MHz setting run logged three completed movies, then setup of `E175_001` / `F007_002`. The tester reached the next save point at 333 MHz on the next attempt. Cause and effective clock during the failed run remain open. |
+| P4-030 | Ground Shadows outside combat | Face or mask absent | Tester report. Compare the same Shadow on US PS2 and with the guard-pool change. |
+| P4-031 | Party members during battle | Heads intermittently missing | Tester report and photo of the battle menu. Repeat with the same camera and compare guard-pool counters. |
+| P4-032 | First Shuffle Time | Cards appeared blank | Blank cards and identical backs during shuffling are normal in the PS2 release. Verify whether a front is missing for a card that grants a Persona. |
+| P4-033 | HOME exit after reaching the next save point on the 333 MHz replay | Freeze during the return to XMB | Tester powered off, then relaunched and exited successfully. Second log pending. The scene-loading failure P4-029 did not repeat in this run. |
 
 ## Next development checks
 
-1. P4-029: repeat the return at 333 MHz with sound on, keeping the same build,
-   launcher and save. If it fails again, compare the end of the new log and
-   record whether the loading icon and HOME still respond.
-2. If the failure repeats near `E175_001` / `F007_002`, trace event and field
-   initialization around the last texture and model loads.
-3. Compare the 1F Shadow, chest and the 2F room with the same US PS2 scenes.
-   Check object visibility and interaction first, then the placement and
-   rendering of battle, light and card effects.
+1. Inspect the 333 MHz log for P4-033. If HOME hangs again, identify whether
+   confirmation was accepted and whether the game stopped before or during
+   the firmware's return to XMB.
+2. Compare the same Shadow, chest and battle views between home2 and home3
+   at 333 MHz. Record recovered and exhausted guard-pool counts. Recheck
+   startup from `CAT_Ports`, load an existing save, then save and exit normally.
+3. Compare the All-Out Attack portraits and battle entry/defeat effects
+   against US PS2 footage. Record Shuffle Time card fronts and the outcome.
 
 ## Branches and prepared XMB change
 
@@ -131,3 +136,15 @@ skips a mesh when the worst-case clipped output would exceed the remaining
 per-frame vertex or index space. This is a concrete path that can omit
 geometry. Matching it to individual scenes still needs a test. See
 [`draw_guarded_chunks`](../port/rwsky.c).
+
+## 333 MHz replay and geometry test build
+
+The 333 MHz replay passed the 04/17 return once. HOME then hung once
+after the tester reached the next save point. Relaunching and quitting
+worked. Keep both observations open and compare the second log when it
+arrives.
+
+[b176-xmb-home3](build_b176_xmb_home3.md) tests the renderer change. For each
+mesh the guard path now checks what it actually emits when space is tight.
+The summary log distinguishes recovered meshes from actual exhaustion.
+The same camera and encounter are needed to verify an improvement on PSP.

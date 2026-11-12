@@ -672,6 +672,7 @@ enum { POOL_INDICES = 192 * 1024, MAX_GUARDED = 32 * 1024 }; /* b81 pipeline: 59
 static int index_cap = POOL_INDICES;
 #define MAX_INDICES index_cap
 static int guard_meshes, guard_clipped, guard_dropped, guard_spheres, guard_vertices;
+static unsigned guard_pool_recovered, guard_pool_exhausted;
 int p4_light_unprelit = 1; /* 0: lit unprelit untextured meshes at full material colour, as b57 */
 int p4_decal_bias = 0; /* depth units added to overlay passes; 0 as b57 */
 int p4_guard_fast = 2; /* 0: the b72 classify loop, 1: b73 FPU loop, 2: VFPU */
@@ -1427,6 +1428,10 @@ int func_003f79b0(void *raster, void *device, int flags)
         p4_memstat_report();
         p4_log("frames %d atomics %d skipped %d ptanks %d/%d sectors %d skinned %d other %d tests %d out %d af48 %d\n", frames, atomics_drawn, atomics_skipped, ptanks_drawn, particles_drawn, sectors_drawn, skinned_drawn, pipeline_other, frustum_tests, frustum_out, G32(0xaf48 - 0x10000));
         p4_log("guard on %d meshes %d clipped %d dropped %d spheres %d vertices %d uvrebase %d uvmemo %d hits %u dstalpha_skipped %d\n", p4_guard_clip, guard_meshes, guard_clipped, guard_dropped, guard_spheres, guard_vertices, uv_rebased, p4_uv_memo, uv_memo_hits, dst_alpha_skipped);
+        if (guard_pool_recovered || guard_pool_exhausted) {
+            p4_log("guard pool recovered %u exhausted %u\n", guard_pool_recovered, guard_pool_exhausted);
+            guard_pool_recovered = guard_pool_exhausted = 0;
+        }
         uv_memo_hits = 0;
         if (rtt_passes)
             p4_log("rtt passes %u clears %u atomics %u 2d %u\n", rtt_passes, rtt_clears, rtt_atomics, rtt_2d);
@@ -3113,11 +3118,11 @@ static void draw_guarded_chunks(int prim, const unsigned short *idx, int nidx, c
     int triangles = prim == GU_TRIANGLE_STRIP ? nidx - 2 : nidx / 3;
     if (triangles <= 0)
         return;
-    int units = (triangles * GUARD_OUT_MAX * stride + sizeof(Vertex3D) - 1) / sizeof(Vertex3D);
-    if (index_used + triangles * 3 > MAX_INDICES || vertex_used + units > MAX_VERTICES) {
-        p4_log("TRACE guard pool full\n");
-        return;
-    }
+    int index_space = MAX_INDICES - index_used;
+    int cut_space = (MAX_VERTICES - vertex_used) * (int)sizeof(Vertex3D) / stride;
+    /* A triangle emits kept indices, clipped vertices, or neither. Use the
+       worst case only to decide whether individual writes need bounds checks. */
+    int check_space = triangles > index_space / 3 || triangles > cut_space / GUARD_OUT_MAX;
     unsigned short *kept = index_pool + index_used;
     char *cut = (char *)(vertex_pool + vertex_used);
     int nkept = 0, ncut = 0;
@@ -3132,8 +3137,11 @@ static void draw_guarded_chunks(int prim, const unsigned short *idx, int nidx, c
     if (cls == 2) /* the whole run off screen */
         continue;
     if (cls == 0 && prim != GU_TRIANGLE_STRIP && p4_guard_loop2) {
-        memcpy(kept + nkept, idx + first * 3, (last - first) * 3 * sizeof *kept);
-        nkept += (last - first) * 3;
+        int count = (last - first) * 3;
+        if (check_space && count > index_space - nkept)
+            goto pool_exhausted;
+        memcpy(kept + nkept, idx + first * 3, count * sizeof *kept);
+        nkept += count;
         continue;
     }
     for (int t = first; t < last; t++) {
@@ -3145,20 +3153,16 @@ static void draw_guarded_chunks(int prim, const unsigned short *idx, int nidx, c
         } else {
             a = idx[t * 3]; b = idx[t * 3 + 1]; c = idx[t * 3 + 2];
         }
-        if (cls == 0) {
-            kept[nkept++] = a; kept[nkept++] = b; kept[nkept++] = c;
-            continue;
-        }
+        if (cls == 0)
+            goto keep_triangle;
         if (lazy) {
             guard_code_lazy(lazy, a, near);
             guard_code_lazy(lazy, b, near);
             guard_code_lazy(lazy, c, near);
         }
         unsigned ca = guard_code[a], cb = guard_code[b], cc = guard_code[c], mask = GUARD_MASK;
-        if (!((ca | cb | cc) & mask)) {
-            kept[nkept++] = a; kept[nkept++] = b; kept[nkept++] = c;
-            continue;
-        }
+        if (!((ca | cb | cc) & mask))
+            goto keep_triangle;
         if (ca & cb & cc) { /* wholly behind the near plane or beyond one side of the band */
             guard_dropped++;
             continue;
@@ -3172,9 +3176,8 @@ static void draw_guarded_chunks(int prim, const unsigned short *idx, int nidx, c
             }
         }
         if (p4_guard_near_ge && ((ca | cb | cc) & 1)) {
-            kept[nkept++] = a; kept[nkept++] = b; kept[nkept++] = c;
             guard_near_ge++;
-            continue;
+            goto keep_triangle;
         }
         prof_begin(PROF_GCLIP);
         ClipVertex tri[3];
@@ -3202,6 +3205,10 @@ static void draw_guarded_chunks(int prim, const unsigned short *idx, int nidx, c
             if (rn != n || memcmp(ref, out, n * sizeof *out) || (lit && memcmp(refn, normal, n * sizeof *normal)))
                 guard_clip_diffs++;
         }
+        if (check_space && n > cut_space - ncut) {
+            prof_end(PROF_GCLIP);
+            goto pool_exhausted;
+        }
         for (int k = 0; k < n; k++, ncut++) {
             if (lit) { /* the interpolated normal in s8 units again; the GE divides by its length */
                 Vertex3DN *v = (Vertex3DN *)cut + ncut;
@@ -3212,9 +3219,19 @@ static void draw_guarded_chunks(int prim, const unsigned short *idx, int nidx, c
         }
         guard_clipped++;
         prof_end(PROF_GCLIP);
+        continue;
+
+    keep_triangle:
+        if (check_space && index_space - nkept < 3)
+            goto pool_exhausted;
+        kept[nkept++] = a;
+        kept[nkept++] = b;
+        kept[nkept++] = c;
     }
     }
     prof_end(PROF_GLOOP);
+    if (check_space && (nkept || ncut))
+        guard_pool_recovered++;
     prof_begin(PROF_GSUB);
     if (nkept) {
         index_used += nkept;
@@ -3227,6 +3244,13 @@ static void draw_guarded_chunks(int prim, const unsigned short *idx, int nidx, c
         draw_mesh_vertices(GU_TRIANGLES, vtype & ~GU_INDEX_16BIT, ncut, 0, cut, material, modulate, light);
     }
     prof_end(PROF_GSUB);
+    return;
+
+pool_exhausted:
+    /* No vertices or indices have been submitted yet. The next mesh can
+       still use the original unused ranges in both pools. */
+    prof_end(PROF_GLOOP);
+    guard_pool_exhausted++;
 }
 
 /* A guarded mesh drawn from its compact arrays (cached or just emitted): classify only the vertices it uses, in their

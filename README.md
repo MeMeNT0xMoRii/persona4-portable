@@ -9,6 +9,8 @@ and launching from XMB failed when loading data from fixed paths.
 **b176-xmb-home2** resolves game files and saves from the launch directory.
 The tester confirmed launch from the normal XMB in `CAT_Ports` on PSP-3000.
 See the [build record](docs/build_b176_xmb_home2.md).
+[b176-xmb-home3](docs/build_b176_xmb_home3.md) is the next test build for
+missing geometry near the camera.
 Earlier b165 playtesting reached Yosuke's Persona awakening; a complete
 playthrough has not been validated.
 
@@ -68,7 +70,7 @@ Additional dependencies include [PSPDEV](https://github.com/pspdev), [PSPSDK](ht
 
 Original contributions owned by this project's contributors are available under the [MIT License](LICENSE), subject to the [license scope and third-party notices](THIRD_PARTY.md). This license does not grant rights to Persona 4, upstream decompiled code, retail assembly, SDKs, middleware or game assets.
 
-The inspected upstream revision has no repository-wide license. A public repository and attribution alone do not grant permission to redistribute or relicense its contents. Keep the upstream checkout external and resolve applicable permissions before distributing derived material.
+The pinned Persona 4 decompilation checkout has no top-level license. See the third-party notices for the scope of the port's MIT license and the separate decompilation dependency.
 
 Publish source tooling separately from locally generated game artifacts. **Generated EBOOT.PBP contains game-derived code**, including translated retail routines. The source-build utility generates these locally from the user's disc instead of bundling the game executable. The project license covers only our original contributions. See [publication notes](docs/publishing.md) for the packaging boundaries.
 
