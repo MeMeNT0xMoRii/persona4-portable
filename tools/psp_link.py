@@ -10,6 +10,7 @@ from psp_link_census import OBJ, symbols
 from psp_make_data import K, PSP_IMAGE, START, retail_to_native, build as build_data
 from psp_reasm import reassemble, write_report
 from psp_xref import find_gp, load, sources, stub_address, symbol_addresses
+from psp_xmb import pack_eboot
 
 PSPDEV = Path(os.environ["PSPDEV"])
 BIN = PSPDEV / "bin"
@@ -196,9 +197,8 @@ def main():
     (OUT / "p4str.bin").write_bytes(struct.pack(f"<{len(string_offsets)}I", *string_offsets))
     from psp_address_audit import main as audit_addresses
     audit_addresses()
-    run(BIN / "mksfoex.exe", "-d", "MEMSIZE=1", "Persona 4", OUT / "PARAM.SFO")
     run(BIN / "psp-strip.exe", elf, "-o", OUT / "strip.elf")
-    run(BIN / "pack-pbp.exe", OUT / "EBOOT.PBP", OUT / "PARAM.SFO", "NULL", "NULL", "NULL", "NULL", "NULL", OUT / "strip.elf", "NULL")
+    pack_eboot(ROOT, OUT, BIN, run, OUT / "strip.elf")
     DIST.mkdir(parents=True, exist_ok=True)
     for name in ("EBOOT.PBP", "p4data.bin", "p4str.bin"):
         (DIST / name).write_bytes((OUT / name).read_bytes())

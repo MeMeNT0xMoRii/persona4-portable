@@ -1,4 +1,16 @@
-# Persona 4 for PSP
+# Persona4 PORTABLE
+
+This playtest branch builds on [dreikk91/persona4-psp](https://github.com/dreikk91/persona4-psp).
+It includes the local save-recovery fix and the [custom XMB presentation](docs/xmb.md)
+prepared for the next PSP-3000 test build. Hardware playtesting has reached
+Yosuke's Persona awakening; a complete playthrough has not been validated.
+
+Our hardware baseline is **b165 with save recovery**. The
+[`playthrough/b165-tested`](https://github.com/MeMeNT0xMoRii/persona4-portable/tree/playthrough/b165-tested)
+branch preserves it; [`playthrough/b165-xmb`](https://github.com/MeMeNT0xMoRii/persona4-portable/tree/playthrough/b165-xmb)
+contains the next XMB changes and the [18-item hardware test backlog](docs/playtest.md).
+The fork's `main` branch currently contains upstream b176; it has not replaced
+our tested baseline. No custom release or complete-playthrough claim is implied.
 
 An experimental native PSP port of **Shin Megami Tensei: Persona 4** (PlayStation 2, USA, `SLUS_217.82`). The port combines recovered C, locally translated retail routines and PSP implementations of graphics, input, files, saves, audio and movie playback.
 
@@ -20,7 +32,7 @@ A [clean source-build check](docs/build_validation_b164.md) successfully produce
 
 The [source-build utility validation](docs/source_build_validation_b164.md) also covers the frozen Windows runtime, build caching and hidden compiler processes.
 
-The current working-tree build is **b164**. The source build currently targets Windows and a Windows PSPSDK toolchain. A PSP with 64 MB RAM and firmware capable of running homebrew is required; PSP-1000 support is not established.
+This branch uses **b165 plus the save-recovery and XMB changes**. The source build currently targets Windows and a Windows PSPSDK toolchain. A PSP with 64 MB RAM and firmware capable of running homebrew is required; PSP-1000 support is not established.
 
 ## Status
 
