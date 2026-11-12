@@ -15,9 +15,10 @@ round covers 04/16–04/17, with ten photos and six short clips.
   home and saved. In the new run the footage shows Yukiko's Castle Gate, 1F
   and 2F, Chie's Persona awakening, and the Fool Social Link starting on 04/17.
   A first crash was reported after leaving the TV world (P4-029).
-- The exact build and launcher for the new run are unconfirmed. The latest
-  delivered build is b176-xmb-home2. A 403 MHz setting was selected for the
-  first time. The actual clock during the crash was not measured.
+- The tester confirmed normal XMB launch from `CAT_Ports`. The latest log
+  session identifies b176-xmb-home2 under `ms0:/PSP/GAME/CAT_Ports/P4/`.
+  A 403 MHz setting was selected for the first time. The actual clock
+  during the crash was not measured.
 - The original delivered EBOOT SHA-256 is
   `3797d600c3dc29f62476d57f6b043c8bef23cc0119110ba11d204848e9af58cf`.
   The installed PSP file has not been rehashed.
@@ -44,7 +45,7 @@ round covers 04/16–04/17, with ten photos and six short clips.
 | P4-016 | Triangle-button tutorial in Dojima's living room | Large gap before the triangle symbol | Photo; text layout issue, not a report of triangle input failing. |
 | P4-017 | Various early-game scenes | Slowdowns and stutters | Report; no FPS/frame-time measurements or precise triggers yet. |
 | P4-018 | Rainy school route and 04/16 evening scene with the young detective | Missing or transparent parts of umbrella canopies | The pale umbrella shows gaps in the latest photo too. |
-| P4-019 | Move installation into CAT_Ports and launch from normal XMB | Early exit loading data from fixed paths | Photo: HOME callback ready and boot-memory guard passed, then negative data/list results. b176-xmb-home2 replaces fixed runtime paths with the launch directory. Host checks pass; categorized XMB hardware retest pending. |
+| P4-019 | Move installation into CAT_Ports and launch from normal XMB | Early exit loading data from fixed paths in home1 | Resolved for the tested PSP-3000 setup in b176-xmb-home2. The tester confirmed XMB launch and gameplay. The log confirms the categorized directory, successful boot data reads and 13,072 indexed files. |
 | P4-020 | Dojima's house, 04/17 early morning, talking to Nanako | Tall triangular surface beside the protagonist | Photo. Compare foreground objects at the same camera position. |
 | P4-021 | Yukiko's Castle Gate, 04/17 daytime, approach the entrance | Red-and-black pattern appears over the side background as the camera moves closer | Two photos at different distances. Check the pattern against the same approach on PS2. |
 | P4-022 | Yukiko's Castle 1F, look down the long hallway | Bright white area at the far end | Photo. Compare visibility and lighting from the same position on PS2. |
@@ -54,24 +55,16 @@ round covers 04/16–04/17, with ten photos and six short clips.
 | P4-026 | All-Out Attack in Yukiko's Castle | Reported distortion in the sequence, with the attack effect washing out much of the scene | Clip captures the transition and attack. Compare the pattern and brightness with the same move on PS2. |
 | P4-027 | Chie's Persona awakening | Blue and white light effects look wrong to the tester | Clip shows the aura and Chie taking on a bright cyan tint. Compare intensity and timing with PS2. |
 | P4-028 | Fool Social Link starts, 04/17 daytime in the TV-world hub | Card height looks too low and the card overlaps Teddie | Photo. Compare the same animation frame with the US PS2 version. |
-| P4-029 | 04/17, after returning from the TV world following Chie's awakening | First reported crash at the "Daytime" loading screen | Photo shows the loading icon. One occurrence with 403 MHz selected. Effective clock, response to input, and failure point are unconfirmed. Capture the session log and replay at 333 MHz. |
+| P4-029 | 04/17, after returning from the TV world following Chie's awakening | First reported crash at the "Daytime" loading screen | The latest session completes all three logged movies and ends during setup of event `E175_001` in field `F007_002`. One occurrence with 403 MHz selected. Effective clock and failing operation are unconfirmed. 333 MHz replay pending. |
 
 ## Next development checks
 
-1. P4-029: copy the `p4.log` from the affected session if available. Disable the
-   403 MHz override and retry from the same save at 333 MHz with sound on,
-   keeping the same build and launcher. Record whether the load finishes,
-   the loading icon still moves, or the system exits the game. The port
-   requests 333 MHz at startup. Treat the effective clock as unmeasured.
-2. Inspect the final log entries from that session. A `video task begin`
-   followed by `video init au` and no `video decode 0` or `video task end`
-   makes the known b176 decoder hang worth checking. If the session log
-   contains no movie start near the failure, inspect the scene transition and
-   resource loading first. The log writer buffers entries, so a missing line
-   alone cannot establish the failure point.
-3. Verify categorized-folder startup (P4-019) with b176-xmb-home2 and check
-   HOME and save/load on that setup. The home2 log records the launch directory.
-4. Compare the 1F Shadow, chest and the 2F room with the same US PS2 scenes.
+1. P4-029: repeat the return at 333 MHz with sound on, keeping the same build,
+   launcher and save. If it fails again, compare the end of the new log and
+   record whether the loading icon and HOME still respond.
+2. If the failure repeats near `E175_001` / `F007_002`, trace event and field
+   initialization around the last texture and model loads.
+3. Compare the 1F Shadow, chest and the 2F room with the same US PS2 scenes.
    Check object visibility and interaction first, then the placement and
    rendering of battle, light and card effects.
 
@@ -85,7 +78,7 @@ round covers 04/16–04/17, with ten photos and six short clips.
 - `playthrough/b176-xmb-home`: b176 plus save recovery, supplied artwork,
   **Persona4 PORTABLE** title and HOME exit support. Selected explicitly by
   the tester for the next build. Sound remains enabled. Earlier rendering
-  reports are from b165. The new 04/16–04/17 run has no confirmed build label.
+  reports are from b165. The last 04/16–04/17 session log identifies home2.
 
 XMB packaging was checked with actual PSPSDK packaging tools: title and
 MEMSIZE verified, all three PNGs recovered byte-for-byte from the expected
@@ -120,5 +113,21 @@ working-directory fallback, before starting game threads. Boot data, archive
 index/parts, SOUND, VIDEO, NOSOUND, logs and saves use that directory.
 Move the entire installation, including saves. No fallback reads an old copy.
 Memory-stick paths only (ms0:); unsupported or overlong paths fail explicitly.
-Retest XMB startup, existing save load, fresh save/reload, sound, movies and HOME.
-The known upstream long-session movie/audio issue is unchanged.
+The tester confirmed XMB startup and gameplay from `CAT_Ports` with home2.
+The log records `loaded data=2320512 list=2476` and `disc index 13072 files`
+after resolving that directory.
+
+## P4-029 log review
+
+In the final home2 session, `P4CTOP1`, `P4CTOP2` and `P4CT007` each log
+`video task end ... result 0`. No further `video task begin` appears before
+the log ends. The final section records reads of `E175_001.PM1`–`.PM3`,
+`F007_002.P00` and `.P01`, then NPC and texture setup. This puts the recorded
+activity in the in-game scene transition. The log ends without an exception
+address or a recorded file error, so it cannot identify the failing operation.
+
+The same session logged 18,218 `TRACE guard pool full` messages. The renderer
+skips a mesh when the worst-case clipped output would exceed the remaining
+per-frame vertex or index space. This is a concrete path that can omit
+geometry. Matching it to individual scenes still needs a test. See
+[`draw_guarded_chunks`](../port/rwsky.c).

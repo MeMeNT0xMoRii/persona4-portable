@@ -15,7 +15,10 @@ include original folder, CAT_Ports, renamed folder with spaces, cwd fallback,
 and invalid/overlong inputs. Release linker validates 19 PSP import libraries
 and reports zero function pointers without native targets. PBP artwork and
 program sections are compared byte-for-byte, SFO title and MEMSIZE checked.
-The release is not yet tested on PSP hardware.
+On PSP-3000 the tester launched this build from the normal XMB in `CAT_Ports`
+and reached Chie's Persona awakening. The log records the categorized path
+and successful startup reads. See the [playtest notes](playtest.md) for the
+separate crash reported after leaving the TV world.
 
 Install the three matched update files EBOOT.PBP, p4data.bin and p4str.bin.
 Move the whole existing P4 directory, including saves and converted resources,
