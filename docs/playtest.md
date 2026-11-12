@@ -60,13 +60,13 @@ leaving the game through HOME (P4-033).
 | P4-030 | Ground Shadows outside combat | Face or mask absent | Tester report. Compare the same Shadow on US PS2 and with the guard-pool change. |
 | P4-031 | Party members during battle | Heads intermittently missing | Tester report and photo of the battle menu. Repeat with the same camera and compare guard-pool counters. |
 | P4-032 | First Shuffle Time | Cards appeared blank | Blank cards and identical backs during shuffling are normal in the PS2 release. Verify whether a front is missing for a card that grants a Persona. |
-| P4-033 | HOME exit after reaching the next save point on the 333 MHz replay | Freeze during the return to XMB | Tester powered off, then relaunched and exited successfully. Second log pending. The scene-loading failure P4-029 did not repeat in this run. |
+| P4-033 | HOME exit after reaching the next save point on the 333 MHz replay | Freeze during the return to XMB | The long home2 replay logs `SDKMEMCARD_SAVE OK`, then more than 2,000 further frames. The tester powered off and later exited successfully. The log has no markers for the steps of HOME exit. |
 
 ## Next development checks
 
-1. Inspect the 333 MHz log for P4-033. If HOME hangs again, identify whether
-   confirmation was accepted and whether the game stopped before or during
-   the firmware's return to XMB.
+1. If P4-033 repeats, note whether the HOME dialog accepted the confirmation
+   and what stayed on screen. Compare the corresponding build session in
+   the new log.
 2. Compare the same Shadow, chest and battle views between home2 and home3
    at 333 MHz. Record recovered and exhausted guard-pool counts. Recheck
    startup from `CAT_Ports`, load an existing save, then save and exit normally.
@@ -141,10 +141,16 @@ geometry. Matching it to individual scenes still needs a test. See
 
 The 333 MHz replay passed the 04/17 return once. HOME then hung once
 after the tester reached the next save point. Relaunching and quitting
-worked. Keep both observations open and compare the second log when it
-arrives.
+worked. The follow-up log appends two home2 sessions. The longer session
+records the `E175_001` / `F007_002` transition, a successful save, and
+continued frame updates from 18,176 to 20,480 after saving. The HOME callback
+does not log entry, acquisition of the card lock, or the result of device
+sync. The log therefore cannot locate the exit stall. The successful
+relaunch and quit are confirmed by the tester's report.
 
 [b176-xmb-home3](build_b176_xmb_home3.md) tests the renderer change. For each
 mesh the guard path now checks what it actually emits when space is tight.
 The summary log distinguishes recovered meshes from actual exhaustion.
 The same camera and encounter are needed to verify an improvement on PSP.
+The longer home2 replay logged 9,996 `TRACE guard pool full` messages as a
+baseline for the renderer comparison.
