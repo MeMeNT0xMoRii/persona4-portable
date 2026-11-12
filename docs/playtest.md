@@ -49,19 +49,19 @@ through HOME on PSP-3000 with home2 and on PSP Go with home3 (P4-033).
 | P4-018 | Rainy school route and 04/16 evening scene with the young detective | Missing or transparent parts of umbrella canopies | The pale umbrella shows gaps in the latest photo too. |
 | P4-019 | Move installation into CAT_Ports and launch from normal XMB | Early exit loading data from fixed paths in home1 | Resolved for the tested PSP-3000 setup in b176-xmb-home2. The tester confirmed XMB launch and gameplay. The log confirms the categorized directory, successful boot data reads and 13,072 indexed files. |
 | P4-020 | Dojima's house, 04/17 early morning, talking to Nanako | Tall triangular surface beside the protagonist | Photo. Compare foreground objects at the same camera position. |
-| P4-021 | Yukiko's Castle Gate, 04/17 daytime, approach the entrance | Red-and-black pattern appears over the side background as the camera moves closer | Two photos at different distances. Check the pattern against the same approach on PS2. |
+| P4-021 | Yukiko's Castle Gate, 04/17 daytime, approach the entrance | Red-and-black pattern appears over the side background as the camera moves closer | Earlier photos show two distances. The tester reports a visible improvement on home3. |
 | P4-022 | Yukiko's Castle 1F, look down the long hallway | Bright white area at the far end | Photo. Compare visibility and lighting from the same position on PS2. |
 | P4-023 | Yukiko's Castle 1F, flying Shadow outside combat | Only purple hand or arm shapes are visible in the reported encounter | Photo. Check how early the Shadow is visible when approaching it. |
-| P4-024 | Yukiko's Castle 1F, treasure chest near the circular carpet | Chest shows disconnected red panels | Photo. Chest interaction was not reported. |
-| P4-025 | Yukiko's Castle 2F, walk around the room before Chie's awakening | Large bright panels appear at the sides near windows as the camera moves | Visible near 2.7 s and 5.7 s in the room clip. |
+| P4-024 | Yukiko's Castle 1F, treasure chest near the circular carpet | Chest shows disconnected red panels | Earlier photo. Chest appearance was unchanged in the home3 retest. |
+| P4-025 | Yukiko's Castle 2F, walk around the room before Chie's awakening | Large bright panels appear at the sides near windows as the camera moves | Visible near 2.7 s and 5.7 s in the earlier clip. The tester reports an improvement at the door before the Chie fight on home3. |
 | P4-026 | All-Out Attack in Yukiko's Castle | Missing character cut-ins and washed-out attack effects | New clip shows a black wedge in the prompt around 7 s and no portraits in the orange transition and exclamation sequence around 8.3–9.6 s. Compare the same sequence on PS2. |
 | P4-027 | Chie's Persona awakening | Blue and white light effects look wrong to the tester | Clip shows the aura and Chie taking on a bright cyan tint. Compare intensity and timing with PS2. |
 | P4-028 | Fool Social Link starts, 04/17 daytime in the TV-world hub | Card height looks too low and the card overlaps Teddie | Photo. Compare the same animation frame with the US PS2 version. |
 | P4-029 | 04/17, after returning from the TV world following Chie's awakening | First reported crash at the "Daytime" loading screen | The 403 MHz setting run logged three completed movies, then setup of `E175_001` / `F007_002`. The tester reached the next save point at 333 MHz on the next attempt. Cause and effective clock during the failed run remain open. |
-| P4-030 | Ground Shadows outside combat | Face or mask absent | Tester report. Compare the same Shadow on US PS2 and with the guard-pool change. |
-| P4-031 | Party members during battle | Heads intermittently missing | Tester report and photo of the battle menu. Repeat with the same camera and compare guard-pool counters. |
+| P4-030 | Ground Shadows outside combat | Face or mask absent | The home3 retest reports no visible improvement for Shadows. |
+| P4-031 | Party members during battle | Heads intermittently missing | Earlier photo of the battle menu. Heads still disappear occasionally in home3. |
 | P4-032 | First Shuffle Time | Cards appeared blank | Blank cards and identical backs during shuffling are normal in the PS2 release. Verify whether a front is missing for a card that grants a Persona. |
-| P4-033 | HOME exit to XMB | Intermittent freeze | PSP-3000 home2 logs a completed save and over 2,000 later frames before the reported freeze. PSP Go home3 froze on the first exit attempt and succeeded on the next. No log from the failed Go attempt. The exact failing step remains open. |
+| P4-033 | HOME exit to XMB | Intermittent freeze | PSP-3000 home2 logs a completed save and over 2,000 later frames before the reported freeze. PSP Go home3 froze on the first exit attempt and succeeded on the next. The later home3 retest reports another failed exit. Latest log requested. |
 
 ## Next development checks
 
@@ -158,4 +158,10 @@ baseline for the renderer comparison.
 
 The first home3 exit attempt on PSP Go froze. The next exit succeeded.
 This is a second device report for P4-033. The tester did not retain the
-failed attempt's log. The visual comparison for the renderer fix is pending.
+failed attempt's log.
+
+In a subsequent home3 retest, the castle entrance and the door before the
+Chie fight looked better. Shadows and chests looked the same, and heads
+were still missing in some battle views. A matching log can show whether
+the guarded draw path recovered meshes in that run. The tester also
+reported another failed exit to XMB.
