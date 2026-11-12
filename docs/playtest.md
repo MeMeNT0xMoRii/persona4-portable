@@ -1,12 +1,13 @@
 # PSP-3000 playtest backlog
 
 Updated 2026-11-12. The 333 MHz replay passed the TV-world return and reached
-the next save point. The tester then reported an intermittent freeze while
-leaving the game through HOME (P4-033).
+the next save point. The tester reported intermittent freezes when leaving
+through HOME on PSP-3000 with home2 and on PSP Go with home3 (P4-033).
 
 ## Tested build and progress
 
-- Hardware: PSP-3000. Exact firmware and active plugins are not yet recorded.
+- Hardware: PSP-3000 for the earlier reports, plus a PSP Go home3 exit test.
+  Exact firmware and active plugins are not yet recorded.
 - Edition: original US Persona 4, SLUS_217.82; Windows preparation on the tester's PC.
 - Earlier gameplay reports: b165 plus save recovery; save/load explicitly
   reported working. Follow-up on b176-xmb-home1 confirms HOME, save/load,
@@ -60,7 +61,7 @@ leaving the game through HOME (P4-033).
 | P4-030 | Ground Shadows outside combat | Face or mask absent | Tester report. Compare the same Shadow on US PS2 and with the guard-pool change. |
 | P4-031 | Party members during battle | Heads intermittently missing | Tester report and photo of the battle menu. Repeat with the same camera and compare guard-pool counters. |
 | P4-032 | First Shuffle Time | Cards appeared blank | Blank cards and identical backs during shuffling are normal in the PS2 release. Verify whether a front is missing for a card that grants a Persona. |
-| P4-033 | HOME exit after reaching the next save point on the 333 MHz replay | Freeze during the return to XMB | The long home2 replay logs `SDKMEMCARD_SAVE OK`, then more than 2,000 further frames. The tester powered off and later exited successfully. The log has no markers for the steps of HOME exit. |
+| P4-033 | HOME exit to XMB | Intermittent freeze | PSP-3000 home2 logs a completed save and over 2,000 later frames before the reported freeze. PSP Go home3 froze on the first exit attempt and succeeded on the next. No log from the failed Go attempt. The exact failing step remains open. |
 
 ## Next development checks
 
@@ -154,3 +155,7 @@ The summary log distinguishes recovered meshes from actual exhaustion.
 The same camera and encounter are needed to verify an improvement on PSP.
 The longer home2 replay logged 9,996 `TRACE guard pool full` messages as a
 baseline for the renderer comparison.
+
+The first home3 exit attempt on PSP Go froze. The next exit succeeded.
+This is a second device report for P4-033. The tester did not retain the
+failed attempt's log. The visual comparison for the renderer fix is pending.
