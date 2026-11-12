@@ -1,13 +1,13 @@
 # PSP hardware playtest backlog
 
-Updated 2026-11-12. The 333 MHz replay passed the TV-world return and reached
-the next save point. The latest PSP Go run froze after confirming HOME at
-333 MHz (P4-033). [home4](build_b176_xmb_home4.md) is ready for a hardware
-check of HOME and rain.
+Updated 2026-11-13. In the first reported [home4](build_b176_xmb_home4.md)
+new-game run, rain was visible on 04/12 and HOME returned to XMB once.
+The earlier PSP Go home3 freeze after confirming HOME at 333 MHz remains
+open (P4-033). The 333 MHz replay of the TV-world return reached the next save.
 
 The new playthrough will collect [replay saves by in-game date](replay_saves.md)
-for fast comparisons of the reported scenes. Hardware results for home4 are
-pending.
+for fast comparisons of the reported scenes. The first home4 report covers the opening
+through the day transition after 04/12.
 
 ## Tested build and progress
 
@@ -34,16 +34,16 @@ pending.
 
 | ID | Scene / trigger | Observation | Evidence / current status |
 | --- | --- | --- | --- |
-| P4-001 | CRI logo immediately after Atlus at startup | Large white rectangle instead of the logo | Photo. The US startup task loads `title/cri_logo01.tmx` from `title/logo.bin` for the second logo. Check its texture decoding and draw state. |
+| P4-001 | CRI logo immediately after Atlus at startup | Large white rectangle instead of the logo | Photo. The US startup task loads `title/cri_logo01.tmx` from `title/logo.bin` for the second logo. Reproduced in home4 with a photo. Check its texture decoding and draw state. |
 | P4-002 | Igor's introduction and card animation | White screen flashes | Report; timing needs a replay or video. |
 | P4-003 | HOME/PS button during gameplay | No visible response or normal exit in b165 | Resolved in the tester's b176-xmb-home1 follow-up: HOME now works. Separate cancel/confirm and save-in-flight scenarios were not individually described. |
-| P4-004 | Calendar/day transition, including 04/15 to 04/16 | Background briefly disappears; large overlapping weather icons and changing background tiles | Repeated report and two photos; compare the full animation with the original. |
+| P4-004 | Calendar/day transition, including 04/15 to 04/16 | Background briefly disappears; large overlapping weather icons and changing background tiles | Reproduced after going to bed on 04/12 in home4. Photo shows overlapping weather symbols and rectangular tiles. Compare the full transition with the original. |
 | P4-005 | First TV-world eerie-room visit, Yosuke's bathroom scene | Camera angle/foreground occlusion looks wrong | Photo with Chie's “Like I care…” dialogue; compare camera and occlusion separately. |
-| P4-006 | Question-mark emotion on characters | Symbol appears at floor level | Previously photographed at Teddie's feet on 04/15. A second photo shows a question mark on the floor during a 04/17 daytime scene. |
+| P4-006 | Question-mark emotion on characters | Symbol appears at floor level | Previously photographed at Teddie's feet on 04/15. Also photographed on 04/17 and reported again on 04/12 in home4. |
 | P4-007 | Leaving the TV world after the transition | Brief green screen | Two photos, including a green TV frame and a nearly full-screen green field. Duration unknown. |
-| P4-008 | 04/15 school route and 04/16 evening scene with the young detective | Rain is reported missing despite the rainy weather indicator | The field rain task supplies per-particle matrices. home4 draws this PTank layout. Check visible rain and frame pacing in a replay. |
+| P4-008 | Rainy field scenes, including 04/12, 04/15 and 04/16 | Rain previously missing despite the rainy weather indicator | Visible rain reported on 04/12 in home4. Recheck 04/15 and 04/16 and note frame pacing. Umbrella geometry is tracked in P4-018. |
 | P4-009 | 04/15 school assembly | Protagonist body appears corrupted | Seen in the first run, absent in the replay. Keep open as intermittent; photos show different dialogue moments. |
-| P4-010 | Battle action selection | Green tint/overlay across battle scene | Photo. |
+| P4-010 | Battle action selection, including the opening dream | Cyan-green tint/overlay across battle scene | Reproduced in home4. Photo shows the Attack menu over the tinted scene. Compare the same selection state with US PS2. |
 | P4-011 | Shadows appear at battle entry or dissolve on defeat | Large rectangular patches in the effect | Defeat shown about 4.6–4.9 s into the earlier clip. The tester reports a similar shape on entry. Compare both effects on US PS2. |
 | P4-012 | Level-up screen | Black/white bars cover the character image | Level-2 screen photo. |
 | P4-013 | Text containing inserted player name or stat value | Excessive spacing after the name or in “knowledge … increased” | Name spacing visible in photo; level text also has a large gap before punctuation. Cause unknown. |
@@ -51,7 +51,7 @@ pending.
 | P4-015 | Attack hits an enemy weakness | Eye/face cut-in appears in the lower half of the screen | Comparison question: the tester is unsure whether this differs from the original. Not a confirmed bug. |
 | P4-016 | Triangle-button tutorial in Dojima's living room | Large gap before the triangle symbol | Photo; text layout issue, not a report of triangle input failing. |
 | P4-017 | Various early-game scenes | Slowdowns and stutters | Report; no FPS/frame-time measurements or precise triggers yet. |
-| P4-018 | Rainy school route and 04/16 evening scene with the young detective | Missing or transparent parts of umbrella canopies | The pale umbrella shows gaps in the latest photo too. |
+| P4-018 | Rainy school route and 04/16 evening scene with the young detective | Missing or transparent parts of umbrella canopies | Intermittent canopy transparency reported again on 04/12 in home4, with visible rain. |
 | P4-019 | Move installation into CAT_Ports and launch from normal XMB | Early exit loading data from fixed paths in home1 | Resolved for the tested PSP-3000 setup in b176-xmb-home2. The tester confirmed XMB launch and gameplay. The log confirms the categorized directory, successful boot data reads and 13,072 indexed files. |
 | P4-020 | Dojima's house, 04/17 early morning, talking to Nanako | Tall triangular surface beside the protagonist | Photo. Compare foreground objects at the same camera position. |
 | P4-021 | Yukiko's Castle Gate, 04/17 daytime, approach the entrance | Red-and-black pattern appears over the side background as the camera moves closer | Earlier photos show two distances. The tester reports a visible improvement on home3. |
@@ -66,7 +66,9 @@ pending.
 | P4-030 | Ground Shadows outside combat | Face or mask absent | The home3 retest reports no visible improvement for Shadows. |
 | P4-031 | Party members during battle | Heads intermittently missing | Earlier photo of the battle menu. Heads still disappear occasionally in home3. |
 | P4-032 | First Shuffle Time | Cards appeared blank | Blank cards and identical backs during shuffling are normal in the PS2 release. Verify whether a front is missing for a card that grants a Persona. |
-| P4-033 | HOME exit to XMB | Intermittent freeze | Seen on PSP-3000/home2 and on PSP Go/home3. Latest Go log at a 333 MHz setting reaches frame 21,760. The tester reports a freeze after Yes. home4 removes device sync from the exit callback and still waits for an active save to finish. |
+| P4-033 | HOME exit to XMB | Intermittent freeze | Seen on PSP-3000/home2 and on PSP Go/home3. Latest Go log at a 333 MHz setting reaches frame 21,760. The tester reports a freeze after Yes. home4 removes device sync from the exit callback and still waits for an active save to finish. One successful return to XMB in the early home4 run. Repeat after a longer session and completed save. |
+| P4-034 | Opening gas station and phone call, 04/12 breakfast and classroom | Character motions look wrong when exiting the car, handling the phone and sitting down | Tester reports the protagonist briefly stands again between sitting poses in class. Compare the same scripted motions with US PS2. |
+| P4-035 | 04/11 evening, Dojima Residence, Nanako dialogue | Dojima stays visible after the sound of his car leaving | Photo shows him still in the room during Nanako's dialogue. Audio timing comes from the tester. Compare actor visibility through the departure with US PS2. |
 
 ## Next development checks
 
@@ -82,6 +84,9 @@ pending.
    when a card grants a Persona.
 4. Reproduce the same Shadow, chest and missing battle head views. Correlate
    the affected draws with geometry and material state.
+5. Compare the opening motions (P4-034) and Dojima's departure (P4-035)
+   in the US PS2 scenes. Use the 04/11 evening calendar save for breakfast
+   and classroom if available, and New Game for earlier scenes.
 
 ## Branches and prepared XMB change
 

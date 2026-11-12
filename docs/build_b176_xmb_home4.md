@@ -28,3 +28,13 @@ the existing P4 directory, including a categorized `CAT_Ports/P4` install.
 Load an existing save and test HOME after selecting Yes, then repeat after
 playing and completing a save. See the [playtest backlog](playtest.md)
 for the open graphics reports.
+
+## First hardware report (2026-11-13)
+
+The new-game run reached the transition after 04/12. Rain was visible on
+04/12 (P4-008), and one HOME attempt returned to XMB (P4-033). Umbrella
+canopies were still intermittently transparent (P4-018). The run also
+reproduced the CRI logo, calendar, question-mark placement and battle
+tint reports. The opening character motions and Dojima's lingering model
+are recorded as P4-034 and P4-035. A repeat HOME test after longer play
+and a completed save remains pending.
