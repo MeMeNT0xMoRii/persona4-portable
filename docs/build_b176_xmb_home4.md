@@ -55,3 +55,12 @@ is the third successful exit reported on home4, the second explicitly after
 saving. The 04/14 TV transitions completed despite the green artifact at
 entry and return (P4-007). The room occlusion, right-side lighting, floor-level
 question mark, text spacing and motion reports are in the playtest backlog.
+
+## 04/15 follow-up
+
+Rain was visible on the school route and on the Flood Plain. Canopy
+transparency recurred (P4-008, P4-018). The tester passed both TV-world
+transitions and saved, then exited to XMB successfully for the fourth
+reported time on home4. The battle clips capture the flat-looking tutorial
+Shadows, green action menu, Shadow Yosuke's opening and the result-screen
+artifacts. See the [playtest backlog](playtest.md) for reproduction details.
