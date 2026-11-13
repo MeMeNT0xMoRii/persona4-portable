@@ -64,3 +64,12 @@ transitions and saved, then exited to XMB successfully for the fourth
 reported time on home4. The battle clips capture the flat-looking tutorial
 Shadows, green action menu, Shadow Yosuke's opening and the result-screen
 artifacts. See the [playtest backlog](playtest.md) for reproduction details.
+
+## 04/16–04/17 follow-up
+
+The tester saved on 04/16 and again in Shopping District on 04/17, before
+Junes and the TV entry. The exit after the latter save was the fifth
+successful one reported on home4. Use that save to replay the first
+castle section through Chie's awakening and the return. The playtest
+backlog records the calendar, umbrella, foreground and animation retests,
+plus the bedroom curtain, Margaret colours and Magician light effect.
