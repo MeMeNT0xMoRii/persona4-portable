@@ -12,6 +12,7 @@ before starting a new game. Record the slot alongside any backed-up copy.
 | Priority | In-game date | Save point and timing | Short replay |
 | --- | --- | --- | --- |
 | Optional | 04/11 evening | Dojima Residence, living-room calendar, before sleeping | Opening dream and the transition into the first school day. To test the CRI logo, start the app from XMB before loading any slot (P4-001). |
+| Useful if available | 04/12 evening | Dojima Residence calendar before sleeping, or the closest earlier save | Replay the 04/13 morning stat message, after-school classroom and Dojima's evening sitting motion (P4-006, P4-013, P4-034, P4-036). |
 | Optional | 04/13 evening | Dojima Residence calendar, before watching the Midnight Channel if the calendar is accessible | First Midnight Channel, then the 04/14 first TV-world visit and bathroom camera (P4-005). |
 | Keep | 04/14 evening | Dojima Residence calendar, before sleeping | 04/15 rainy school route and umbrella canopies, assembly, then the TV-world visit and Shadow Yosuke (P4-006, P4-008, P4-009, P4-014, P4-018). |
 | Keep | 04/15 evening | Dojima Residence calendar after returning from Shadow Yosuke, before watching TV or going to bed | 04/15 → 04/16 calendar animation, then the Magician link and the evening rain/umbrella scene (P4-004, P4-008, P4-018). |
@@ -20,6 +21,9 @@ before starting a new game. Record the slot alongside any backed-up copy.
 | Useful if available | 04/17 daytime | First accessible save after Chie's fight. Use the TV-world hub butterfly before leaving if accessible, then keep the first save after returning as a separate slot if needed. | A hub save can shorten the P4-029 return test. A save made after the return is useful for HOME and as a recovery point. Confirm whether the butterfly is available in this scripted visit. |
 | Keep | 04/18 or first free dungeon visit | TV-world hub butterfly before entering Yukiko's Castle | Repeatable 1F/2F field and combat tests: hallway, chest, flying and ground Shadows, battle entry and defeat, missing heads, All-Out portraits and Shuffle Time (P4-011, P4-022–P4-026, P4-030–P4-032). Knock down all enemies to trigger All-Out. Record the floor and enemy name for layout or encounter differences. |
 | Keep on arrival | Actual dungeon date | Yukiko's Castle 8F, save point before the boss door | Short boss/effects replay and comparison of dungeon completion and return. Keep the hub save for ordinary fights. |
+
+The tester reported an evening save on 04/13 and a successful exit afterward.
+The slot and timing relative to the Midnight Channel are still to be recorded.
 
 Later dungeons can use the same three positions: hub before entry, last-floor
 save before the boss where available, and first save after returning if there is

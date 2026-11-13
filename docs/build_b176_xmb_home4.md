@@ -36,5 +36,13 @@ The new-game run reached the transition after 04/12. Rain was visible on
 canopies were still intermittently transparent (P4-018). The run also
 reproduced the CRI logo, calendar, question-mark placement and battle
 tint reports. The opening character motions and Dojima's lingering model
-are recorded as P4-034 and P4-035. A repeat HOME test after longer play
-and a completed save remains pending.
+are recorded as P4-034 and P4-035.
+
+## 04/13 follow-up
+
+The tester saved in the evening and reported a successful return to XMB.
+That is the second successful HOME attempt reported on home4 and the first
+explicitly after a save. Continue checking after longer sessions (P4-033).
+The 04/13 report adds a classroom photo of the wide stat-message spacing
+(P4-013), a clip of Yukiko's head motion and the floor-level question mark
+(P4-036 and P4-006), and Dojima's sitting animation that evening (P4-034).
