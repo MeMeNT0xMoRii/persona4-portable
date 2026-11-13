@@ -86,6 +86,24 @@ replay and the 04/17 evening save for ongoing play.
 | P4-048 | Fool Social Link starts after Chie's awakening | Bright establishment effect similar to the Magician scene | 04/17 clip. Compare the strength and timing. The card framing is P4-028 and the spacing in the following message is P4-013. |
 | P4-049 | Save and load menus | The yellow/orange slot dials show no numbers | Reported with a hardware photo. Reproduced on home5 in PPSSPP. Home6 restores digits in the slot dials and loads the Shopping District save with the full confirmation dialog visible. Hardware retest is pending. |
 
+## home5 hardware follow-up
+
+The tester reported a quick PSP check of home5. The CRIWARE logo appeared
+correctly (P4-001), the battle action menu no longer tinted the scene green
+(P4-010), and text spacing looked right in the tested messages (P4-013).
+The report did not identify a slot or clock setting.
+
+The day transition, question-mark placement and umbrellas still looked
+wrong (P4-004, P4-006, P4-018). Shadow models and missing field sounds,
+red block artifacts, All-Out Attack and the level-up screen also remained
+affected (P4-023, P4-030, P4-044, P4-011, P4-026, P4-012).
+The depth-mask change improved the action menu in this check. The level-up
+screen still needs its own scene comparison.
+
+For home6, check the save and load dials and confirmation dialog first
+(P4-049). Then replay a previously reported question mark from slot 7
+before the castle or from slot 2 for the 04/13 after-school classroom.
+
 ## Model effect position and rotation
 
 The US game's `EVENT/ICON.BIN` includes kind 26 model primitives. The
