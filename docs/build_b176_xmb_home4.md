@@ -73,3 +73,22 @@ successful one reported on home4. Use that save to replay the first
 castle section through Chie's awakening and the return. The playtest
 backlog records the calendar, umbrella, foreground and animation retests,
 plus the bedroom curtain, Margaret colours and Magician light effect.
+
+## 04/17 first castle visit and evening save
+
+On PSP Go, the exterior wall and the wall near Shadow Chie's door looked
+correct. The tester reported ground Shadows without a face, a flying
+Shadow made up of arms, missing Shadow sounds, broken treasure chest
+surfaces and an unusual carpet texture. The first castle visit also
+reproduced the green battle backdrop, blocky entry and defeat effects,
+missing heads in Shadow Chie's battle, repeated All-Out Attack and
+level-up artifacts, spacing in item, stat and Fool link text, and
+misplaced question marks. New reports cover the North Shopping District
+background during movement, Shuffle Time card height, distorted command
+labels and the bright Fool link effect. Individual scenes and evidence
+times are recorded in the [playtest backlog](playtest.md).
+
+The tester passed the TV-world return, reached dinner at Dojima
+Residence and saved on 04/17 evening. The following HOME exit was the
+sixth successful exit reported on home4. Keep the earlier Shopping
+District save to replay the first castle visit.

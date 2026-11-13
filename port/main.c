@@ -397,7 +397,7 @@ int main(int argc, char **argv)
         stop();
         return 1;
     }
-    p4_log("Persona4 PORTABLE b176-xmb-home4: HOME exit callback ready\n");
+    p4_log("Persona4 PORTABLE b176-xmb-home5: HOME exit callback ready\n");
     p4_log("game directory %s\n", p4_game_dir);
 #ifdef P4_HW_PROFILE
     extern char p4_image[];

@@ -96,7 +96,30 @@ FIXES = {
     "src/Graphics/Effect/effObjectParticle.c": [("*(f32 (*)[1])", "*(f32 *)")],
     "src/frFont.c": [
         ("extern u8 iGpffffa748;", "extern s8 iGpffffa748;"),
-        ("x = ((FrFontTextRun *)node)->x;", "x = (((FrFontTextRun *)node)->x >> 4) * 21;"),
+        ("x = ((FrFontTextRun *)node)->x;", "x = (((FrFontTextRun *)node)->x * 21) / 16;"),
+        # Run anchors use sixteenths of a pixel. Glyph advances use twenty-firsts in the PSP rasterizer.
+        ("((FrFontTextRun *)tail)->width * 0x10;", "((FrFontTextRun *)tail)->width * 256 / 21;"),
+    ],
+    "src/Kernel/sdkUttmx.c": [
+        ("    return image;\n}\n\n\n/* Read the TMX header",
+         "    if (image->width > 512 || image->height > 512) {\n"
+         "        extern unsigned p4_tmx_texture_size(unsigned size);\n"
+         "        extern void p4_tmx_reduce(void *, unsigned, const void *, unsigned, unsigned, unsigned, int);\n"
+         "        /* RwImage stores one byte per index even for a four-bit palette. */\n"
+         "        p4_tmx_reduce(image->cpPixels, image->stride, image->cpPixels, image->stride,\n"
+         "                      image->width, image->height, image->depth == 4 ? 8 : image->depth);\n"
+         "        image->width = p4_tmx_texture_size(image->width);\n"
+         "        image->height = p4_tmx_texture_size(image->height);\n"
+         "    }\n"
+         "    return image;\n}\n\n\n/* Read the TMX header"),
+        ("textureHandle = func_003ec590(width, height, bitsPerPixel, resourceValue);",
+         "{ extern unsigned p4_tmx_texture_size(unsigned size);\n"
+         "    textureHandle = func_003ec590(p4_tmx_texture_size(width), p4_tmx_texture_size(height), bitsPerPixel, resourceValue); }"),
+        ("  switch (bitsPerPixel)\n  {",
+         "  if (width > 512 || height > 512) {\n"
+         "    extern void p4_tmx_copy_limited(void *, const void *, unsigned, unsigned, int);\n"
+         "    p4_tmx_copy_limited((void *)textureBuffer, (const void *)sourceAddressOrBits, width, height, bitsPerPixel);\n"
+         "  } else switch (bitsPerPixel)\n  {"),
     ],
     "src/Event/Fcl/fclCombineMisc.c": [("typedef struct p4_q s128;", "typedef long long s128;")],  # holds a small integer
 }

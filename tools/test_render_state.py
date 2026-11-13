@@ -8,6 +8,77 @@ from pathlib import Path
 
 
 class RenderState(unittest.TestCase):
+    def test_2d_alpha_fail_outputs(self):
+        gcc = shutil.which('gcc')
+        if not gcc:
+            self.skipTest('host gcc is unavailable')
+        root = Path(__file__).resolve().parent.parent
+        source = (root / 'port/rwsky.c').read_text()
+        tables = re.findall(r'^static const int gs_alpha_.*?;', source, re.M)
+        draw = re.search(r'^static void draw_2d_tested\(.*?^\}', source, re.M | re.S)[0]
+        harness = r'''
+#include <assert.h>
+enum { GU_NEVER, GU_ALWAYS, GU_LESS, GU_LEQUAL, GU_EQUAL, GU_GEQUAL, GU_GREATER, GU_NOTEQUAL };
+enum { GU_ALPHA_TEST, GU_TEXTURE_32BITF, GU_COLOR_8888, GU_VERTEX_32BITF, GU_TRANSFORM_2D };
+enum { RS_ZWRITE, GU_TRUE = 1 };
+typedef struct { unsigned colour; } GuVertex;
+static int p4_gs_alpha_test = 1, render_state[1];
+static unsigned sky_state[4], pixel_mask, gs_alpha_splits;
+static unsigned current_mask;
+static int depth_mask, test_enabled, current_method, current_ref, draws;
+static struct { unsigned mask; int test, ref, depth; } pass[2];
+void sceGuEnable(int x) { assert(x == GU_ALPHA_TEST); test_enabled = 1; }
+void sceGuDisable(int x) { assert(x == GU_ALPHA_TEST); test_enabled = 0; }
+void sceGuAlphaFunc(int fn, int ref, int mask) { assert(mask == 0xff); current_method = fn; current_ref = ref; }
+void sceGuDepthMask(int mask) { depth_mask = mask; }
+void sceGuPixelMask(unsigned mask) { current_mask = mask; }
+void sceGuDrawArray(int prim, int vtype, int count, int ix, const GuVertex *v) {
+    assert(draws < 2);
+    pass[draws].mask = current_mask;
+    pass[draws].test = test_enabled ? current_method : GU_ALWAYS;
+    pass[draws].ref = current_ref;
+    pass[draws++].depth = !depth_mask;
+}
+'''
+        checks = r'''
+static void test(unsigned at, int zwrite, int masked_writer) {
+    sky_state[3] = at;
+    render_state[RS_ZWRITE] = zwrite;
+    depth_mask = !zwrite;
+    current_mask = pixel_mask;
+    test_enabled = masked_writer;
+    current_method = GU_GREATER;
+    current_ref = 0x40;
+    draws = 0;
+    draw_2d_tested(4, 4, 0, masked_writer);
+    assert(depth_mask == !zwrite && current_mask == pixel_mask);
+}
+int main(void) {
+    test(0x32801, 1, 0);
+    assert(draws == 1 && pass[0].mask == 0xffffffff && pass[0].depth);
+    test(0x32801, 0, 0);
+    assert(draws == 0);
+    test(0x7000d, 1, 0);
+    assert(draws == 1 && pass[0].test == GU_GREATER && pass[0].ref == 0);
+    test(0x717fb, 1, 0);
+    assert(draws == 2 && pass[0].test == GU_GEQUAL && pass[0].depth);
+    assert(pass[1].test == GU_LESS && pass[1].ref == 254 && !pass[1].depth && pass[1].mask == 0);
+    test(0x717fb, 0, 0);
+    assert(draws == 1 && pass[0].test == GU_ALWAYS);
+    pixel_mask = 0x000000ff;
+    test(0x737fb, 1, 0);
+    assert(draws == 2 && pass[1].mask == 0xff0000ff && !pass[1].depth && !test_enabled);
+    pixel_mask = 0x00ffffff;
+    test(0x717fb, 1, 1);
+    assert(draws == 1 && pass[0].ref == 0x40 && pass[0].mask == 0x00ffffff);
+}
+'''
+        with tempfile.TemporaryDirectory(dir=root / 'build') as temporary:
+            path = Path(temporary)
+            (path / 'check.c').write_text(harness + '\n'.join(tables) + '\n' + draw + checks)
+            subprocess.run([gcc, '-O2', str(path / 'check.c'), '-o', str(path / 'check.exe')], check=True, capture_output=True)
+            subprocess.run([str(path / 'check.exe')], check=True)
+
     def test_field_noise_removal_keeps_thirty_hz_pacing(self):
         gcc = shutil.which('gcc')
         if not gcc:

@@ -19,6 +19,7 @@ class Widescreen(unittest.TestCase):
         font = source('src/frFont.c')
         raster = source('src/frFontRaster.c')
         anchor = re.search(r'x = \(\(\(FrFontTextRun \*\)node\)->x[^;]+;', font)[0]
+        append = re.search(r'\(\(FrFontTextRun \*\)list\)->x = \(\(FrFontTextRun \*\)tail\)->x[^;]+;', font)[0]
         origin = re.search(r'originX = [^;]+;', raster)[0]
         width = re.search(r'extentX = [^;]+;', raster)[0]
         harness = r'''
@@ -26,19 +27,29 @@ class Widescreen(unittest.TestCase):
 #include <math.h>
 typedef float f32;
 typedef unsigned u32;
-typedef struct { int x; } FrFontTextRun;
+typedef struct { int x, width; } FrFontTextRun;
 static float position(int anchor, int advance) {
-    FrFontTextRun run = {anchor * 16};
+    FrFontTextRun run = {anchor};
     void *node = &run;
     int x;
     float originX;
 ''' + anchor + '\nx += advance * 16;\n' + origin + r'''
     return originX;
 }
+static void append_run(FrFontTextRun *tail, FrFontTextRun *list) {
+''' + append + r'''
+}
 int main(void) {
     for (int x = -100; x <= 640; x += 20)
-        assert(fabsf(position(x, 0) - x) < .0001f);
-    assert(fabsf(position(640, 21) - 656) < .0001f);
+        assert(fabsf(position(x * 16, 0) - x) < .0001f);
+    assert(fabsf(position(640 * 16, 21) - 656) < .0001f);
+    for (int x = -100; x <= 100; x += 20) {
+        FrFontTextRun first = {x * 16, 57}, second = {0, 93}, third = {0};
+        append_run(&first, &second);
+        append_run(&second, &third);
+        assert(fabsf(position(second.x, 0) - position(first.x, first.width)) < 0.12f);
+        assert(fabsf(position(third.x, 0) - position(first.x, first.width + second.width)) < 0.18f);
+    }
     unsigned width = 32;
     float extentX;
 ''' + width + r'''

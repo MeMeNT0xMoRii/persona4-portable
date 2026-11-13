@@ -1438,7 +1438,7 @@ int func_003f79b0(void *raster, void *device, int flags)
         rtt_passes = rtt_clears = rtt_atomics = rtt_2d = 0;
         { extern void p4_blend_report(void); p4_blend_report(); }
         { extern void p4_census3d_report(void); p4_census3d_report(); }
-        { extern unsigned p4_gs_alpha_splits(void); unsigned n = p4_gs_alpha_splits(); if (n) p4_log("gs alpha fb_only splits %u\n", n); }
+        { extern unsigned p4_gs_alpha_splits(void); unsigned n = p4_gs_alpha_splits(); if (n) p4_log("gs alpha 2d splits %u\n", n); }
         p4_log("guard near_ge %d triangles %u clip_fast %d checks %u diffs %u gnear %d offscreen %u\n", p4_guard_near_ge, guard_near_ge, p4_guard_clip_fast, guard_clip_checks, guard_clip_diffs, p4_guard_gnear, guard_offscreen);
         p4_log("guard boxes %d meshes whole %u chunks inside %u partial %u culled %u builds %u lazy vertices %u vfpu %d checks %u diffs %u\n", p4_guard_boxes, guard_box_whole, guard_box_inside, guard_box_partial, guard_box_culled, guard_box_builds, guard_lazy_vertices, p4_guard_box_vfpu, guard_box_checks, guard_box_diffs);
         guard_box_checks = guard_box_diffs = 0;
@@ -2012,6 +2012,45 @@ void tmxDmaCopy(unsigned destination, unsigned source, unsigned bytes)
     memcpy((void *)destination, (void *)source, bytes);
 }
 
+/* The GE accepts up to 512 texels per axis. TMX quads supply their on-screen size and UVs separately. */
+unsigned p4_tmx_texture_size(unsigned size)
+{
+    return size > 512 ? 512 : size;
+}
+
+/* Point sample the original image. For unpacked images, forward copying also works in place. */
+void p4_tmx_reduce(void *destination, unsigned dst_stride, const void *source, unsigned src_stride,
+                   unsigned width, unsigned height, int bits)
+{
+    unsigned w = p4_tmx_texture_size(width), h = p4_tmx_texture_size(height);
+    const unsigned char *pixels = source;
+    unsigned char *out = destination;
+    for (unsigned y = 0; y < h; y++) {
+        const unsigned char *src = pixels + (y * height / h) * src_stride;
+        unsigned char *dst = out + y * dst_stride;
+        if (bits == 4) {
+            memset(dst, 0, dst_stride);
+            for (unsigned x = 0; x < w; x++) {
+                unsigned sx = x * width / w;
+                unsigned index = src[sx / 2] >> (4 * (sx & 1)) & 15;
+                dst[x / 2] |= index << (4 * (x & 1));
+            }
+        } else {
+            unsigned bytes = bits / 8;
+            for (unsigned x = 0; x < w; x++)
+                memmove(dst + x * bytes, src + (x * width / w) * bytes, bytes);
+        }
+    }
+}
+
+void p4_tmx_copy_limited(void *destination, const void *source, unsigned width, unsigned height, int depth)
+{
+    unsigned bits = depth == 24 ? 32 : depth;
+    unsigned src_stride = (width * bits + 7) / 8;
+    unsigned dst_stride = (p4_tmx_texture_size(width) * bits + 7) / 8;
+    p4_tmx_reduce(destination, dst_stride, source, src_stride, width, height, bits);
+}
+
 /* Immediate 2D. Vertices are the game's 64-byte RwSky2DVertex in PS2 screen space, 640 by 448. */
 typedef struct { float x, y, z, camZ, u, v, recipZ, pad, r, g, b, a, nx, ny, nz, pad2; } Vertex2D;
 typedef struct { float u, v; unsigned colour; float x, y, z; } GuVertex;
@@ -2411,15 +2450,47 @@ static void census2d_report(unsigned census2d_frames)
     census2d_shown = 0;
 }
 
-/* GS alpha test with AFAIL = FB_ONLY on a draw that writes depth: the only case where ignoring ATEST changes depth. */
+static const int gs_alpha_method[8] = { GU_NEVER, GU_ALWAYS, GU_LESS, GU_LEQUAL, GU_EQUAL, GU_GEQUAL, GU_GREATER, GU_NOTEQUAL };
+static const int gs_alpha_inverse[8] = { GU_ALWAYS, GU_NEVER, GU_GEQUAL, GU_GREATER, GU_NOTEQUAL, GU_LESS, GU_LEQUAL, GU_EQUAL };
+
 int p4_gs_alpha_test = 1; /* 0: ATEST ignored in 2D, as before b165 */
 static unsigned gs_alpha_splits;
 unsigned p4_gs_alpha_splits(void) { unsigned n = gs_alpha_splits; gs_alpha_splits = 0; return n; }
-static int gs_alpha_fb_only(void)
+
+static void draw_2d_tested(int prim, int count, const GuVertex *vertices, int alpha_writer)
 {
     unsigned at = sky_state[3];
-    return p4_gs_alpha_test && (at & 1) && (at >> 1 & 7) != 1 && (at >> 12 & 3) == 1 && render_state[RS_ZWRITE] &&
-           !(p4_alpha_write_test && pixel_mask == 0x00ffffff);
+    int method = (at >> 1) & 7, fail = (at >> 12) & 3;
+    int depth_write = render_state[RS_ZWRITE] != 0;
+    int vtype = GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D;
+    if (alpha_writer || !p4_gs_alpha_test || !(at & 1) || method == 1 || (fail == 1 && !depth_write)) {
+        sceGuDrawArray(prim, vtype, count, 0, vertices);
+        return;
+    }
+
+    int ref = (at >> 4) & 0xff;
+    ref = ref < 128 ? ref * 2 : 255;
+    if (method != 0) {
+        sceGuEnable(GU_ALPHA_TEST);
+        sceGuAlphaFunc(gs_alpha_method[method], ref, 0xff);
+        sceGuDrawArray(prim, vtype, count, 0, vertices);
+    }
+    if (fail && (fail != 2 || depth_write)) {
+        /* The command menu and results screen use 0x32801 to write clipping rectangles into depth only. */
+        if (method != 0)
+            sceGuAlphaFunc(gs_alpha_inverse[method], ref, 0xff);
+        if (fail != 2)
+            sceGuDepthMask(GU_TRUE);
+        if (fail >= 2)
+            sceGuPixelMask(fail == 2 ? 0xffffffff : pixel_mask | 0xff000000);
+        sceGuDrawArray(prim, vtype, count, 0, vertices);
+        if (fail >= 2)
+            sceGuPixelMask(pixel_mask);
+        if (fail != 2)
+            sceGuDepthMask(!depth_write);
+        gs_alpha_splits += method != 0;
+    }
+    sceGuDisable(GU_ALPHA_TEST);
 }
 
 static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *indices, int count)
@@ -2439,7 +2510,8 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     /* An alpha-only write (RGB masked) of a texture: the PS2 stores each pixel's alpha, the PSP's stencil takes one
        value per draw. Keep that value off the pixels the texture leaves transparent, so the title's light blobs
        (added by destination alpha) stay off the letterbox bars instead of covering the whole quad. */
-    if (p4_alpha_write_test && pixel_mask == 0x00ffffff && render_state[1] && (Raster *)render_state[1] != &display_raster) {
+    int alpha_writer = pixel_mask == 0x00ffffff && render_state[1] && (Raster *)render_state[1] != &display_raster;
+    if (p4_alpha_write_test && alpha_writer) {
         sceGuEnable(GU_ALPHA_TEST);
         sceGuAlphaFunc(GU_GREATER, 0x40, 0xff);
     }
@@ -2450,7 +2522,6 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     int dst_alpha_pass = (blend == 0x52 || blend == 0x54 || blend == 0x58) && (Raster *)render_state[1] == &display_raster;
     /* the alpha-only writes that feed them (RGB masked, a textured puff): the stencil takes one value per draw, which
        is the square; without the pass that reads it they only cost fill */
-    int alpha_writer = pixel_mask == 0x00ffffff && render_state[1] && (Raster *)render_state[1] != &display_raster;
     if (!p4_dst_alpha_passes && (dst_alpha_pass || alpha_writer)) {
         float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
         for (int i = 0; i < count; i++) {
@@ -2475,29 +2546,9 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
            GE cache; retain the existing capture, filter, blend and mask. */
         GuVertex *strips = sceGuGetMemory(P4_FEEDBACK_MAX_VERTICES * sizeof *strips);
         int n = p4_feedback_emit(strips, &rect);
-        sceGuDrawArray(GU_SPRITES, GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D, n, 0, strips);
-    } else if (gs_alpha_fb_only()) {
-        /* GS ATEST with AFAIL = FB_ONLY (b165): pixels that fail write colour but no depth. The minimap's frame
-           (ATEST_1 0x717FB: alpha >= 0x7F) left its see-through middle free of depth, so the map tiles behind it
-           (z 65535 - 60000) drew; written whole it hid them. Pass 1: passing pixels, depth as set; pass 2: the rest,
-           colour only. */
-        unsigned at = sky_state[3];
-        static const unsigned char gu_atst[8] = { GU_NEVER, GU_ALWAYS, GU_LESS, GU_LEQUAL, GU_EQUAL, GU_GEQUAL, GU_GREATER, GU_NOTEQUAL };
-        static const unsigned char gu_fail[8] = { GU_ALWAYS, GU_NEVER, GU_GEQUAL, GU_GREATER, GU_NOTEQUAL, GU_LESS, GU_LEQUAL, GU_EQUAL };
-        int ref = (at >> 4 & 0xff) * 2; /* the GS's alpha 0x80 is 1.0, the GE's 0xff */
-        if (ref > 255)
-            ref = 255;
-        sceGuEnable(GU_ALPHA_TEST);
-        sceGuAlphaFunc(gu_atst[at >> 1 & 7], ref, 0xff);
-        sceGuDrawArray(gu_prim[prim], GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D, count, 0, out);
-        sceGuAlphaFunc(gu_fail[at >> 1 & 7], ref, 0xff);
-        sceGuDepthMask(GU_TRUE);
-        sceGuDrawArray(gu_prim[prim], GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D, count, 0, out);
-        sceGuDepthMask(GU_FALSE);
-        sceGuDisable(GU_ALPHA_TEST);
-        gs_alpha_splits++;
+        draw_2d_tested(GU_SPRITES, n, strips, 0);
     } else {
-        sceGuDrawArray(gu_prim[prim], GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D, count, 0, out);
+        draw_2d_tested(gu_prim[prim], count, out, p4_alpha_write_test && alpha_writer);
     }
     return 1;
 }
@@ -3005,8 +3056,6 @@ static void draw_tested(int prim, int vtype, int count, const void *indices, con
         return;
     }
     tested_draws++;
-    static const int method[8] = { GU_NEVER, GU_ALWAYS, GU_LESS, GU_LEQUAL, GU_EQUAL, GU_GEQUAL, GU_GREATER, GU_NOTEQUAL };
-    static const int inverse[8] = { GU_ALWAYS, GU_NEVER, GU_GEQUAL, GU_GREATER, GU_NOTEQUAL, GU_LESS, GU_LEQUAL, GU_EQUAL };
     int atst = test >> 1 & 7, afail = test >> 12 & 3;
     /* The GS's 0x80 is our 0xff in texels and in lit or white vertices. Prelit alpha reaches the GE as the GS got it
        (p4_alpha_x2 0), so there the reference stays: doubled, Heaven's clouds (alpha 0x7f-0xfd) failed, wrote no
@@ -3015,7 +3064,7 @@ static void draw_tested(int prim, int vtype, int count, const void *indices, con
     int aref = (test >> 4 & 0xff) << !raw;
     if (aref > 255) aref = 255;
     st_enable(GU_ALPHA_TEST, 1);
-    st_alpha_func(method[atst], aref);
+    st_alpha_func(gs_alpha_method[atst], aref);
     /* failing pixels: nothing to add when they are dropped, or are only the alpha-0 ones under a blend */
     int only_clear = (atst == 5 || atst == 6) && aref == 0;
     int second = afail != 0 && atst != 1 && !only_clear;
@@ -3061,7 +3110,7 @@ static void draw_tested(int prim, int vtype, int count, const void *indices, con
     gu_draw(prim, vtype, count, indices, vertices);
     if (second) {
         tested_second++;
-        st_alpha_func(inverse[atst], aref);
+        st_alpha_func(gs_alpha_inverse[atst], aref);
         if (afail == 2) {
             st_pixel_mask(0xffffffff); /* ZB_ONLY: depth, no colour */
         } else {
@@ -4643,7 +4692,7 @@ int p4_hanim_c = 0, p4_hanim_check = 0;
 /* b148: on a skipped frame (frameskip) the bone matrices and bone frames are not rebuilt: nothing draws them, and the
    next drawn frame rebuilds them from the animation, whose time still advances (RtAnimInterpolatorAddAnimTime is not
    this). Callers reach the original as p4r_00397c40. */
-int p4_frameskip_bones = 1;
+int p4_frameskip_bones = 0; /* Events can read the updated bones even when the render frame is skipped. */
 int p4_pose_plain = 0; /* b153 experiment: 1 = the look-at pose (mdlUpdateHierarchyPose) replaced by the plain bone update */
 /* b154: the hierarchy scale hook (mdlInstallHierarchyScaleHook, layer flag 0x10) scales one node's matrix by a vector
    from the layer. Logged for each new layer and whenever a component is near 0 or huge. */
@@ -4779,7 +4828,7 @@ static void hanim_sanitize(unsigned *h)
    skin_bones rebuilds its matrices when it is drawn again. p4_anim_far: one last drawn farther than p4_anim_far_depth
    is updated every p4_anim_far_step ticks and drawn with the older matrices in between. Hierarchies never drawn as
    skins (rigid parts on bone frames) always update. The counters run with both off: what each would save. */
-int p4_anim_cull = 0, p4_anim_far = 1, p4_anim_far_step = 2; /* b173: far on (b172 class, by eye: fine) */
+int p4_anim_cull = 0, p4_anim_far = 0, p4_anim_far_step = 2; /* Keep event animation clocks and attachments current. */
 float p4_anim_far_depth = 500.0f;
 enum { ANIM_STATES = 128 };
 typedef struct { const void *h, *matrices, *interp; int nodes; unsigned drawn, updated, advanced, moved; float depth, pending, at[3]; unsigned char stale, skinned; } AnimState;
