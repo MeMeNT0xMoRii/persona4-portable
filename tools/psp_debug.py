@@ -21,19 +21,26 @@ def screenshot_image(reply):
 
 
 class Debugger:
-    def __init__(self):
-        self.sock = socket.create_connection(("127.0.0.1", PORT), timeout=5)
+    def __init__(self, port=None):
+        self.sock = socket.create_connection(("127.0.0.1", PORT if port is None else port), timeout=5)
         key = base64.b64encode(os.urandom(16)).decode()
         self.sock.sendall((f"GET /debugger HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
                            f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Protocol: debugger.ppsspp.org\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
         head = b""
         while b"\r\n\r\n" not in head:
-            head += self.sock.recv(4096)
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                self.sock.close()
+                raise EOFError("PPSSPP closed the WebSocket handshake")
+            head += chunk
         self.extra = head.split(b"\r\n\r\n", 1)[1]
 
     def read(self, n):
         while len(self.extra) < n:
-            self.extra += self.sock.recv(1 << 20)
+            chunk = self.sock.recv(1 << 20)
+            if not chunk:
+                raise EOFError("PPSSPP closed the debugger connection")
+            self.extra += chunk
         out, self.extra = self.extra[:n], self.extra[n:]
         return out
 

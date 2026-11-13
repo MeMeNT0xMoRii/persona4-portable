@@ -35,6 +35,23 @@ and the [save plan](replay_saves.md) covers the subsequent dungeon tests.
 - The update contains the three matching PSP files, the ELF, build
   provenance and checksums. It uses the existing prepared game directory.
 
+## Repeat the depth-mask check
+
+With a native Linux PSPSDK toolchain and PPSSPP 1.20.4 installed, run the
+standalone software-renderer test. The Python runner also needs Pillow
+for its shared debugger module.
+
+```bash
+PSPDEV=/path/to/pspdev python3 tools/psp_render_smoke.py /path/to/PPSSPP/AppRun
+```
+
+The test compiles the port's 2D draw helper into a small PSP program and
+checks nine framebuffer pixels. It covers the green command-panel quad,
+the black and white result quads, and the depth cutout. It uses an
+isolated emulator configuration and needs no game archives or saves.
+The game route also reached the gas station on 04/11 using scripted
+inputs. The 04/17 game scenes still need a replay.
+
 ## Next replay
 
 1. Cold boot on the PSP and watch the second logo. Use 333 MHz and the

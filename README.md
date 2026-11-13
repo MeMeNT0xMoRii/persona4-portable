@@ -12,6 +12,8 @@ See the [build record](docs/build_b176_xmb_home2.md).
 [b176-xmb-home3](docs/build_b176_xmb_home3.md) improved the reported views
 near Yukiko's Castle entrance and the door before the Chie fight.
 [b176-xmb-home4](docs/build_b176_xmb_home4.md) tests the HOME exit and rain.
+[b176-xmb-home5](docs/build_b176_xmb_home5.md) fixes the startup texture,
+dialogue spacing and depth masks in the battle UI.
 Hardware playtesting has reached Chie's Persona awakening and the next save.
 
 Our previous hardware reference is **b165 with save recovery**. The
