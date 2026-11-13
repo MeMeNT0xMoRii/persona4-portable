@@ -46,3 +46,12 @@ explicitly after a save. Continue checking after longer sessions (P4-033).
 The 04/13 report adds a classroom photo of the wide stat-message spacing
 (P4-013), a clip of Yukiko's head motion and the floor-level question mark
 (P4-036 and P4-006), and Dojima's sitting animation that evening (P4-034).
+
+
+## 04/14 follow-up
+
+The PSP Go reached the evening save and returned to XMB successfully. This
+is the third successful exit reported on home4, the second explicitly after
+saving. The 04/14 TV transitions completed despite the green artifact at
+entry and return (P4-007). The room occlusion, right-side lighting, floor-level
+question mark, text spacing and motion reports are in the playtest backlog.
