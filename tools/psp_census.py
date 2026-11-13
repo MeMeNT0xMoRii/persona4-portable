@@ -121,6 +121,18 @@ FIXES = {
          "    p4_tmx_copy_limited((void *)textureBuffer, (const void *)sourceAddressOrBits, width, height, bitsPerPixel);\n"
          "  } else switch (bitsPerPixel)\n  {"),
     ],
+    "src/Kernel/sdkSpr.c": [
+        # The Allegrex point transform reads all three components, even for the screen-plane rotation.
+        ("    /* Retail leaves source[].z unwritten, yet both point-transform providers read Z, so these calls\n"
+         "     * read uninitialized input. */\n",
+         "    for (copyIndex = 0; copyIndex < 4; copyIndex++) {\n"
+         "        source[copyIndex].z = 0.0f;\n"
+         "    }\n"),
+    ],
+    "src/unplaced/unplaced_inferred_0046a770.c": [
+        ("        /* Retail leaves the third component unwritten before rotation. */",
+         "        d->z = 0.0f;"),
+    ],
     "src/Event/Fcl/fclCombineMisc.c": [("typedef struct p4_q s128;", "typedef long long s128;")],  # holds a small integer
 }
 # FldFrame_RaycastFieldWorlds gets NULL from MT_Scene_GetRes (b112-b130, dungeon corridors, near treasure chests): the

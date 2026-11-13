@@ -2502,7 +2502,10 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
         return 1;
     begin_frame();
     bind_depth();
-    bind_mask(byte_colour(vertices[indices ? indices[0] : 0].a));
+    int alpha_writer = pixel_mask == 0x00ffffff && render_state[1] && (Raster *)render_state[1] != &display_raster;
+    /* mcDrawSlotDial clears destination alpha through the digit textures using its own alpha tests. */
+    int slot_cutout = alpha_writer && (sky_state[3] == 0x50009 || sky_state[3] == 0x50805);
+    bind_mask(slot_cutout ? 0 : byte_colour(vertices[indices ? indices[0] : 0].a));
     sceGuDisable(GU_CLIP_PLANES);
     sceGuDisable(GU_ALPHA_TEST);
     bind_texture();
@@ -2510,8 +2513,8 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     /* An alpha-only write (RGB masked) of a texture: the PS2 stores each pixel's alpha, the PSP's stencil takes one
        value per draw. Keep that value off the pixels the texture leaves transparent, so the title's light blobs
        (added by destination alpha) stay off the letterbox bars instead of covering the whole quad. */
-    int alpha_writer = pixel_mask == 0x00ffffff && render_state[1] && (Raster *)render_state[1] != &display_raster;
-    if (p4_alpha_write_test && alpha_writer) {
+    int test_alpha_writer = p4_alpha_write_test && alpha_writer && !slot_cutout;
+    if (test_alpha_writer) {
         sceGuEnable(GU_ALPHA_TEST);
         sceGuAlphaFunc(GU_GREATER, 0x40, 0xff);
     }
@@ -2522,7 +2525,7 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     int dst_alpha_pass = (blend == 0x52 || blend == 0x54 || blend == 0x58) && (Raster *)render_state[1] == &display_raster;
     /* the alpha-only writes that feed them (RGB masked, a textured puff): the stencil takes one value per draw, which
        is the square; without the pass that reads it they only cost fill */
-    if (!p4_dst_alpha_passes && (dst_alpha_pass || alpha_writer)) {
+    if (!p4_dst_alpha_passes && (dst_alpha_pass || (alpha_writer && !slot_cutout))) {
         float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
         for (int i = 0; i < count; i++) {
             const Vertex2D *v = &vertices[indices ? indices[i] : i];
@@ -2548,7 +2551,7 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
         int n = p4_feedback_emit(strips, &rect);
         draw_2d_tested(GU_SPRITES, n, strips, 0);
     } else {
-        draw_2d_tested(gu_prim[prim], count, out, p4_alpha_write_test && alpha_writer);
+        draw_2d_tested(gu_prim[prim], count, out, test_alpha_writer);
     }
     return 1;
 }
