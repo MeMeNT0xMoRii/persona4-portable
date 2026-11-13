@@ -259,6 +259,8 @@ def trap_ee_asm(text):
 # struct return the output pointer arrived in a2 and the PSP faulted storing to 0x6B (an event effect after a bustup).
 QUAD_SETTERS = re.compile(r"\b(?:u_long128|s128|u128)(\s+\w*(?:Set|Store|Copy|InitParticleState|Get\w*Vec)\w*\s*\()")
 QUAD_SETTER_BODY = re.compile(r"\bvoid\s+\w*(?:Set|Store|Copy|InitParticleState|Get\w*Vec)\w*\s*\([^;{)]*\)\s*\{")
+QUAD_SETTER_RETURN = re.compile(r"\breturn\s+([^;]+);")
+QUAD_ASSIGNMENT = re.compile(r"(?<![=!<>])=(?!=)")
 
 
 # The quad loaders are defined to return a 128-bit value (a struct here: hidden first argument) and most callers say so,
@@ -276,6 +278,14 @@ def void_quad_setters(text):
     and return the quad only in passing: they become void."""
     if not QUAD_SETTERS.search(text):
         return text
+
+    def drop_value(match):
+        value = match[1]
+        # Some setters perform their only store in the return expression.
+        if QUAD_ASSIGNMENT.search(value):
+            return f"{{ {value}; return; }}"
+        return "return;"
+
     text = QUAD_SETTERS.sub(r"void\1", text)
     out, pos = [], 0
     for m in QUAD_SETTER_BODY.finditer(text):
@@ -283,7 +293,7 @@ def void_quad_setters(text):
         while depth:
             depth += {"{": 1, "}": -1}.get(text[i], 0)
             i += 1
-        out.append(text[pos:m.end()] + re.sub(r"\breturn\s+[^;]+;", "return;", text[m.end():i]))
+        out.append(text[pos:m.end()] + QUAD_SETTER_RETURN.sub(drop_value, text[m.end():i]))
         pos = i
     return "".join(out) + text[pos:]
 

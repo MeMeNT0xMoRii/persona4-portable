@@ -9,6 +9,44 @@ from psp_vu0 import translate
 
 
 class QuadMemory(unittest.TestCase):
+    def test_quad_setter_keeps_assignment_in_return(self):
+        from psp_census import void_quad_setters
+
+        setters = """
+u_long128 EffModelCopyQuad(u_long128 *dst, u_long128 *src) {
+    return *dst = *src;
+}
+u_long128 EffModelCopyQuadSecond(u_long128 *dst, u_long128 *src) {
+    return dst[1] = *src;
+}
+u_long128 RingSetFirstQuad(u_long128 *destination, u_long128 *source) {
+    return *destination = *source;
+}
+u_long128 mdlEffectStoreQuad(u_long128 *destination, u_long128 *source) {
+    return *destination = *source;
+}
+u_long128 ExistingSetQuad(u_long128 *dst, u_long128 *src) {
+    *dst = *src;
+    return *src;
+}
+"""
+        generated = void_quad_setters(setters)
+        self.assertEqual(generated.count("void "), 5)
+        self.assertEqual(generated.count("*dst = *src;"), 2)
+        self.assertIn("dst[1] = *src; return;", generated)
+        self.assertEqual(generated.count("*destination = *source; return;"), 2)
+        self.assertNotIn("return *", generated)
+        conditional = """
+u_long128 ConditionalSetQuad(u_long128 *dst, u_long128 *src, int first) {
+    if (first)
+        return *dst = *src;
+    dst[1] = *src;
+    return *src;
+}
+"""
+        self.assertIn("if (first)\n        { *dst = *src; return; }",
+                      void_quad_setters(conditional))
+
     def test_fixed_stack_still_refused(self):
         self.assertIsNone(translate(r'"lq $2, 16($sp)\n"'))
         self.assertIsNone(translate(r'"lq $2, 0($gp)\n"'))

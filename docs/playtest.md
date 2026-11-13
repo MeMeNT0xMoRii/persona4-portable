@@ -40,7 +40,7 @@ replay and the 04/17 evening save for ongoing play.
 | P4-003 | HOME/PS button during gameplay | No visible response or normal exit in b165 | Resolved in the tester's b176-xmb-home1 follow-up: HOME now works. Separate cancel/confirm and save-in-flight scenarios were not individually described. |
 | P4-004 | Calendar/day transition, including 04/15 to 04/16 | Background briefly disappears; large overlapping weather icons and changing background tiles | Reproduced after going to bed on 04/12 in home4. Photo shows overlapping weather symbols and rectangular tiles. The transitions into 04/15, 04/16 and 04/17 looked wrong again. Compare the full transition with the original. |
 | P4-005 | First TV-world eerie-room visit, Yosuke's bathroom scene | Camera angle/foreground occlusion looks wrong | Reproduced on 04/14: foreground wall surfaces obscure part of the room and characters. Earlier photo shows Chie's “Like I care…” dialogue. Compare the same camera cut with US PS2. |
-| P4-006 | Question-mark emotion on characters | Symbol appears at floor level | Photos from 04/14 and 04/15 show the question mark below Teddie. The 04/13 after-school clip shows it at floor height near Chie at 7.1–7.6 s, with an exclamation mark above Yosuke at 3.0–3.3 s. The 04/15 and 04/16 reports add !? on the TV plaza and a question mark on Yosuke’s school route. On 04/17 it recurs at the police station, before the castle, around Chie’s awakening and at dinner with Nanako and Dojima. |
+| P4-006 | Question-mark emotion on characters | Symbol appears at floor level | Photos from 04/14 and 04/15 show the question mark below Teddie. The 04/13 after-school clip shows it at floor height near Chie at 7.1–7.6 s, with an exclamation mark above Yosuke at 3.0–3.3 s. The 04/15 and 04/16 reports add !? on the TV plaza and a question mark on Yosuke’s school route. On 04/17 it recurs at the police station, before the castle, around Chie’s awakening and at dinner with Nanako and Dojima. A linked development build restores the model-effect position and rotation writes. Replay the same scenes to verify placement. |
 | P4-007 | TV-world entry and return on 04/14 and 04/15 | Green tint or patch in the nested-TV transition | home4 shows green edges or a bright green centre on 04/14 and 04/15 entry and return, and again entering on 04/17. The visits proceeded. The b176 movie hang is tracked separately. |
 | P4-008 | Rainy field scenes, including 04/12, 04/15 and 04/16 | Rain previously missing despite the rainy weather indicator | Visible rain reported on 04/12 and on the 04/15 school route and Samegawa Flood Plain. The 04/16 detective scene was reported rainy. Rain during Yosuke's morning scene and frame pacing remain to be checked. Umbrella geometry is tracked in P4-018. |
 | P4-009 | 04/15 school assembly | Protagonist body appears corrupted | Seen in the first run, absent in the replay. Keep open as intermittent; photos show different dialogue moments. |
@@ -83,6 +83,25 @@ replay and the 04/17 evening save for ongoing play.
 | P4-046 | Yukiko's Castle, red carpet in the scene before Shadow Chie | Floor texture looks wrong | Photo from above with Teddie's dialogue. Compare the same camera and carpet before changing UVs or texture filtering. |
 | P4-047 | Battle, command label around the status portrait as a move starts | Label warps for both party members | 04/17 clip and tester report. Compare the first frames after choosing an action for each character with PS2. |
 | P4-048 | Fool Social Link starts after Chie's awakening | Bright establishment effect similar to the Magician scene | 04/17 clip. Compare the strength and timing. The card framing is P4-028 and the spacing in the following message is P4-013. |
+
+## Model effect position and rotation
+
+The US game's `EVENT/ICON.BIN` includes kind 26 model primitives. The
+position and rotation entries in their callback table point to retail
+`0x004AC600` and `0x004AC610`. Each copies four words to the effect,
+starting at offset 0 or 16. They receive the transform prepared for the
+scene resource. The PSP uses the same arguments by compiling these
+callbacks as void functions. The old source rewrite also removed the
+copy, which was written inside the return expression.
+
+The rewrite now keeps the assignment when adapting the return type.
+In the linked development build both callbacks write all four words, as
+do five related setters for the thunder, ring and other effect
+transforms. The regression test covers the return expression and its
+control flow. Check the 04/17 TV plaza and Chie's awakening first, then
+compare the 04/13 classroom animations if that save is available.
+P4-006 remains open until the icon is observed in place. Compare the
+other effects individually once the saves are available.
 
 ## Next development checks
 
