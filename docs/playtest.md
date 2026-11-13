@@ -4,7 +4,8 @@ Updated 2026-11-13. The [home4](build_b176_xmb_home4.md) playthrough on
 PSP Go passed the first visit to Yukiko's Castle, Shadow Chie and the
 Fool Social Link. The tester saved at Dojima Residence on 04/17 evening
 and exited successfully. This was the sixth reported successful HOME exit
-on home4. The [home5 test build](build_b176_xmb_home5.md) is ready for replay.
+on home4. The [home6 test build](build_b176_xmb_home6.md) restores numbered
+save dials and incorporates the model-effect transform fix.
 
 Use the [replay saves by in-game date](replay_saves.md) to revisit the
 reported scenes. Keep the 04/17 Shopping District save for the castle
@@ -38,9 +39,9 @@ replay and the 04/17 evening save for ongoing play.
 | P4-001 | CRI logo immediately after Atlus at startup | Large white rectangle instead of the logo | The 1024 × 512 indexed texture exceeded the PSP texture limit. PPSSPP showed the rectangle on home4 and the CRIWARE logo on home5. Check the next PSP cold boot. |
 | P4-002 | Igor's introduction and card animation | White screen flashes | Report; timing needs a replay or video. |
 | P4-003 | HOME/PS button during gameplay | No visible response or normal exit in b165 | Resolved in the tester's b176-xmb-home1 follow-up: HOME now works. Separate cancel/confirm and save-in-flight scenarios were not individually described. |
-| P4-004 | Calendar/day transition, including 04/15 to 04/16 | Background briefly disappears; large overlapping weather icons and changing background tiles | Reproduced after going to bed on 04/12 in home4. Photo shows overlapping weather symbols and rectangular tiles. The transitions into 04/15, 04/16 and 04/17 looked wrong again. Compare the full transition with the original. |
+| P4-004 | Calendar/day transition, including 04/15 to 04/16 | Background briefly disappears; large overlapping weather icons and changing background tiles | Observed in home4 on the transitions into 04/13, 04/15, 04/16 and 04/17. Slot 4 reproduces overlapping weather symbols in PPSSPP with the rotation fix. A general strict-depth experiment also breaks the load dialog and field HUD. Compare the calendar's mask and blend passes with the original. |
 | P4-005 | First TV-world eerie-room visit, Yosuke's bathroom scene | Camera angle/foreground occlusion looks wrong | Reproduced on 04/14: foreground wall surfaces obscure part of the room and characters. Earlier photo shows Chie's “Like I care…” dialogue. Compare the same camera cut with US PS2. |
-| P4-006 | Question-mark emotion on characters | Symbol appears at floor level | Photos from 04/14 and 04/15 show the question mark below Teddie. The 04/13 after-school clip shows it at floor height near Chie at 7.1–7.6 s, with an exclamation mark above Yosuke at 3.0–3.3 s. The 04/15 and 04/16 reports add !? on the TV plaza and a question mark on Yosuke’s school route. On 04/17 it recurs at the police station, before the castle, around Chie’s awakening and at dinner with Nanako and Dojima. A linked development build restores the model-effect position and rotation writes. Replay the same scenes to verify placement. |
+| P4-006 | Question-mark emotion on characters | Symbol appears at floor level | Photos from 04/14 and 04/15 show the question mark below Teddie. The 04/13 after-school clip shows it at floor height near Chie at 7.1–7.6 s, with an exclamation mark above Yosuke at 3.0–3.3 s. The 04/15 and 04/16 reports add !? on the TV plaza and a question mark on Yosuke’s school route. On 04/17 it recurs at the police station, before the castle, around Chie’s awakening and at dinner with Nanako and Dojima. Home6 restores the model-effect position and rotation writes. Replay the same frames to verify the reported question marks. |
 | P4-007 | TV-world entry and return on 04/14 and 04/15 | Green tint or patch in the nested-TV transition | home4 shows green edges or a bright green centre on 04/14 and 04/15 entry and return, and again entering on 04/17. The visits proceeded. The b176 movie hang is tracked separately. |
 | P4-008 | Rainy field scenes, including 04/12, 04/15 and 04/16 | Rain previously missing despite the rainy weather indicator | Visible rain reported on 04/12 and on the 04/15 school route and Samegawa Flood Plain. The 04/16 detective scene was reported rainy. Rain during Yosuke's morning scene and frame pacing remain to be checked. Umbrella geometry is tracked in P4-018. |
 | P4-009 | 04/15 school assembly | Protagonist body appears corrupted | Seen in the first run, absent in the replay. Keep open as intermittent; photos show different dialogue moments. |
@@ -58,7 +59,7 @@ replay and the 04/17 evening save for ongoing play.
 | P4-021 | Yukiko's Castle Gate, 04/17 daytime, approach the entrance | Red-and-black pattern appears over the side background as the camera moves closer | Improved on home3. The tester reports the outside wall looked correct during the home4 replay. Keep for regression checks. |
 | P4-022 | Yukiko's Castle 1F, look down the long hallway | Bright white area at the far end | Photo. Compare visibility and lighting from the same position on PS2. |
 | P4-023 | Yukiko's Castle 1F, flying Shadow outside combat | Only purple hand or arm shapes are visible in the reported encounter | Only arms visible again in the 04/17 home4 clip. Check how early the model is visible on approach. Audio is P4-044. |
-| P4-024 | Yukiko's Castle 1F, treasure chest near the circular carpet | Chest shows disconnected red panels | The 04/17 home4 photo shows missing surfaces again. Check material data and texture assignment for that chest. |
+| P4-024 | Yukiko's Castle 1F, treasure chest on the red carpet | Chest shows disconnected red panels | The 04/17 home4 photo shows missing surfaces again. PPSSPP with home5 shows the red panels while the chest opens and awards a Soul Drop. Save slot 7 provides the route to the chest. Check material data and texture assignment. |
 | P4-025 | Yukiko's Castle 2F, walk around the room before Chie's awakening | Large bright panels appear at the sides near windows as the camera moves | Visible at about 2.7 s and 5.7 s in the earlier clip. Improved on home3. The tester reports the wall looked correct near Shadow Chie’s door on home4. |
 | P4-026 | All-Out Attack in Yukiko's Castle | Missing character cut-ins and washed-out attack effects | Repeated in two home4 clips. The tester reports that Yosuke’s portrait is missing from the prompt, and that the party portraits and rushing 3D models are missing during the attack. The second clip shows the orange transition and exclamation mark around 1–2 s and a bright effect around 4–7 s. Compare the same sequence on PS2. |
 | P4-027 | Chie's Persona awakening | Blue and white light effects look wrong to the tester | Recurred on home4. Compare the brightness and timing around the Persona card with PS2. The question mark is tracked in P4-006. |
@@ -83,6 +84,7 @@ replay and the 04/17 evening save for ongoing play.
 | P4-046 | Yukiko's Castle, red carpet in the scene before Shadow Chie | Floor texture looks wrong | Photo from above with Teddie's dialogue. Compare the same camera and carpet before changing UVs or texture filtering. |
 | P4-047 | Battle, command label around the status portrait as a move starts | Label warps for both party members | 04/17 clip and tester report. Compare the first frames after choosing an action for each character with PS2. |
 | P4-048 | Fool Social Link starts after Chie's awakening | Bright establishment effect similar to the Magician scene | 04/17 clip. Compare the strength and timing. The card framing is P4-028 and the spacing in the following message is P4-013. |
+| P4-049 | Save and load menus | The yellow/orange slot dials show no numbers | Reported with a hardware photo. Reproduced on home5 in PPSSPP. Home6 restores digits in the slot dials and loads the Shopping District save with the full confirmation dialog visible. Hardware retest is pending. |
 
 ## Model effect position and rotation
 
@@ -95,17 +97,18 @@ callbacks as void functions. The old source rewrite also removed the
 copy, which was written inside the return expression.
 
 The rewrite now keeps the assignment when adapting the return type.
-In the linked development build both callbacks write all four words, as
+In the linked home6 build both callbacks write all four words, as
 do five related setters for the thunder, ring and other effect
 transforms. The regression test covers the return expression and its
-control flow. Check the 04/17 TV plaza and Chie's awakening first, then
-compare the 04/13 classroom animations if that save is available.
-P4-006 remains open until the icon is observed in place. Compare the
-other effects individually once the saves are available.
+control flow. Compare the TV plaza and Chie's awakening from slot 7, the
+04/13 classroom from slot 2, and the 04/15 early-morning scene at Dojima
+Residence from slot 4. P4-006 remains open until the reported icon is
+observed in place. Compare the other effects individually.
 
 ## Next development checks
 
-1. On home5 at 333 MHz, cold boot for the CRI logo. Load and save from
+1. On home6 at 333 MHz, cold boot for the CRI logo. Check the slot
+   numbers in the save and load menus. Load and save from
    `CAT_Ports`. Check HOME → Yes shortly after loading and after playing and
    saving. If it
    stalls, keep the log from that session and record the screen state.
@@ -144,7 +147,7 @@ other effects individually once the saves are available.
   **Persona4 PORTABLE** title and HOME exit support. Selected explicitly by
   the tester for the next build. Sound remains enabled. Earlier rendering
   reports are from b165. home3 has follow-up reports for the castle and
-  home4 is the latest hardware reference. home5 is the current test build.
+  home4 is the latest hardware reference. home6 is the current test build.
 
 XMB packaging was checked with actual PSPSDK packaging tools: title and
 MEMSIZE verified, all three PNGs recovered byte-for-byte from the expected

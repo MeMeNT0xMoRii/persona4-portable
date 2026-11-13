@@ -1,31 +1,26 @@
 # Replay saves for PSP hardware tests
 
 Use the original US PS2 release (SLUS_217.82). Dates below are in-game dates
-in month/day format. This is a collection plan for the new playthrough.
-Record the date and slot displayed by the game once each save exists.
+in month/day format. Slots 1–8 are available as private replay saves from
+the home4 playthrough. Record the date and slot for any later saves.
 
 Keep the regular playthrough in its own slot. Preserve the replay saves in
 separate slots, or copy the complete P4 `saves` directory to a dated private
 backup when slots are needed. Keep the previous playthrough backed up
 before starting a new game. Record the slot alongside any backed-up copy.
 
-| Priority | In-game date | Save point and timing | Short replay |
+| Slot | In-game date | Save point and timing | Short replay |
 | --- | --- | --- | --- |
-| Optional | 04/11 evening | Dojima Residence, living-room calendar, before sleeping | Opening dream and the transition into the first school day. To test the CRI logo, start the app from XMB before loading any slot (P4-001). |
-| Useful if available | 04/12 evening | Dojima Residence calendar before sleeping, or the closest earlier save | Replay the 04/13 morning stat message, after-school classroom and Dojima's evening sitting motion (P4-006, P4-013, P4-034, P4-036). |
-| Optional | 04/13 evening | Dojima Residence calendar, before watching the Midnight Channel if the calendar is accessible | First Midnight Channel if pending, then the 04/14 first TV-world visit, green transitions, room obstruction and lighting (P4-005, P4-007, P4-037). |
-| Keep | 04/14 evening | Dojima Residence calendar, before sleeping | 04/15 rainy school route and umbrella canopies, assembly, then the TV transitions, tutorial battle, Shadow Yosuke and results screens (P4-006–P4-014, P4-018, P4-038, P4-039). |
-| Keep | 04/15 evening | Dojima Residence calendar after returning from Shadow Yosuke, before watching TV or going to bed | 04/15 → 04/16 calendar animation, then the Magician link and the evening rain/umbrella scene (P4-004, P4-008, P4-018). |
-| Saved | 04/16 evening | Evening save reported. Exact point relative to watching TV is open. | Direct route to the 04/17 morning Nanako scene (P4-020). |
-| Keep | 04/17 daytime | Confirmed Shopping District save before Junes and the TV-world entry | Approach the castle gate, then castle 1F/2F, Shadow Chie and her awakening, Fool link, and return to the real world (P4-021–P4-029). |
-| Saved | 04/17 evening | Dojima Residence after dinner with Nanako and Dojima. The tester saved and exited successfully. | Resume normal play from here and preserve the Shopping District save. |
-| Useful if available | 04/17 daytime | TV-world hub butterfly after Chie's fight, if accessible before the scripted exit. | Short route to the return and the former Daytime stall (P4-029). |
-| Keep | 04/18 or first free dungeon visit | TV-world hub butterfly before entering Yukiko's Castle | Repeatable 1F/2F field and combat tests: hallway, chest, flying and ground Shadows, battle entry and defeat, missing heads, All-Out portraits and Shuffle Time (P4-011, P4-022–P4-026, P4-030–P4-032). Knock down all enemies to trigger All-Out. Record the floor and enemy name for layout or encounter differences. |
-| Keep on arrival | Actual dungeon date | Yukiko's Castle 8F, save point before the boss door | Short boss/effects replay and comparison of dungeon completion and return. Keep the hub save for ordinary fights. |
-
-The tester also reported saves on 04/13–04/16. Keep 04/14 for the 04/15
-replay, and 04/15 for the next day transition.
-Slot numbers and exact save-menu details are still to be recorded.
+| 1 | 04/11 evening | Dojima Residence, living-room calendar | First dream and transition into the first school day. Check the CRI logo on a cold boot before opening the load menu (P4-001). |
+| 2 | 04/12 evening | Dojima Residence | 04/13 morning stat message, after-school classroom and Dojima sitting down in the evening (P4-006, P4-013, P4-034, P4-036). |
+| 3 | 04/13 evening | Dojima Residence | Continue to 04/14 for the first TV-world visit, transitions, room obstruction and lighting (P4-005, P4-007, P4-037). |
+| 4 | 04/14 evening | Dojima Residence, before sleeping | Take the stairs and select Sleep. After the calendar transition, check the rainy school route, assembly, tutorial battle and Shadow Yosuke (P4-004, P4-006–P4-014, P4-018, P4-038, P4-039). |
+| 5 | 04/15 evening | Dojima Residence, after returning from Shadow Yosuke | Replay the Midnight Channel sequence, 04/15 → 04/16 calendar, Magician link and evening rain (P4-004, P4-008, P4-018, P4-040–P4-042). |
+| 6 | 04/16 evening | Dojima Residence | 04/16 → 04/17 transition, early-morning Nanako scene and police station (P4-004, P4-006, P4-020). |
+| 7 | 04/17 daytime | Central Shopping District, before Junes | Open the area menu with Square, select Leave the shopping district and confirm Junes. Continue through the food court, TV plaza and castle gate to 1F/2F, Shadow Chie, the Fool link and the return (P4-006, P4-007, P4-021–P4-029). |
+| 8 | 04/17 evening | Dojima Residence after Chie's Persona and dinner | Resume the regular playthrough. The tester saved here and returned to XMB. |
+| Planned | 04/18 or first free dungeon visit | TV-world hub butterfly before entering Yukiko's Castle | Repeatable 1F/2F field and combat tests for the chest, field Shadows, heads, entry and defeat effects, All-Out Attack and Shuffle Time (P4-011, P4-022–P4-026, P4-030–P4-032). Knock down all enemies to trigger All-Out. Record the floor and enemy for encounter differences. |
+| Planned | Actual dungeon date | Yukiko's Castle 8F, save point before the boss door | Replay the boss and compare dungeon completion and return. Keep the hub save for ordinary fights. |
 
 Later dungeons can use the same three positions: hub before entry, last-floor
 save before the boss where available, and first save after returning if there is
