@@ -1,8 +1,9 @@
 # Persona4 PORTABLE
 
 This playtest branch builds on [dreikk91/persona4-psp](https://github.com/dreikk91/persona4-psp).
-It uses **upstream b176** with the local save-recovery fix, the
-[custom XMB presentation](docs/xmb.md), and a PSP HOME exit callback.
+The b249 integration builds on [b176-xmb-home8](docs/build_b176_xmb_home8.md).
+The fork includes save recovery, the [custom XMB presentation](docs/xmb.md),
+and a PSP HOME exit callback.
 The tester has confirmed **HOME, save/load, the XMB artwork and title** on
 PSP-3000 with **b176-xmb-home1**. Moving the installation into `CAT_Ports`
 and launching from XMB failed when loading data from fixed paths.
@@ -20,10 +21,8 @@ Hardware playtesting has reached Chie's Persona awakening and the next save.
 
 Our previous hardware reference is **b165 with save recovery**. The
 [`playthrough/b165-tested`](https://github.com/MeMeNT0xMoRii/persona4-portable/tree/playthrough/b165-tested)
-branch preserves it. This branch, `playthrough/b176-xmb-home`, carries the next
-build. The [hardware test backlog](docs/playtest.md) retains the original b165
-observations until each is retested. b176 has a known movie hang after longer
-play with sound; see Status below. Sound stays enabled by default.
+branch preserves it. The [hardware test backlog](docs/playtest.md) retains
+observations until each is retested. Sound is enabled by default.
 
 An experimental native PSP port of **Shin Megami Tensei: Persona 4** (PlayStation 2, USA, `SLUS_217.82`). The port combines recovered C, locally translated retail routines and PSP implementations of graphics, input, files, saves, audio and movie playback.
 
@@ -33,19 +32,21 @@ You must supply your own legally obtained USA disc image. Game executables, arch
 
 Use the **source-build** preparation package: extract the entire archive, run `Prepare P4.exe`, select your original USA ISO and an output folder, then copy the resulting `P4` folder to `PSP/GAME/` on your memory card. The utility downloads the PSP compiler on the first build; no separate Python or PSPDEV setup is needed. See [the preparation guide](docs/prepare_game.md) for building the package and using it.
 
-Download **P4-PSP-b176-windows-x64.zip** from the [b176 pre-release](https://github.com/dreikk91/persona4-psp/releases/tag/b176). The utility compiles EBOOT and matching data locally from your ISO and pinned upstream sources. It needs Internet access for the first upstream download, or a verified offline source ZIP. The older prebuilt-EBOOT b164 download was withdrawn.
+Download **P4-PSP-b249-windows-x64.zip** from the [b249 pre-release](https://github.com/dreikk91/persona4-psp/releases/tag/b249). The utility compiles EBOOT and matching data locally from your ISO and pinned upstream sources. It needs Internet access for the first upstream download, or a verified offline source ZIP. The older prebuilt-EBOOT b164 download was withdrawn.
 
 ## Build and install
 
 - **Compile EBOOT.PBP from source:** follow [Building from source](docs/building.md), including the pinned decompilation revision and Windows PSP toolchain requirements.
 - **Prepare resources and install:** the same guide covers extraction, audio/movie conversion and copying the complete installation to `PSP/GAME/P4`.
-- **Windows preparation utility:** [Build and prepare](docs/prepare_game.md) describes the source-build GUI/CLI. Frozen source packages include the compiler and build EBOOT locally.
+- **Windows preparation utility:** [Build and prepare](docs/prepare_game.md) describes the source-build GUI/CLI. Frozen source packages download the compiler and build EBOOT locally.
 
-The b176 utility was checked by a clean `--build-only` build from the release package; the build tool reports when your EBOOT matches that host build. b176 profiling builds were tested on a PSP in selected scenes (see Status); the release EBOOT from the utility has not been run on a PSP yet.
+The b249 source package includes the audio/video handoff fix and rendering work through b249. The diagnostic b249 build passed the reported long-session title-return scenario on a PSP at 333 MHz; the generated XMB EBOOT needs separate hardware validation. See [the handoff results](docs/audio_video_hang.md) and [performance measurements](docs/perf_status.md).
 
-The [source-build utility validation](docs/source_build_validation_b164.md) also covers the frozen Windows runtime, build caching and hidden compiler processes.
+See [b249 publication checks](docs/build_validation_b249.md) for current validation and known test limitations. The [earlier source-build utility validation](docs/source_build_validation_b164.md) covers build caching and hidden compiler processes.
 
-The current working-tree build is **b176 plus save recovery, XMB branding and HOME support**. The source preparation tool targets Windows and a Windows PSPSDK toolchain. A PSP with 64 MB RAM and firmware capable of running homebrew is required; PSP-1000 support is not established.
+This fork builds **b249-xmb-home8**. The Windows preparation utility linked
+above builds upstream b249. Build from this checkout to include the fork's
+changes. The PSP installation requires 64 MB RAM and firmware that runs homebrew.
 
 ## Status
 
@@ -55,10 +56,10 @@ This is a work in progress, with hardware testing of selected scenes, saves, bat
 - Some scenes, including Dojima's room, have reached about 30 FPS on hardware at 333 MHz. Heavy scenes remain slower. Frameskip aims to keep the game clock near real time; this does not mean 30 displayed frames per second everywhere.
 - Audio uses PSP SAS and streamed resources converted from the disc. Some sequenced sound behavior still needs fidelity checks.
 - All 23 movies can be converted for hardware AVC playback, with separate PCM audio and movie skipping.
-- Known issue (b176): after about 10 minutes of play with sound, the next movie can hang inside `sceMpeg`. Creating an empty file `PSP/GAME/P4/NOSOUND` disables the SAS player and avoids the hang (movies decoded fine after 42 minutes). A fix is in progress.
-- b166-b176 performance work: about 50 ms a frame in Heaven and the classroom (was over 100 ms in profiling builds), cheaper skinning and guard checks, far-distance animation LOD for still characters, movie buffers in volatile memory.
+- b249 fixes the reported long-session title-return hang by stopping audio workers and recycling owned audio/video firmware modules before movie playback. One full-game 10+ minute sound session, all 3270 movie frames and resumed audio passed on PSP. Broader cutscene coverage remains open. Remove an old `NOSOUND` file to re-enable sound when testing this fix.
+- Rendering work through b246 includes cheaper animation/skinning, corrected triangle-strip cache keys and cached guard results. The fork defaults `p4_cull_cover` to zero so distant actors remain visible. Upstream's Heaven numbers with screen-size culling describe that specific configuration. Far-skin triangle reduction and persistent mesh replay default to off.
 
-Hardware measurements and remaining issues are recorded in [development notes](docs/next_steps_b112.md), [audio notes](docs/audio_resources.md) and [video notes](docs/video_resources.md). Historical build numbers in these notes describe particular experiments.
+The current performance status and plan are in [perf status](docs/perf_status.md). Earlier hardware measurements and issues are recorded in [development notes](docs/next_steps_b112.md), [audio notes](docs/audio_resources.md) and [video notes](docs/video_resources.md). Historical build numbers in these notes describe particular experiments.
 
 The [earlier development history](docs/development_history.md) preserves the milestones and subjects of 68 local commits preceding this public source snapshot.
 

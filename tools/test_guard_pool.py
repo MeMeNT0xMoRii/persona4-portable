@@ -16,6 +16,7 @@ class GuardPoolTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         source = (root / "port/rwsky.c").read_text()
         types = re.findall(r"^typedef struct \{[^\n]+} Vertex3D(?:N)?;", source, re.M)
+        capture = re.search(r"^typedef struct \{[^\n]+} GuardCapture;\nstatic GuardCapture \*guard_capture;", source, re.M)[0]
         draw = re.search(
             r"^static void draw_guarded_chunks\([^;]*?\n\{.*?^\}",
             source, re.M | re.S,
@@ -106,6 +107,8 @@ int main(void) {
     const unsigned char chunks[] = {0, 1};
     Vertex3D vertices[4] = {0};
     Vertex3DN lit[4] = {0};
+    GuardCapture cap = {0};
+    guard_capture = &cap;
 
     /* One kept triangle and one clipped to a quad share small pools. */
     begin_mesh(3, 6);
@@ -116,6 +119,8 @@ int main(void) {
     assert(draws[0].vertices == vertices && !memcmp(draws[0].indices, mixed, 6));
     assert(draws[1].count == 6 && !draws[1].indices && draws[1].vertices == vertex_pool + 1);
     assert(index_used == index_cap && vertex_used == vertex_cap);
+    assert(cap.valid && cap.nkept == 3 && cap.ncut == 6);
+    assert(cap.idx == draws[0].indices && cap.cut == draws[1].vertices);
     verify_bounds();
 
     /* The same clipped quad takes seven 24-byte units with 28-byte vertices. */
@@ -127,9 +132,11 @@ int main(void) {
     verify_bounds();
 
     begin_mesh(3, 6);
+    cap.valid = 0;
     draw_guarded_chunks(GU_TRIANGLES, mixed, 6, lit, GU_INDEX_16BIT | GU_NORMAL_8BIT, .1f,
                         0, 0, 0, chunks, 1, 0);
     assert(guard_pool_exhausted == 1 && draw_count == 0 && index_used == 4 && vertex_used == 1);
+    assert(!cap.valid);
     verify_bounds();
 
     begin_mesh(2, 6);
@@ -154,7 +161,7 @@ int main(void) {
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)
             test = path / "guard_pool.c"
-            test.write_text("\n".join([*types, harness, draw, cases]))
+            test.write_text("\n".join([*types, harness, capture, draw, cases]))
             exe = path / "guard_pool.exe"
             subprocess.run(
                 [cc, "-std=c11", "-O2", "-I", str(root / "port"), str(test), "-o", str(exe)],

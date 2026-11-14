@@ -378,7 +378,7 @@ def gui(bundle, *, pspdev=None, build_cache=None, upstream_archive=None, build_o
             if selected: var.set(selected)
         button = ttk.Button(row, text='Browse…', command=choose); button.pack(side='left', padx=(8, 0))
         selectors.extend([entry, button])
-    ttk.Label(frame, text='The compiler is included. Game sources are downloaded automatically on the first build.',
+    ttk.Label(frame, text='The compiler and game sources are downloaded automatically on the first build.',
               wraplength=750).pack(anchor='w')
     mode_button = ttk.Checkbutton(frame, text='Build EBOOT only (skip game archive, audio and movie preparation)',
                                   variable=only_build)

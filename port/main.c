@@ -16,7 +16,7 @@ PSP_MAIN_THREAD_STACK_SIZE_KB(1024);
 PSP_HEAP_SIZE_KB(-1); /* the heap is claimed before main */
 PSP_HEAP_THRESHOLD_SIZE_KB(4096); /* left free: thread stacks */
 
-#define BUILD 176
+#define BUILD 249
 #define P4_IMAGE_SIZE 0x40B000 /* retail 0x52da00..0x938a00: data and bss */
 static char data_path[P4_PATH_MAX], strings_path[P4_PATH_MAX], log_path[P4_PATH_MAX];
 #ifdef P4_HW_PROFILE
@@ -375,9 +375,20 @@ static int check_strings(const unsigned *list, int count)
     return bad;
 }
 
+static int __attribute__((noinline)) load_boot_data(void *image)
+{
+    /* The string offsets are only needed during boot. Keep them on the
+       stack so static storage ends below the fixed retail image. */
+    unsigned list[8192];
+    memset(image, 0, P4_IMAGE_SIZE);
+    int data = load(data_path, image, P4_IMAGE_SIZE);
+    int count = load(strings_path, list, sizeof list) / 4;
+    p4_log("loaded data=%d list=%d\n", data, count);
+    return data > 0 && count > 0 && !check_strings(list, count);
+}
+
 int main(int argc, char **argv)
 {
-    static unsigned list[8192];
     __asm__ volatile("ctc1 $0, $31"); /* FPU traps off: on hardware a NaN compare powers the console off */
     __asm__ volatile("move $gp, %0" : : "r"(P4_GP)); /* reassembled code reads small data off $gp; threads inherit it */
     scePowerSetClockFrequency(333, 333, 166);
@@ -398,7 +409,7 @@ int main(int argc, char **argv)
         stop();
         return 1;
     }
-    p4_log("Persona4 PORTABLE b176-xmb-home8: HOME exit callback ready\n");
+    p4_log("Persona4 PORTABLE b249-xmb-home8: HOME exit callback ready\n");
     p4_log("game directory %s\n", p4_game_dir);
 #ifdef P4_HW_PROFILE
     extern char p4_image[];
@@ -420,11 +431,7 @@ int main(int argc, char **argv)
         sceKernelExitGame();
         return 1;
     }
-    memset(got, 0, P4_IMAGE_SIZE);
-    int data = load(data_path, got, P4_IMAGE_SIZE);
-    int count = load(strings_path, list, sizeof list) / 4;
-    p4_log("loaded data=%d list=%d\n", data, count);
-    if (data <= 0 || count <= 0 || check_strings(list, count)) {
+    if (!load_boot_data(got)) {
         stop();
         return 1;
     }

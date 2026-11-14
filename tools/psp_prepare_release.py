@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Build a source-compiling Windows preparation package without a game EBOOT.
 
-python tools/psp_prepare_release.py --vgmstream C:/tools/vgmstream --freeze --out C:/temp/P4-PSP-source
+python tools/psp_prepare_release.py --vgmstream ./helpers/vgmstream --freeze --out ./build/P4-PSP-source
 
 This creates a local package for review; it never publishes a GitHub release.
 """

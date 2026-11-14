@@ -42,7 +42,7 @@ python tools/psp_video.py --all
 
 Short `--seconds` probes default to `build/video_probe/VIDEO`; complete movies default to `build/psp_dist/PSP/GAME/P4/VIDEO`. Override paths with `--iso` and `--out`. The default rate is 29.97 FPS; use `--fps 15000/1001` for 14.985 FPS. This converts the frame rate offline rather than discarding dependent frames during playback.
 
-FFmpeg comes from PATH or imageio-ffmpeg; override it with `--ffmpeg C:/path/ffmpeg.exe`. PyAV reads metadata and packages AVC. Listing movies does not require importing those conversion dependencies.
+FFmpeg comes from PATH or imageio-ffmpeg; override it with `--ffmpeg ./helpers/ffmpeg.exe`. PyAV reads metadata and packages AVC. Listing movies does not require importing those conversion dependencies.
 
 Each movie produces:
 

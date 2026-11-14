@@ -169,7 +169,7 @@ def main():
     print(f"reassembled {len(done)} functions ({sum(len(l) for l in done.values()) * 4 // 1024} KB), refused {len(refused)}, aliases {len(aliases)}, jump table words {len(labels)}")
 
     # The image follows .bss in one segment, padded up to its address: a gap would make a separate load segment.
-    (OUT / "image.ld").write_text(f"SECTIONS {{ .p4image (NOLOAD) : {{ . = ALIGN(0x1000000); . += {PSP_IMAGE & 0xFFFFFF:#x}; *(.p4image) }} }} INSERT AFTER .bss;\n", encoding="utf-8")
+    (OUT / "image.ld").write_text(f"SECTIONS {{ .p4image (NOLOAD) : {{ . = ABSOLUTE({PSP_IMAGE:#x}); *(.p4image) }} }} INSERT AFTER .bss;\n", encoding="utf-8")
     (OUT / "symbols.ld").write_text("".join(f"{n} = {a + K:#x};\n" for n, a in sorted(data.items())) + "".join(f"{n} = {t};\n" for n, t in sorted(aliases.items())), encoding="utf-8")
     (OUT / "stubs.c").write_text("int p4_missing(const char *name);\n" + "".join(
         f'int {n}(void) {{ return p4_missing("{n} {refused.get(stub_address(n, names), "")}"); }}\n' for n in stubs), encoding="utf-8")

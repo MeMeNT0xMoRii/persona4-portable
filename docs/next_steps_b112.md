@@ -1,5 +1,10 @@
 # Next steps after build 112 (written 2026-11-06)
 
+> **Historical record.** This file is no longer the current plan. Its "Plan" and "Next" items were done,
+> superseded or carried over. The current status and plan are in [perf_status.md](perf_status.md). Keep this file
+> for its measured facts and the reasons behind earlier decisions. Device numbers dated 2026-11-10 were taken at
+> 423 MHz, not 333.
+
 For the agent that continues the PSP performance work. Goal from the user: a stable 30 FPS on the real PSP,
 with effects adapted, not removed. Branch: `perf/pipeline-guard-b110`, not merged into `main`.
 
@@ -35,20 +40,20 @@ See also the memory note `p4-psplink-workflow`. Short form:
   - Bump `#define BUILD` in `port/main.c`.
   - Run `PSPDEV=... python tools/psp_hw_debug.py --out build/psplink_bNN` (~35 s).
   - If `tools/psp_reasm.py` changed, first run `PSPDEV=... python tools/psp_link.py` (~8 min) to regenerate `build/psp/reasm.o`.
-- **Host programs.**
+- **Host programs.** Set `P4_HOST` to a local host folder and `P4_SESSION` to a separate local session folder.
   - `usbhostfs_pc.exe` and `pspsh.exe` come with PSPLink (`tools/psplink/` of a PSPLink host build).
-  - Start `usbhostfs_pc` with no arguments, cwd `C:/temp/p3f-psplink` (= `host0:/`). Never use `-vv` with its log on the share: a 2 MB copy then took 20 min instead of 4 s.
-  - Then start `P4_SESSION=C:/temp/p3f-session python tools/psp_shell.py --pspsh <pspsh.exe>`.
+  - Start `usbhostfs_pc` with no arguments, cwd `${P4_HOST}` (= `host0:/`). Never use `-vv` with its log on the share: a 2 MB copy then took 20 min instead of 4 s.
+  - Then start `python tools/psp_shell.py --pspsh <pspsh.exe>`.
   - Processes started with PowerShell `Start-Process` did not survive here at the end. Use a Bash background task, with `tail -f /dev/null |` feeding stdin to `usbhostfs_pc`.
 - **Deploy.**
-  - Copy `p4.prx` as `C:/temp/p3f-psplink/bNN/p4_bNN.prx`, plus `p4data.hwdbg.bin`.
+  - Copy `p4.prx` as `${P4_HOST}/bNN/p4_bNN.prx`, plus `p4data.hwdbg.bin`.
   - In the PSP shell: `cp host0:/bNN/... ms0:/PSP/GAME/P4/`, copy both back, compare SHA256 with the manifest.
   - Then `reset`, then `ldstart ms0:/PSP/GAME/P4/p4_bNN.prx`, and wait for `hwdbg bNN PRX image=`.
   - The data file changes with almost every build: always copy it.
 - **Profiler.**
   - `profmode t` before `reset` gives the `hwprof` sections. It survives `reset` but not a PSPLink restart.
   - It adds ~5 ms of CPU, so compare arms only within one mode.
-- **One A/B arm.** `PSPDEV=... P4_SESSION=C:/temp/p3f-session python tools/psp_probe_ab.py LABEL --base 0x08804000 [--set name=value] [--shot] [--preview]`.
+- **One A/B arm.** `PSPDEV=... python tools/psp_probe_ab.py LABEL --base 0x08804000 [--set name=value] [--shot] [--preview]`.
   - The script restores the defaults in its `DEFAULTS` table: keep that table equal to the C defaults.
   - `--old-build` measures an older build with its own ELF.
 - **Reaching a scene yourself.** `tools/psp_press.py --base 0x08804000 start:2 cross:2 ...` presses buttons through `p4_pad_press`.
@@ -60,7 +65,7 @@ See also the memory note `p4-psplink-workflow`. Short form:
   3. Ask them to restart PSPLink.
 - **Escaping.** Python heredocs inside Bash turn `"\\n"` into a real newline in C strings. Write patch scripts to the scratchpad with the Write tool instead. `port/*.c` are LF; keep them LF.
 
-## Plan, in order
+## Plan, in order (historical, 2026-11-06; superseded)
 
 Each step: one change, one build, measured on the device with baseline and baseline_again, picture checked.
 
@@ -187,7 +192,7 @@ Next:
 - b130 logged the "missing" keys: fc20, f030, e440, d850, ... one 0xBF0 frame apart: not resource ids but the low half
   of stack addresses. The game then died with `thinfo` Status KILLED, StackFree 0 (Breakpoint in sceThreadManager,
   ExitStatus 0x800201A2), sp below the 1 MB stack at 0x0BDC0000: a stack overflow.
-- The stack was dumped with a tiny PRX (C:/temp/p3f-stackdump/dump.c, `ldstart host0:/dump/dump.prx` writes
+- The stack was dumped with a tiny PRX (build/stackdump/dump.c, `ldstart host0:/dump/dump.prx` writes
   host0:/stack.bin; PSPLink's peek refuses addresses above 0x0A000000). The loop, one level per 0xBF0 bytes:
   RaycastFieldWorlds (camera fallback) -> RwFrameGetLTM(camera frame) -> frame sync (p4r_00394c70 -> p4r_00393900)
   -> ... -> RaycastFieldObjects -> RpClumpForAllAtomics -> ... -> RaycastFieldWorlds with a stack address as key.
@@ -351,7 +356,7 @@ Next:
   not yet counted.
 - **A character's head is missing** in a battle view (b165 session); not yet looked at.
 
-## Plan after 2026-11-09 (b165, PPSSPP session with the user comparing against PCSX2)
+## Plan after 2026-11-09 (b165, PPSSPP session with the user comparing against PCSX2) (historical; open items not re-checked, see perf_status.md)
 
 State at the end of the day. Fixed and seen working in PPSSPP: infinite recursion through the p4r_00397c40 alias (black
 movie, p4_audio crash), 30 FPS cap everywhere (title ran at 60 game frames/s), movies visible (sceDmacMemcpy), minimap

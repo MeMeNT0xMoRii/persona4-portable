@@ -4,9 +4,9 @@
 
 The current utility builds **EBOOT.PBP on your PC**, then prepares resources from your original Persona 4 USA (`SLUS-21782`) ISO. New preparation packages contain our port sources and conversion tools. They contain **no prebuilt game EBOOT, compiled game objects, retail executable, rebased game data or build-specific numerical data recipe**. The pinned upstream decompilation is fetched separately.
 
-The older prebuilt-EBOOT b164 download has been withdrawn. The current source-build package is published as **P4-PSP-b176-windows-x64.zip** in the [b176 pre-release](https://github.com/dreikk91/persona4-psp/releases/tag/b176); creating a package locally does not publish it.
+The older prebuilt-EBOOT b164 download has been withdrawn. The current source-build package is published as **P4-PSP-b249-windows-x64.zip** in the [b249 pre-release](https://github.com/dreikk91/persona4-psp/releases/tag/b249); creating a package locally does not publish it.
 
-1. Extract the complete new utility archive to a PC folder. Keep `Prepare P4.exe`, `_internal`, `helpers`, `source`, `prepare.json` and `toolchain` together.
+1. Extract the complete new utility archive to a PC folder. Keep `Prepare P4.exe`, `_internal`, `helpers`, `source`, `prepare.json` and any included `toolchain` folder together.
 2. Run **Prepare P4.exe** and select your original USA ISO and an output folder outside the utility folder.
 3. Click **Build and prepare**. The utility downloads the PSP compiler on the first build (about 100 MB, verified by SHA256, kept in the build cache), verifies the disc, obtains the pinned upstream sources, compiles the game and port, checks the linked image, packages EBOOT and prepares all audio/movies.
 4. Wait for **Ready**, then copy the resulting **P4** folder to **PSP/GAME/** on your memory card. Start the game from XMB.
@@ -44,10 +44,10 @@ Keep `.p4-work` on the PC to resume preparation. Copy only `P4` to the PSP. `ins
 ## CLI
 
 ```powershell
-python tools/psp_prepare.py --cli --bundle C:/P4-Source-Utility --iso 'D:/Persona 4.iso' --output D:/PreparedGame --pspdev C:/pspdev
+python tools/psp_prepare.py --cli --bundle ./P4-Source-Utility --iso './Persona 4.iso' --output ./PreparedGame --pspdev ./toolchain/pspdev
 
 # Launch files only, with an explicit local cache and offline upstream archive:
-python tools/psp_prepare.py --cli --build-only --bundle C:/P4-Source-Utility --iso 'D:/Persona 4.iso' --output D:/PreparedGame --pspdev C:/pspdev --build-cache C:/P4Cache --upstream-archive C:/downloads/persona4-upstream.zip
+python tools/psp_prepare.py --cli --build-only --bundle ./P4-Source-Utility --iso './Persona 4.iso' --output ./PreparedGame --pspdev ./toolchain/pspdev --build-cache ./build/prepare-cache --upstream-archive ./downloads/persona4-upstream.zip
 ```
 
 Use `Prepare P4.exe` in place of `python tools/psp_prepare.py` when running the frozen package. `--check` performs disc/dependency/source-package preflight; `--probe` additionally converts sample ADX/AHX audio and a short movie. These checks alone do not compile or test gameplay.
@@ -56,7 +56,7 @@ Use `Prepare P4.exe` in place of `python tools/psp_prepare.py` when running the 
 
 ```powershell
 python -m pip install -r tools/requirements-prepare.txt
-python tools/psp_prepare_release.py --vgmstream C:/tools/vgmstream --freeze --zip --pspdev C:/pspdev --out C:/temp/P4-PSP-source
+python tools/psp_prepare_release.py --vgmstream ./helpers/vgmstream --freeze --zip --pspdev ./toolchain/pspdev --out ./build/P4-PSP-b249-windows-x64
 ```
 
 Supply the complete Windows vgmstream CLI folder, including DLLs and notices. The generator freezes Python/Tk/PyAV, bundles conversion helpers, copies the port/build sources and writes their SHA256 manifest. `package.json` inventories the distributed files. Packages do not include PSPDEV by default: the utility downloads the archive named in `tools/build_reference.json` (`recommended_toolchain`) and checks its SHA256. `--bundle-toolchain` with `--pspdev` includes a compiler instead; a bundled compiler takes priority over a user's existing `PSPDEV`, and an explicit `--pspdev` overrides both. The copied `BUILDINFO.txt` replaces that compiler's local installation paths with `${PSPDEV}` while retaining its version/source information; the original file is unchanged. Review the exact third-party binaries' corresponding-source requirements before redistribution.

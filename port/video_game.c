@@ -13,11 +13,13 @@ extern void p4_log(const char *fmt, ...);
 extern int iGpffffbaf8;
 extern volatile unsigned p4_pad_press, p4_pad_reads;
 static void movie_frame(unsigned frame) { iGpffffbaf8 = frame; }
+unsigned p4_route_buttons(void);
 static unsigned movie_buttons(void)
 {
-    if (!p4_pad_reads) return 0;
+    unsigned route = p4_route_buttons();
+    if (!p4_pad_reads) return route;
     p4_pad_reads--;
-    return p4_pad_press;
+    return route | p4_pad_press;
 }
 
 int mwPlayerUpdate(unsigned char *owner)
@@ -44,15 +46,27 @@ int mwPlayerUpdate(unsigned char *owner)
     sceDisplayGetFrameBuf(&display, &stride, &format, PSP_DISPLAY_SETBUF_IMMEDIATE);
     p4_video_on_frame = movie_frame;
     p4_video_buttons = movie_buttons;
-    p4_audio_pause(1);
+    int audio_paused = p4_audio_pause(1);
     {
         extern volatile unsigned p4_audio_blocks, p4_audio_errors, p4_audio_underruns, p4_audio_cpu_us;
         int p4_audio_state(void);
         p4_log("video audio state %d (1 running, 4 paused): blocks %u errors %u underruns %u cpu_us %u\n", p4_audio_state(),
                p4_audio_blocks, p4_audio_errors, p4_audio_underruns, p4_audio_cpu_us);
     }
-    int result = p4_video_play(p4_game_dir, stem, 0);
-    p4_audio_pause(0);
+    int result = -1;
+    int audio_suspended = -1;
+    if (audio_paused == 0) {
+        p4_video_shutdown();
+        audio_suspended = p4_audio_suspend_for_video();
+    }
+    if (audio_suspended >= 0) {
+        result = p4_video_play(p4_game_dir, stem, 0);
+        p4_video_shutdown();
+    } else
+        p4_log("video skipped: audio firmware could not be released; continuing game\n");
+    if (p4_audio_resume_after_video() < 0)
+        p4_log("video audio restart failed\n");
+    if (audio_suspended < 0) p4_audio_pause(0);
     p4_video_on_frame = NULL; p4_video_buttons = NULL;
     if (display && stride > 0)
         sceDisplaySetFrameBuf(display, stride, format, PSP_DISPLAY_SETBUF_IMMEDIATE);

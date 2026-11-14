@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <math.h>
 #include "swizzle.h"
 
@@ -49,16 +50,25 @@ enum { PROF_FRAME, PROF_ATOMIC, PROF_MESH, PROF_GUARD, PROF_SKIN, PROF_PTANK, PR
       PROF_SBONES, PROF_SGUARD, PROF_SDRAW, PROF_SMAT, PROF_SBIND, PROF_STEST,
       PROF_QMODEL, PROF_QATTACH, PROF_QSORT, PROF_QEFFECT, PROF_QFLD, PROF_QPRIM,
       PROF_AFRAME, PROF_AATTACH, PROF_ALAYER, PROF_ACTRL, PROF_AFX, PROF_AMOTION,
-      PROF_ABLEND, PROF_AREBASE, PROF_APOSE, PROF_KADD, PROF_KSET, PROF_KBLEND, PROF_KMAT, PROF_KANIM, PROF_KFRAME, PROF_KINTERP, PROF_TBIND, PROF_LBIND, PROF_SECTIONS };
+      PROF_ABLEND, PROF_AREBASE, PROF_APOSE, PROF_KADD, PROF_KSET, PROF_KBLEND, PROF_KMAT, PROF_KANIM, PROF_KFRAME, PROF_KINTERP, PROF_TBIND, PROF_LBIND,
+      PROF_DSTATE, PROF_DSKIP, PROF_DPOSE, PROF_DRESTORE, PROF_DCOLOR, PROF_DVIS, PROF_DFX, PROF_DFRAME,
+      PROF_RPLAY, PROF_RLIGHT, PROF_RGUARD, PROF_PERSIST, PROF_SECTIONS };
 enum { PC_COUNT = 5 };
 /* counter words read per section edge: cpu cycles, stall, memory stall, imiss, dmiss (b73 read all 19, which itself
    cost a visible part of the frame at ~800 section edges a frame) */
-static const unsigned char prof_index[PC_COUNT] = { 1, 2, 4, 13, 14 };
+/* b239: the words are read as prof_regs[1 + index] and PspDebugProfilerRegs starts with `enable`, so index k is the
+   k-th counter after it: 0 systemck, 1 cpuck, 2 internal, 3 memory, 4 copz, ... 12 i_miss, 13 d_miss, 14 d_writeback.
+   Up to b238 the table was { 1, 2, 4, 13, 14 }: the column printed as "mem_k" was copz, "imiss" was d_miss and
+   "dmiss" was d_writeback; instruction-cache misses were never read. prof_bench (boot) prints every counter around a
+   walk of 4096 uncached-yet lines to show which word counts data misses. Not const: pokeable. */
+unsigned char p4_prof_index[PC_COUNT] = { 1, 2, 3, 12, 13 };
+#define prof_index p4_prof_index
 static const char *const prof_names[PROF_SECTIONS] = { "frame", "atomic", "mesh", "guard", "skin", "ptank", "2d", "gesync", "vblank", "msetup", "mshade", "memit", "msubmit", "mhit", "mgdraw", "mkey", "muvscan", "mlights", "hempty", "hbind", "dlight", "ddraw", "gclass", "gloop", "gclip", "gsub",
     "mfrust", "mslot", "mcopy", "altm", "ablack", "acover", "geskin", "sector", "tasks", "sbones", "sguard", "sdraw", "smat", "sbind", "stest",
     "qmodel", "qattach", "qsort", "qeffect", "qfld", "qprim",
     "aframe", "aattach", "alayer", "actrl", "afx", "amotion",
-    "ablend", "arebase", "apose", "kadd", "kset", "kblend", "kmat", "kanim", "kframe", "kinterp", "tbind", "lbind" };
+    "ablend", "arebase", "apose", "kadd", "kset", "kblend", "kmat", "kanim", "kframe", "kinterp", "tbind", "lbind",
+    "dstate", "dskip", "dpose", "drestore", "dcolor", "dvis", "dfx", "dframe", "rplay", "rlight", "rguard", "mpers" };
 static const volatile unsigned *prof_regs;
 static int prof_state; /* 0 not tried, 1 live, -1 none */
 static unsigned prof_at[PROF_SECTIONS][PC_COUNT], prof_depth[PROF_SECTIONS], prof_calls[PROF_SECTIONS];
@@ -74,8 +84,9 @@ static void prof_read(unsigned out[PC_COUNT])
 
 /* b124: writing GE words cost ~100 cycles each (bone matrices 1600 a matrix) with or without GE fill. Store speed
    into the display list's memory vs a plain buffer, and where libpspgu writes. */
-static unsigned prof_store_scratch[4096] __attribute__((aligned(64)));
+static unsigned prof_store_scratch[1024] __attribute__((aligned(64))); /* b242: 4096 -> 1024 words, the image was 344 bytes over */
 static void prof_store_test(void);
+static void prof_bench(void);
 static int prof_live(void)
 {
     if (prof_state == 0) {
@@ -100,6 +111,7 @@ static int prof_live(void)
             prof_read(e);
             p4_log("hwprof one section begin+end costs %u cycles\n", (e[0] - b[0]) / 1000);
             prof_store_test();
+            prof_bench();
         }
     }
     return prof_state > 0;
@@ -124,6 +136,10 @@ static void prof_end(int s)
 }
 
 static void task_report(unsigned frames);
+static int p4_skipping(void);
+/* b191: hwtask and hwot keys (function addresses, node types) with this bit are ticks frameskip left undrawn: what
+   still runs there for nobody to see (perf_status.md, plan item 5) */
+#define SKIP_KEY 0x80000000u
 extern unsigned kmat_nodes, kmat_flags_or;
 static void ot_report(unsigned frames);
 /* per frame: CPU kcycles, stall kcycles (total, memory), cache misses, FPU/VFPU instructions (k) */
@@ -190,22 +206,22 @@ static int run_task(KwlnTask *node)
     unsigned before = prof_regs[1 + prof_index[0]];
     int r = kwlnTaskRunUpdate(node);
     unsigned cycles = prof_regs[1 + prof_index[0]] - before;
-    task_book(node, fn, cycles, render_mono() - render);
+    task_book(node, fn ^ (p4_skipping() ? SKIP_KEY : 0), cycles, render_mono() - render);
     hanim_scan_after(node->name, fn);
     return r;
 }
-/* the 16 costliest update callbacks per frame: inclusive and self kcycles */
+/* the 24 costliest update callbacks per frame: inclusive and self kcycles */
 static void task_report(unsigned frames)
 {
     p4_log("hwtask lists %u per frame cpu_k %u overflow %u\n", task_lists / frames, (unsigned)(task_list_cycles / frames / 1000), task_overflow);
-    for (int k = 0; k < 16; k++) {
+    for (int k = 0; k < 24; k++) { /* b191: 24, the undrawn ticks take rows too */
         TaskStat *best = 0;
         for (int i = 0; i < TASK_STATS; i++)
             if (task_stats[i].calls && (!best || task_stats[i].cycles > best->cycles))
                 best = &task_stats[i];
         if (!best)
             break;
-        p4_log("hwtask %2d fn %08x %-24s calls %u cpu_k %u self_k %u\n", k, best->fn, best->name, best->calls / frames,
+        p4_log("hwtask %2d fn %08x%s %-24s calls %u cpu_k %u self_k %u\n", k, best->fn & ~SKIP_KEY, best->fn & SKIP_KEY ? " SKIP" : "", best->name, best->calls / frames,
                (unsigned)(best->cycles / frames / 1000), (unsigned)(best->self / frames / 1000));
         best->calls = 0;
     }
@@ -238,6 +254,7 @@ void p4_ot_end(unsigned start, unsigned key)
     unsigned cycles = prof_regs[1 + prof_index[0]] - start;
     ot_depth--;
     unsigned long long render = ot_depth < 8 ? render_mono() - ot_render_at[ot_depth] : 0;
+    key ^= p4_skipping() ? SKIP_KEY : 0; /* b191: ticks frameskip leaves undrawn booked apart */
     unsigned h = (key >> 2) * 2654435761u >> 26;
     for (unsigned probe = 0; probe < OT_STATS; probe++) {
         OtStat *e = &ot_stats[(h + probe) & (OT_STATS - 1)];
@@ -252,15 +269,15 @@ void p4_ot_end(unsigned start, unsigned key)
 }
 static void ot_report(unsigned frames)
 {
-    for (int k = 0; k < 16; k++) {
+    for (int k = 0; k < 24; k++) { /* b191: 24, the undrawn ticks take rows too */
         OtStat *best = 0;
         for (int i = 0; i < OT_STATS; i++)
             if (ot_stats[i].calls && (!best || ot_stats[i].self > best->self))
                 best = &ot_stats[i];
         if (!best)
             break;
-        p4_log("hwot %2d key %08x calls %u cpu_k %u self_k %u\n", k, best->key, best->calls / frames,
-               (unsigned)(best->cycles / frames / 1000), (unsigned)(best->self / frames / 1000));
+        p4_log("hwot %2d key %08x%s calls %u cpu_k %u self_k %u\n", k, best->key & ~SKIP_KEY, best->key & SKIP_KEY ? " SKIP" : "",
+               best->calls / frames, (unsigned)(best->cycles / frames / 1000), (unsigned)(best->self / frames / 1000));
         best->calls = 0;
     }
     memset(ot_stats, 0, sizeof ot_stats);
@@ -333,9 +350,21 @@ int __wrap_func_00397c40(void *hierarchy)
 }
 void *__real_func_003e9680(void *frame);
 void *__wrap_func_003e9680(void *frame) { prof_begin(PROF_KFRAME); void *r = __real_func_003e9680(frame); prof_end(PROF_KFRAME); return r; }
-/* census FIXES hooks in mdlAdvanceModel (b139): id 0..5 = aframe..amotion, 6..8 = ablend, arebase, apose (b141) */
+/* census FIXES hooks in mdlAdvanceModel (b139): id 0..5 = aframe..amotion, 6..8 = ablend, arebase, apose (b141);
+   mdlUpdateDrawState (b182): 9 the whole call (dstate, or dskip in a frame frameskip leaves undrawn), 10 dpose,
+   11 drestore, 12 dcolor, 13 dvis, 14 dfx, 15 dframe */
+static int p4_skipping(void);
 void p4_sec(int id, int begin)
 {
+    if (id >= 9 && id <= 15) {
+        static int dstate_skip;
+        int s = id != 9 ? PROF_DSTATE + id - 8 : (begin ? (dstate_skip = p4_skipping()) : dstate_skip) ? PROF_DSKIP : PROF_DSTATE;
+        if (begin)
+            prof_begin(s);
+        else
+            prof_end(s);
+        return;
+    }
     if (id >= 0 && id < 9) {
         if (begin)
             prof_begin(PROF_AFRAME + id);
@@ -437,8 +466,50 @@ static int skip_frame, skip_run, skip_cap = 2;
 static int skip_debt_us;
 static unsigned skip_last_us, skipped_frames, skip_ticks;
 #define SKIPPING (skip_frame)
+static int p4_skipping(void) { return skip_frame; }
+/* b198: avoid audited render-only preparation in undrawn ticks. OT callbacks, animation,
+ * blend tracks, child/effect progression and queue construction still execute. */
+int p4_skip_visual_bits = 3; /* bit 1: material draw-pass walks, bit 2: model material tint */
+static unsigned skip_visual_passes, skip_visual_colors;
+int p4_skip_visual_prep(int kind)
+{
+    if (!skip_frame || !(p4_skip_visual_bits & kind)) return 0;
+    if (kind == 1) skip_visual_passes++;
+    if (kind == 2) skip_visual_colors++;
+    return 1;
+}
+static void skip_visual_report(unsigned frames)
+{
+    p4_log("skip visual bits %d: passes %u colors %u per %u frames\n",
+           p4_skip_visual_bits, skip_visual_passes, skip_visual_colors, frames);
+    skip_visual_passes = skip_visual_colors = 0;
+}
+
+/* b183: mdlUpdateDrawState (census FIXES) takes its no-shadow path in a frame frameskip leaves undrawn; 0: as b182 */
+int p4_shadow_skip_on = 1;
+static unsigned shadow_skips;
+int p4_shadow_skip(void)
+{
+    int skip = p4_shadow_skip_on && skip_frame;
+    shadow_skips += skip;
+    return skip;
+}
+/* b217 p4_fpu_chop: the EE's FPU rounds toward zero (PCSX2 "Chop"); the PSP's rounds to nearest. Izanagi (the PC port
+   of the same decompilation, docs/porting.md "EE float mode") runs all game code in round-toward-zero and names the
+   boss fight's 180-degree quaternion among what depends on it. 1: FCR31 rounding mode toward zero on the game thread
+   (set once a frame here, the thread that runs the game's ticks); 3: also flush denormals (FS); 0: nearest, as before. */
+int p4_fpu_chop = 0;
+static void fpu_mode_apply(void)
+{
+    unsigned fcr, want;
+    __asm__ volatile("cfc1 %0, $31" : "=r"(fcr));
+    want = (fcr & ~(3u | 1u << 24 | 0x1f << 7)) | (p4_fpu_chop & 1) | (p4_fpu_chop & 2 ? 1u << 24 : 0); /* traps stay off */
+    if (want != fcr)
+        __asm__ volatile("ctc1 %0, $31" : : "r"(want));
+}
 static void skip_decide(int cap)
 {
+    fpu_mode_apply();
     unsigned now = sceKernelGetSystemTimeLow();
     int target = cap * 16683;
     if (skip_last_us) {
@@ -576,10 +647,10 @@ static void prof_store_test(void)
     volatile unsigned *cached = prof_store_scratch, *uncached = (volatile unsigned *)((unsigned)prof_store_scratch | 0x40000000u);
     unsigned t0 = prof_cycles();
     for (int i = 0; i < 4096; i++)
-        cached[i] = i;
+        cached[i & 1023] = i;
     unsigned t1 = prof_cycles();
     for (int i = 0; i < 4096; i++)
-        uncached[i] = i;
+        uncached[i & 1023] = i;
     unsigned t2 = prof_cycles();
     p4_log("hwprof store 4096 words: cached %u uncached %u cycles; list %p current %p\n", t1 - t0, t2 - t1, (void *)list_store,
            gu_list ? (void *)gu_list->current : 0);
@@ -617,6 +688,7 @@ extern int p4_frameskip_bones;
 extern int p4_bone_check;
 static unsigned bone_bad_count;
 extern int p4_hanim_nan_fix;
+static void look_report(void);
 static unsigned hanim_nan_fixed;
 static unsigned hanim_nan_after_update;
 static unsigned skipped_bone_updates;
@@ -625,6 +697,7 @@ int p4_im3d = 1; /* 0: RwIm3D not drawn, as before b134 */
 static unsigned im3d_draws, im3d_vertices;
 static void frustum_report(unsigned frames);
 static void replay_report(unsigned frames);
+static void call_report(void);
 extern int p4_fog;
 static void probe_report(unsigned frames);
 static void topology_report(unsigned frames);
@@ -645,19 +718,48 @@ typedef struct { float u, v; unsigned colour; signed char nx, ny, nz, pad; float
 _Static_assert(sizeof(Vertex3DN) == 28, "GE vertex layout");
 enum { VT_3D = GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D };
 static void churn_report(unsigned frames);
+static void churn_top_report(unsigned frames);
+static void shadow_report(unsigned frames);
+extern int p4_skin_diff, p4_skin_finite;
+static unsigned skin_diff_checked, skin_diff_count;
+extern int p4_churn_top;
 extern int p4_ge_skin;
 int p4_skin_alpha = 1; /* 0: skinned batches' alpha unknown, two TEST_1 passes, as b128 */
 int p4_bone_direct = 1; /* 0: sceGuBoneMatrix for every slot of every batch, as b123 */
 static unsigned bones_sent;
-static unsigned skin_ge_draws, skin_ge_batches, skin_ge_fallbacks, skin_ge_builds, skin_ge_bytes;
+static unsigned skin_ge_draws, skin_ge_batches, skin_ge_fallbacks, skin_ge_builds, skin_ge_bytes, skin_cpu_batches, skin_nonfinite_bones;
+static unsigned skin_build_us, skin_build_max_us, skin_build_max_v; /* b212: skin cache build time */
+extern int p4_skin_rigid;
+static unsigned skin_rigid_batches, skin_rigid_tris; /* b207: one-bone batches built, their triangles */
+extern int p4_skin_strip;
+static unsigned strip_batches, strip_failed, strip_list_idx, strip_idx; /* b209 */
+float p4_skin_lod_depth = 0; /* b245, see skin_geometry */
+int p4_skin_lod_keep = 50;
+static unsigned skin_lod_draws, skin_full_draws;
+int p4_skin_free_wait = 1; /* b241 */
+int p4_skin_dummy = 0;
+static unsigned skin_free_waits, skin_dummies;
+/* b213: p4_strip_why 1 runs b210's whole-mesh diagnosis (two strips over every mesh: on the PSP most of the 7 s of a
+   party's strip build); p4_strip_check 1 also runs b209's linear start search and compares the strips */
+extern int p4_strip_why, p4_strip_check;
+static unsigned strip_checks, strip_check_diffs, strip_us;
+extern int p4_skin_simplify, p4_mesh_override, p4_mesh_capture;
+static unsigned mk_meshes, mk_tri_in, mk_tri_out, mk_us, mk_override_hits, mk_override_meshes, mk_captured; /* b211 */
+/* b210: why the strips are short. Per mesh before batching: the game's own strip (PS2 data), one strip over the whole
+   mesh, and one over the mesh with vertices of the same position welded (no UV seams): indices and triangles */
+static unsigned sd_src_idx, sd_src_tri, sd_whole_idx, sd_weld_idx, sd_tri;
 /* b171: the per-bone guard spheres test against planes built once per skin (p4_skin_guard_fast; check: the old test
    too, compared), and skin-to-bone x pose on the VFPU (p4_skin_vfpu; check: the FPU product too, compared). */
 int p4_skin_guard_fast = 1, p4_skin_guard_check = 0, p4_skin_vfpu = 1, p4_skin_vfpu_check = 0; /* b172: vfpu on (b171 class: 440k checks, 0 diffs) */
+/* b177: a character with a bone sphere beyond the guard band keeps its other batches on the GE; only the batches that
+   use such a bone are skinned on the CPU and cut (b176 battle: the active member behind the camera went wholly to the
+   CPU, ~15 meshes rebuilt a frame). 0: the whole character on the CPU, as b176; 2: every batch on the CPU (check). */
+int p4_skin_split = 1;
 static unsigned skin_guard_checks, skin_guard_diffs, skin_vfpu_unaligned, skin_vfpu_checks, skin_vfpu_diffs;
 static float skin_vfpu_max_diff;
 int p4_ge_light = 1; /* 1: lit meshes the GE draws whole are lit by the GE; 0: shaded on the CPU, as b75 */
 static unsigned work_shaded, work_ge_emitted, work_cpu_emitted, work_ge_draws;
-enum { POOL_VERTICES = 128 * 1024 };
+enum { POOL_VERTICES = 125 * 1024 }; /* b193, b202, b232: 1 K vertices of room for .bss each (peak seen ~9.3k of 64k a half) */
 static Vertex3D vertex_store[POOL_VERTICES] __attribute__((aligned(64)));
 static Vertex3D *vertex_pool = vertex_store;
 static int vertex_cap = POOL_VERTICES;
@@ -695,6 +797,11 @@ int p4_guard_boxes = 1; /* b109 room with the hash fixed: 50.0 ms without, 45.0 
                           GUARD_CHUNK triangles (PS2RC's chunks): inside the band -> the GE, off screen -> dropped,
                           only the rest per vertex; the array-level per-vertex classify is skipped (sphere only) */
 static unsigned guard_box_whole, guard_box_inside, guard_box_partial, guard_box_culled, guard_box_builds, guard_lazy_vertices;
+extern int p4_guard_split, p4_guard_split_grow; /* b232 */
+static unsigned split_meshes, split_tris_in, split_tris_out, split_refused, split_us;
+int p4_guard_small = 0; /* b199: 0 as b198; 1 small partial chunks drawn uncut; 2 also whole meshes as a mesh-hit CALL.
+                           b199 dialogue: no chunk qualifies (its band-crossing triangles are large): off until a split */
+static unsigned guard_small_chunks, guard_small_whole, guard_box_same; /* same: guard box rebuilds of an entry that held the mesh */
 int p4_guard_box_vfpu = 1, p4_guard_box_check = 0; /* b144: chunk boxes classified on the VFPU; check: also on the FPU, compared */
 static unsigned guard_box_checks, guard_box_diffs;
 int p4_guard_near_ge = 0; /* 1 (experiment): a triangle with a corner behind the near plane goes to the GE uncut, to see
@@ -702,6 +809,8 @@ int p4_guard_near_ge = 0; /* 1 (experiment): a triangle with a corner behind the
 static unsigned guard_near_ge;
 int p4_guard_full_cache = 1; /* 1: GE-lit arrays of guarded meshes kept between frames; 0: rebuilt per draw, as b90 */
 static unsigned guard_full_hits, guard_full_builds;
+static void guard_result_report(void);
+static void guard_result_clear(void);
 static unsigned guard_memo_hits, guard_check_runs, guard_check_diffs, guard_world_checks, guard_world_unsafe, guard_world_stricter;
 int p4_guard_world = 1; /* 1: sphere test against the camera's world-space planes; 0: per-atomic model x view x projection, as b88 */
 int p4_guard_sphere = 1; /* 0: classify every vertex, for A/B of the sphere shortcut */
@@ -714,6 +823,13 @@ static unsigned uv_memo_hits;
 static int uv_rebased;
 int p4_alpha_write_test = 1; /* 0: alpha-only writes cover the whole quad, as b70 */
 int p4_dst_alpha_passes = 0; /* 1: draw small destination-alpha screen-copy passes, as b61 (squares) */
+/* b177: an alpha-only write (PS2 FBMSK 0x00ffffff) goes to the GE with the stencil test off and RGB masked, so the alpha
+   byte takes each pixel's fragment alpha (Gouraud, texture) as the PS2's does, instead of one stencil value per draw.
+   The passes that read it (blend 0x52/54/58) then draw too. Field Shadow (PCSX2 GS dump): a fan writes a radial alpha
+   disc, then a screen copy and three smoke layers blend by it; skipped, only the spiky outline was left.
+   0: one stencil value per draw and small passes skipped, as b176. Off: in PPSSPP it did not bring the Shadow's body
+   back (its draws reach neither the 2D path nor Im3D) and drew a dark band by the minimap (a screen-copy pass). */
+int p4_alpha_pixel = 0;
 static int dst_alpha_skipped;
 static unsigned tested_draws, tested_second, tested_opaque, tested_nodepth, tested_allfail, tested_scans; /* draw_tested */
 extern int p4_gs_mesh_alpha;
@@ -1443,7 +1559,14 @@ int func_003f79b0(void *raster, void *device, int flags)
         p4_log("guard boxes %d meshes whole %u chunks inside %u partial %u culled %u builds %u lazy vertices %u vfpu %d checks %u diffs %u\n", p4_guard_boxes, guard_box_whole, guard_box_inside, guard_box_partial, guard_box_culled, guard_box_builds, guard_lazy_vertices, p4_guard_box_vfpu, guard_box_checks, guard_box_diffs);
         guard_box_checks = guard_box_diffs = 0;
         guard_near_ge = guard_clip_checks = guard_clip_diffs = guard_offscreen = 0;
+        p4_log("guard small %d chunks %u whole %u; box rebuilds of the same mesh %u\n", p4_guard_small, guard_small_chunks, guard_small_whole, guard_box_same);
+        p4_log("guard split %d grow %d: meshes %u triangles %u -> %u refused %u took %u us\n", p4_guard_split, p4_guard_split_grow, split_meshes,
+               split_tris_in, split_tris_out, split_refused, split_us);
+        split_meshes = split_tris_in = split_tris_out = split_refused = split_us = 0;
+        guard_result_report();
+        guard_box_same = 0;
         guard_box_whole = guard_box_inside = guard_box_partial = guard_box_culled = guard_box_builds = guard_lazy_vertices = 0;
+        guard_small_chunks = guard_small_whole = 0;
         struct mallinfo heap = mallinfo();
         /* b114 set the budget to what the cache held when the heap was short; during a load that was 0 and the cache
            stayed off for the session (Heaven 38 KB free while loading, 1.3 MB a few seconds later). Now the budget only
@@ -1469,8 +1592,35 @@ int func_003f79b0(void *raster, void *device, int flags)
         p4_vu0_report(256);
         p4_log("textures swizzled %u bytes %u mipmapped %u mip_bytes %u mipmaps %d\n", swizzled_textures, swizzled_bytes, mip_textures, mip_bytes, p4_mipmaps);
         churn_report(256);
-        p4_log("skin ge %d draws %u batches %u bones sent %u direct %d fallbacks %u builds %u bytes %u\n", p4_ge_skin, skin_ge_draws, skin_ge_batches, bones_sent, p4_bone_direct, skin_ge_fallbacks, skin_ge_builds, skin_ge_bytes);
-        skin_ge_draws = skin_ge_batches = skin_ge_fallbacks = skin_ge_builds = bones_sent = 0;
+        if (p4_churn_top)
+            churn_top_report(256);
+        shadow_report(256);
+        skip_visual_report(256);
+        p4_log("skin ge %d draws %u batches %u bones sent %u direct %d fallbacks %u builds %u bytes %u split %d cpu_batches %u\n", p4_ge_skin, skin_ge_draws, skin_ge_batches, bones_sent, p4_bone_direct, skin_ge_fallbacks, skin_ge_builds, skin_ge_bytes, p4_skin_split, skin_cpu_batches);
+        if (skin_ge_builds)
+            p4_log("skin cache builds %u took %u us, longest %u us (%u vertices)\n", skin_ge_builds, skin_build_us, skin_build_max_us, skin_build_max_v);
+        skin_build_us = skin_build_max_us = skin_build_max_v = 0;
+        if (p4_skin_diff)
+            p4_log("skin diff per 256 frames: checked %u differing %u\n", skin_diff_checked, skin_diff_count), skin_diff_checked = skin_diff_count = 0;
+        p4_log("skin finite %d bones out %u per 256 frames\n", p4_skin_finite, skin_nonfinite_bones), skin_nonfinite_bones = 0;
+        if (skin_rigid_batches)
+            p4_log("skin rigid %d: one-bone batches built %u with %u triangles\n", p4_skin_rigid, skin_rigid_batches, skin_rigid_tris);
+        skin_rigid_batches = skin_rigid_tris = 0;
+        if (strip_batches || strip_failed)
+            p4_log("skin strip %d: batches built as strips %u (list indices %u -> %u), failed checks %u, took %u us; check %d: %u compared, %u differ\n",
+                   p4_skin_strip, strip_batches, strip_list_idx, strip_idx, strip_failed, strip_us, p4_strip_check, strip_checks, strip_check_diffs);
+        strip_batches = strip_failed = strip_list_idx = strip_idx = strip_us = strip_checks = strip_check_diffs = 0;
+        if (sd_tri)
+            p4_log("skin strip why, indices a triangle x100: game's own strips %u (%u tri), whole mesh %u, whole mesh welded %u (%u tri)\n",
+                   sd_src_tri ? sd_src_idx * 100 / sd_src_tri : 0, sd_src_tri, sd_whole_idx * 100 / sd_tri, sd_weld_idx * 100 / sd_tri, sd_tri);
+        sd_src_idx = sd_src_tri = sd_whole_idx = sd_weld_idx = sd_tri = 0;
+        if (mk_meshes || mk_override_hits || mk_captured)
+            p4_log("mesh reshape: simplify %d%% meshes %u triangles %u -> %u in %u us; override %d geometries %u meshes %u; captured %u\n",
+                   p4_skin_simplify, mk_meshes, mk_tri_in, mk_tri_out, mk_us, p4_mesh_override, mk_override_hits, mk_override_meshes, mk_captured);
+        mk_meshes = mk_tri_in = mk_tri_out = mk_us = mk_override_hits = mk_override_meshes = mk_captured = 0;
+        call_report();
+        { extern void p4_batch_stats_report(void); p4_batch_stats_report(); }
+        skin_ge_draws =skin_ge_batches = skin_ge_fallbacks = skin_ge_builds = bones_sent = skin_cpu_batches = 0;
         p4_log("guard fast %d memo %d hits %u check runs %u diffs %u world %d checks %u unsafe %u stricter %u full_cache %d hits %u builds %u\n", p4_guard_fast, p4_guard_memo, guard_memo_hits, guard_check_runs, guard_check_diffs, p4_guard_world, guard_world_checks, guard_world_unsafe, guard_world_stricter, p4_guard_full_cache, guard_full_hits, guard_full_builds);
         guard_full_hits = guard_full_builds = 0;
         p4_log("gs test %d skip %d mesh_alpha %d: draws %u second %u opaque %u nodepth %u allfail %u scans %u\n", p4_gs_test, p4_gs_test_skip, p4_gs_mesh_alpha,
@@ -1505,6 +1655,7 @@ int func_003f79b0(void *raster, void *device, int flags)
         p4_log("hanim nan fix %d: frames fixed %u, nan right after update %u; bone check %d: bad bone matrices %u\n", p4_hanim_nan_fix, hanim_nan_fixed, hanim_nan_after_update, p4_bone_check, bone_bad_count);
         hanim_nan_fixed = hanim_nan_after_update = 0;
         bone_bad_count = 0;
+        look_report();
         { extern void p4_anim_report(void); p4_anim_report(); }
         { extern void p4_interp_report(void); p4_interp_report(); }
         p4_log("skin guard fast %d checks %u diffs %u; skin vfpu %d unaligned %u checks %u diffs %u max_diff %d/1e6\n", p4_skin_guard_fast, skin_guard_checks, skin_guard_diffs, p4_skin_vfpu, skin_vfpu_unaligned, skin_vfpu_checks, skin_vfpu_diffs, (int)(skin_vfpu_max_diff * 1e6f));
@@ -1663,6 +1814,20 @@ static void gu_mesh_begin(void)
     gu_mesh_mode = 1;
     mesh_modes++;
 }
+/* TEXSCALE/TEXOFFSET: uvs (u scale, v scale, u offset, v offset) for a packed skin batch's u16 UVs, or 0 for the
+   (1, 1, 0, 0) every float-UV draw expects; gs.texscale_known means the default is what the GE holds */
+static void bind_texscale(const float *uvs)
+{
+    if (uvs) {
+        sceGuTexScale(uvs[0], uvs[1]);
+        sceGuTexOffset(uvs[2], uvs[3]);
+        gs.texscale_known = 0;
+    } else if (!gu_mesh_mode || !gs.texscale_known) {
+        sceGuTexScale(1, 1);
+        sceGuTexOffset(0, 0);
+        gs.texscale_known = gu_mesh_mode;
+    }
+}
 static void st_enable(int state, int on)
 {
     if (gu_mesh_mode) {
@@ -1715,10 +1880,56 @@ static void st_pixel_mask(unsigned mask)
 }
 /* sceGuDrawArray without its stall-address syscall; mesh mode updates the stall every p4_draw_batch draws */
 static unsigned mesh_draw_calls, mesh_draw_vertices;
+/* b206: what the GE is asked to transform, per atomic in the cover table, so a p4_exp_ge_time run on the PSP can tell
+   what a draw's time follows. idx: vertices fetched (the index count); uniq: distinct vertices those indices name (if
+   the GE keeps no transformed vertices between indices, idx is what it transforms: unproven); wslots: weights x idx
+   (GU_WEIGHTS of the draw). CALL and instance replays are read from their words. On only with the cover table. */
+static int ge_work_on, work_vtype;
+static unsigned work_idx, work_uniq, work_wslots, work_batches, work_wreal, work_wslotv, work_rigid, work_tris; /* skin: batches, nonzero weights, bones x vertices */
+static unsigned index_span(int vtype, int count, const void *indices)
+{
+    unsigned m = 0;
+    if ((vtype & GU_INDEX_BITS) == GU_INDEX_16BIT)
+        for (int i = 0; i < count; i++)
+            m = ((const unsigned short *)indices)[i] > m ? ((const unsigned short *)indices)[i] : m;
+    else if ((vtype & GU_INDEX_BITS) == GU_INDEX_8BIT)
+        for (int i = 0; i < count; i++)
+            m = ((const unsigned char *)indices)[i] > m ? ((const unsigned char *)indices)[i] : m;
+    else
+        return count;
+    return count ? m + 1 : 0;
+}
+static void work_draw(int vtype, int count, const void *indices)
+{
+    int weights = vtype & GU_WEIGHT_BITS ? (vtype >> 14 & 7) + 1 : 0;
+    work_idx += count;
+    work_wslots += count * weights;
+    work_uniq += indices && (vtype & GU_INDEX_BITS) ? index_span(vtype, count, indices) : (unsigned)count;
+}
+static void work_words(const unsigned *w, const unsigned *end)
+{
+    unsigned base = 0, iaddr = 0;
+    int vtype = work_vtype;
+    for (; w < end; w++) {
+        unsigned cmd = *w >> 24, arg = *w & 0xffffff;
+        if (cmd == 0x10)
+            base = arg;
+        else if (cmd == 0x12)
+            vtype = arg;
+        else if (cmd == 0x02)
+            iaddr = (base & 0xf0000) << 8 | arg;
+        else if (cmd == 0x04)
+            work_draw(vtype, arg & 0xffff, iaddr ? (const void *)iaddr : 0);
+    }
+}
 static void gu_draw(int prim, int vtype, int count, const void *indices, const void *vertices)
 {
     mesh_draw_calls++;
     mesh_draw_vertices += count;
+    if (vtype)
+        work_vtype = vtype;
+    if (ge_work_on)
+        work_draw(work_vtype, count, indices);
     if (!gu_mesh_mode || p4_draw_batch <= 1) {
         sceGuDrawArray(prim, vtype, count, indices, vertices);
         return;
@@ -1747,6 +1958,9 @@ int p4_exp_ge_time = 0;
 extern int gu_object_stack_depth;
 enum { GT_ATOMIC, GT_2D, GT_PTANK, GT_CLEAR, GT_COUNT };
 static unsigned ge_time_us[GT_COUNT];
+/* b206: the timer's own cost: once a frame an empty piece (the marker alone) is timed, and the timed pieces counted,
+   so a geometry's ge_us can be read net of pieces x empty (b201: 9f01a50, 32 vertices, ~80 pieces a frame, 2.5 ms) */
+static unsigned ge_empty_us, ge_empty_n, ge_pieces, ge_cal_frame = ~0u;
 /* Until the GE has executed everything up to here. A marker command (0xF9, a register nothing reads) with a
    fresh value goes last; sceGeGetCmd reads it back once the GE got there. Never spins for good: b80 hung the
    PSP polling sceGeListSync for a stalled state it never reported. 100 ms timeout stops the experiment. */
@@ -1774,6 +1988,12 @@ static int ge_time_begin(void)
     if (!p4_exp_ge_time || p4_pipeline || !in_frame || gu_object_stack_depth)
         return 0;
     ge_run_dry();
+    if (ge_cal_frame != ge_time_frames) {
+        ge_cal_frame = ge_time_frames;
+        unsigned t0 = sceKernelGetSystemTimeLow();
+        ge_run_dry();
+        ge_empty_us += sceKernelGetSystemTimeLow() - t0, ge_empty_n++;
+    }
     gu_object_stack_depth = 1;
     return 1;
 }
@@ -1788,6 +2008,7 @@ static unsigned ge_time_end(int started, int category)
     ge_run_dry();
     unsigned t = sceKernelGetSystemTimeLow() - t0;
     ge_time_us[category] += t;
+    ge_pieces++;
     return t;
 }
 
@@ -1815,11 +2036,24 @@ static void bind_depth(void)
    the stencil: draws without DATE set it to 0xFF where they pass ("alpha bit 7 set"), DATE draws pass where bit 7
    equals DATM. Field shadows need it: the silhouette marks its pixels, the gradient bands (0x3C803) fill only those. */
 int p4_rtt_date = 1;
+/* b177: DATE on the screen too. Outside camera textures every draw with the stencil test off writes its fragment alpha
+   into the alpha byte (= the stencil), and the PS2's 0x80 is our 0xff, so PS2 bit 7 set reads as 0xfe-0xff there.
+   Only DATE draws test it; the others keep writing alpha as before. Battle arena: the rainbow (f244_001_bg_01, blend
+   0x54, DATM 0) covered the floor and the hero's head; on the PS2 it shows only where the shadows lowered the alpha. */
+int p4_screen_date = 1;
 static int date_emulated(void)
 {
+    unsigned t = sky_state[3];
+    if (!rtt_target && p4_screen_date && (t & 1 << 14)) {
+        st_pixel_mask(pixel_mask);
+        st_enable(GU_STENCIL_TEST, 1);
+        gs.stencil_known = 0;
+        sceGuStencilFunc(t & 1 << 15 ? GU_EQUAL : GU_NOTEQUAL, 0xfe, 0xfe);
+        sceGuStencilOp(GU_KEEP, GU_KEEP, GU_KEEP);
+        return 1;
+    }
     if (!rtt_target || !p4_rtt_date)
         return 0;
-    unsigned t = sky_state[3];
     st_pixel_mask(pixel_mask);
     st_enable(GU_STENCIL_TEST, 1);
     gs.stencil_known = 0; /* the stencil function below is not the cached pixel-mask one */
@@ -1838,6 +2072,10 @@ static void bind_mask(unsigned alpha)
     if (date_emulated())
         return;
     st_pixel_mask(pixel_mask);
+    if (p4_alpha_pixel && pixel_mask == 0x00ffffff) { /* alpha-only write: the fragment alpha, per pixel, with no stencil test */
+        st_enable(GU_STENCIL_TEST, 0);
+        return;
+    }
     if (pixel_mask) {
         st_enable(GU_STENCIL_TEST, 1);
         if (gu_mesh_mode && gs.stencil_known && gs.stencil_ref == alpha)
@@ -2392,6 +2630,10 @@ static int draw(int prim, const Vertex2D *vertices, const unsigned short *indice
 /* b146 census of 2D draws (p4_probe_2d): per texture x blend x pixel mask, draws and the screen area of their bounding
    boxes (a proxy for fill). The title's logo phase: ~36 ms of GE in 2D a frame. */
 int p4_probe_2d = 0;
+int p4_2d_nan_drop = 1;
+float p4_panel_scale = 0.0f; /* b225: the battle panel frame's scale where retail leaves it unset (census FIXES); 0: nothing, as on the PS2 */
+static unsigned nan_2d_dropped;
+unsigned p4_2d_nan_report(void) { unsigned n = nan_2d_dropped; nan_2d_dropped = 0; return n; }
 typedef struct { const void *raster; unsigned blend, mask, prim, calls, w, h; float area; } Census2D;
 static Census2D census2d[64]; /* census2d_shown (declared above): single draws logged in this window */
 static void census2d_note(int prim, const Vertex2D *vertices, const unsigned short *indices, int count)
@@ -2407,7 +2649,21 @@ static void census2d_note(int prim, const Vertex2D *vertices, const unsigned sho
     const void *raster = (const void *)render_state[1];
     unsigned blend = sky_state[2] & 0xff, mask = pixel_mask;
     /* b165: single draws for the empty minimap. 2: draws smaller than 1/16 of the screen; 3: every draw. */
-    if (p4_probe_2d >= 2 && census2d_shown < 64 && (p4_probe_2d == 3 || (x1 - x0) * (y1 - y0) < 640 * 448 / 16)) {
+    /* b220: 4 = textured draws only, with their first vertices (the battle's attack cursor: stripes on the PSP) */
+    if (p4_probe_2d == 4 && census2d_shown < 48 && raster != (const void *)&display_raster &&
+        (x1 - x0) * (y1 - y0) >= (float)p4_probe_keep_every) { /* p4_probe_keep_every: the smallest box area (PS2 pixels) logged */
+        census2d_shown++;
+        const Raster *tr = raster;
+        p4_log("census2d tex prim %d n %d box %d,%d-%d,%d raster %p %dx%d blend %02x mask %08x test %08x z %d ztest %d\n", prim, count,
+               (int)x0, (int)y0, (int)x1, (int)y1, raster, tr ? tr->width : 0, tr ? tr->height : 0, blend, mask, sky_state[3], (int)vertices[0].z,
+               render_state[RS_ZTEST]);
+        for (int i = 0; i < count && i < 16; i++) {
+            const Vertex2D *v = &vertices[indices ? indices[i] : i];
+            p4_log("census2d   v%d xy %d %d (x10) uv %d %d (x1000) rgba %d %d %d %d\n", indices ? indices[i] : i, (int)(v->x * 10),
+                   (int)(v->y * 10), (int)(v->u * 1000), (int)(v->v * 1000), (int)v->r, (int)v->g, (int)v->b, (int)v->a);
+        }
+    }
+    if (p4_probe_2d >= 2 && p4_probe_2d <= 3 && census2d_shown < 64 && (p4_probe_2d == 3 || (x1 - x0) * (y1 - y0) < 640 * 448 / 16)) {
         const Vertex2D *v = &vertices[indices ? indices[0] : 0];
         const Raster *tr = raster && raster != (const void *)&display_raster ? raster : 0;
         census2d_shown++;
@@ -2677,6 +2933,35 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
 {
     if (p4_probe_2d && count > 0)
         census2d_note(prim, vertices, indices, count);
+    /* b223: 2D primitives with a non-finite position. The battle command panel (btlPanelDrawBackdropGrid, FUN_0020B3A0)
+       passes a scale it never set once the panel has finished growing (retail: whatever $f20 held); here that is NaN,
+       and the backdrop disc and its arcs went to the GE with NaN corners: the stripes across the attack cursor, PSP
+       only (PPSSPP drops such triangles). p4_2d_nan_drop 1 leaves a draw out when any corner is not finite. */
+    if (p4_2d_nan_drop) {
+        for (int i = 0; i < count; i++) {
+            const Vertex2D *v = &vertices[indices ? indices[i] : i];
+            if (!(v->x == v->x && v->y == v->y && v->x < 1e6f && v->x > -1e6f && v->y < 1e6f && v->y > -1e6f)) {
+                static unsigned nan_logged;
+                if (p4_probe_2d == 5 && nan_logged < 24) { /* b224: what these draws are, their corners as float bits */
+                    nan_logged++;
+                    const Vertex2D *f = &vertices[indices ? indices[0] : 0];
+                    p4_log("nan2d prim %d n %d raster %p blend %02x test %08x rgba %d %d %d %d z %d\n", prim, count, (void *)render_state[1],
+                           sky_state[2] & 0xff, sky_state[3], (int)f->r, (int)f->g, (int)f->b, (int)f->a, (int)f->z);
+                    for (int k = 0; k < count && k < 48; k += 4) {
+                        char line[160];
+                        int at = 0;
+                        for (int j = k; j < count && j < k + 4; j++) {
+                            const Vertex2D *w = &vertices[indices ? indices[j] : j];
+                            at += snprintf(line + at, sizeof line - at, " %08x,%08x", *(const unsigned *)&w->x, *(const unsigned *)&w->y);
+                        }
+                        p4_log("nan2d   %d:%s\n", k, line);
+                    }
+                }
+                nan_2d_dropped++;
+                return 1;
+            }
+        }
+    }
     gu_dirty(); /* raw sceGu below: the mesh state cache no longer holds */
     if (count <= 0 || prim < 1 || prim > 6)
         return 1;
@@ -2707,7 +2992,8 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     /* An alpha-only write (RGB masked) of a texture: the PS2 stores each pixel's alpha, the PSP's stencil takes one
        value per draw. Keep that value off the pixels the texture leaves transparent, so the title's light blobs
        (added by destination alpha) stay off the letterbox bars instead of covering the whole quad. */
-    int test_alpha_writer = p4_alpha_write_test && alpha_writer && !effect_mask && !slot_cutout && !calendar_depth_pass;
+    int test_alpha_writer = p4_alpha_write_test && !p4_alpha_pixel && alpha_writer &&
+                            !effect_mask && !slot_cutout && !calendar_depth_pass;
     if (test_alpha_writer) {
         sceGuEnable(GU_ALPHA_TEST);
         sceGuAlphaFunc(GU_GREATER, 0x40, 0xff);
@@ -2720,7 +3006,7 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     /* the alpha-only writes that feed them (RGB masked, a textured puff): the stencil takes one value per draw, which
        is the square; without the pass that reads it they only cost fill */
     int effect_overlay = p4_effect_mask && !rtt_target && dst_alpha_pass && sky_state[3] == 0x31001;
-    if (!p4_dst_alpha_passes && ((dst_alpha_pass && !effect_overlay) ||
+    if (!p4_dst_alpha_passes && !p4_alpha_pixel && ((dst_alpha_pass && !effect_overlay) ||
         (alpha_writer && !effect_mask && !slot_cutout && !calendar_depth_pass))) {
         float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
         for (int i = 0; i < count; i++) {
@@ -3276,6 +3562,9 @@ int p4_glass_alpha_ref = 1;
 int p4_gs_test_skip = 1; /* 0: always two passes, as b76 */
 static const unsigned *draw_prelit; /* the mesh's source alpha for draw_tested; draw_alpha_known 0: not known */
 static int draw_count, draw_alpha_known;
+/* b177 (p4_material_state 2): an unlit compact mesh whose vertices leave the material colour out; draw_mesh_vertices
+   sends it as GE state (lighting on, no light: vertex colour x ambient), as the GE-skinned unlit batches do */
+static int draw_material_ge;
 static int draw_prelit_min = -1;
 static unsigned draw_material_alpha = 255;
 static inline unsigned double_colour(unsigned c);
@@ -3310,29 +3599,28 @@ static int draw_vertex_alpha(int vtype, int count, const void *indices, const vo
     if ((vtype & GU_VERTEX_BITS) != GU_VERTEX_32BITF || (vtype & GU_COLOR_BITS) != GU_COLOR_8888 || (vtype & GU_WEIGHT_BITS) ||
         ((vtype & GU_INDEX_BITS) && (vtype & GU_INDEX_BITS) != GU_INDEX_16BIT) || !vertices || count <= 0)
         return 0;
-    if (draw_slot_v == vertices && draw_slot_alpha[0] >= 0) {
-        *lo = draw_slot_alpha[0], *hi = draw_slot_alpha[1];
-        return 1;
-    }
-    if (draw_fixed_alpha) { /* a subset (or cut pieces) of a cache entry whose bounds are known: they still bound it */
-        *lo = draw_fixed_alpha[0], *hi = draw_fixed_alpha[1];
-        return 1;
-    }
-    tested_scans++;
-    int stride = vtype & GU_NORMAL_BITS ? sizeof(Vertex3DN) : sizeof(Vertex3D);
-    const unsigned short *ix = (vtype & GU_INDEX_BITS) ? indices : 0;
+    /* the bounds of the vertex colours alone (b177: kept so in cache entries, whose key no longer has the material) */
     unsigned m = 255, big = 0;
-    for (int k = 0; k < count; k++) {
-        unsigned a = *(const unsigned *)((const char *)vertices + (ix ? ix[k] : k) * stride + 8) >> 24; /* colour after u, v */
-        if (a < m) m = a;
-        if (a > big) big = a;
+    if (draw_slot_v == vertices && draw_slot_alpha[0] >= 0) {
+        m = draw_slot_alpha[0], big = draw_slot_alpha[1];
+    } else if (draw_fixed_alpha) { /* a subset (or cut pieces) of a cache entry whose bounds are known: they still bound it */
+        m = draw_fixed_alpha[0], big = draw_fixed_alpha[1];
+    } else {
+        tested_scans++;
+        int stride = vtype & GU_NORMAL_BITS ? sizeof(Vertex3DN) : sizeof(Vertex3D);
+        const unsigned short *ix = (vtype & GU_INDEX_BITS) ? indices : 0;
+        for (int k = 0; k < count; k++) {
+            unsigned a = *(const unsigned *)((const char *)vertices + (ix ? ix[k] : k) * stride + 8) >> 24; /* colour after u, v */
+            if (a < m) m = a;
+            if (a > big) big = a;
+        }
+        if (draw_slot_v == vertices)
+            draw_slot_alpha[0] = m, draw_slot_alpha[1] = big;
     }
-    if (vtype & GU_NORMAL_BITS) { /* GE-lit: the vertex colour is the ambient term, the material alpha comes on top */
+    if ((vtype & GU_NORMAL_BITS) || draw_material_ge) { /* GE-lit: the vertex colour is the ambient term, the material alpha comes on top */
         m = m * draw_material_alpha / 255;
         big = (big * draw_material_alpha + 254) / 255;
     }
-    if (draw_slot_v == vertices)
-        draw_slot_alpha[0] = m, draw_slot_alpha[1] = big;
     *lo = m, *hi = big;
     return 1;
 }
@@ -3445,6 +3733,9 @@ static inline void guard_code_lazy(const GuardLazy *z, int i, float near)
 
 /* chunk_class (one byte per run of chunk_tris triangles): 0 inside the band (kept without a look), 1 per triangle,
    2 off screen (dropped); 0 = no chunks: every triangle per vertex codes. lazy: codes not computed yet. */
+/* One guarded draw's final geometry, captured before submission (b236). */
+typedef struct { const unsigned short *idx; const void *cut; int nkept, ncut, valid; } GuardCapture;
+static GuardCapture *guard_capture;
 extern int p4_guard_loop2;
 static void draw_guarded_chunks(int prim, const unsigned short *idx, int nidx, const void *vertices, int vtype, float near, const Material *material, int modulate, const SceneLight *light,
                                 const unsigned char *chunk_class, int chunk_tris, const GuardLazy *lazy);
@@ -3462,8 +3753,7 @@ static void draw_guarded_chunks(int prim, const unsigned short *idx, int nidx, c
         return;
     int index_space = MAX_INDICES - index_used;
     int cut_space = (MAX_VERTICES - vertex_used) * (int)sizeof(Vertex3D) / stride;
-    /* A triangle emits kept indices, clipped vertices, or neither. Use the
-       worst case only to decide whether individual writes need bounds checks. */
+    /* Check each actual write only when the worst-case reservation would overflow. */
     int check_space = triangles > index_space / 3 || triangles > cut_space / GUARD_OUT_MAX;
     unsigned short *kept = index_pool + index_used;
     char *cut = (char *)(vertex_pool + vertex_used);
@@ -3574,6 +3864,10 @@ static void draw_guarded_chunks(int prim, const unsigned short *idx, int nidx, c
     prof_end(PROF_GLOOP);
     if (check_space && (nkept || ncut))
         guard_pool_recovered++;
+    if (guard_capture) {
+        guard_capture->idx = kept; guard_capture->cut = cut;
+        guard_capture->nkept = nkept; guard_capture->ncut = ncut; guard_capture->valid = 1;
+    }
     prof_begin(PROF_GSUB);
     if (nkept) {
         index_used += nkept;
@@ -3603,10 +3897,11 @@ int p4_guard_chunk = 8, p4_guard_loop2 = 1; /* b143 Heaven CPU: 32 -> 57.1 ms, 1
 static int guard_chunk_now(void) { return p4_guard_chunk < 8 ? 8 : p4_guard_chunk > 256 ? 256 : p4_guard_chunk; }
 /* model-space boxes (min xyz, max xyz) of runs of GUARD_CHUNK triangles of a cache entry, built from the entry's own
    vertices, so they always match what the entry draws; valid while the entry keeps its key and build frame */
-typedef struct { const void *slot; unsigned key, built; int n, cap, chunk; float *box; } GuardBoxes;
+typedef struct { const void *slot; unsigned key, built, used; int n, cap, chunk; float *box, *rad; } GuardBoxes;
+static unsigned guard_box_tick;
 static GuardBoxes *guard_boxes;
 static const float *guard_slot_boxes(const void *slot, unsigned key, unsigned built, int prim, const unsigned short *idx, int nidx,
-                                     const void *vertices, int vtype, int *count)
+                                     const void *vertices, int vtype, int *count, const float **rad)
 {
     int chunk = guard_chunk_now();
     int tris = prim == GU_TRIANGLE_STRIP ? nidx - 2 : nidx / 3, n = (tris + chunk - 1) / chunk;
@@ -3614,19 +3909,43 @@ static const float *guard_slot_boxes(const void *slot, unsigned key, unsigned bu
         return 0;
     if (!guard_boxes && !(guard_boxes = calloc(GUARD_BOX_SLOTS, sizeof *guard_boxes)))
         return 0;
-    GuardBoxes *e = &guard_boxes[((unsigned)slot >> 4) * 2654435761u >> 24];
+    /* b199: 4-way sets (b169-b198 Heaven/dialogue: exactly 2 rebuilds a frame, maybe two meshes evicting each other
+       in the direct-mapped table); a miss takes an empty way of the set, else the least recently used one */
+    GuardBoxes *set = &guard_boxes[(((unsigned)slot >> 4) * 2654435761u >> 24) & ~3u], *e = 0;
     *count = n;
-    if (e->slot == slot && e->key == key && e->built == built && e->n == n && e->chunk == chunk && e->box)
+    guard_box_tick++;
+    for (int w = 0; w < 4 && !e; w++)
+        if (set[w].slot == slot)
+            e = &set[w];
+    if (e && e->key == key && e->built == built && e->n == n && e->chunk == chunk && e->box) {
+        e->used = guard_box_tick;
+        *rad = e->rad;
         return e->box;
+    }
+    if (e)
+        guard_box_same++;
+    else {
+        e = set;
+        for (int w = 0; w < 4; w++) {
+            if (!set[w].slot) {
+                e = &set[w];
+                break;
+            }
+            if (set[w].used < e->used)
+                e = &set[w];
+        }
+    }
+    e->used = guard_box_tick;
     if (e->cap < n) {
         free(e->box);
-        e->box = malloc(n * 6 * sizeof(float));
+        e->box = malloc(n * 7 * sizeof(float)); /* 6 box floats a chunk, then one radius a chunk */
         e->cap = e->box ? n : 0;
         if (!e->box) {
             e->slot = 0;
             return 0;
         }
     }
+    e->rad = e->box + n * 6;
     int lit = (vtype & GU_NORMAL_8BIT) != 0, stride = lit ? sizeof(Vertex3DN) : sizeof(Vertex3D);
     const char *pos = (const char *)vertices + (lit ? offsetof(Vertex3DN, x) : offsetof(Vertex3D, x));
     for (int j = 0; j < n; j++) {
@@ -3642,9 +3961,27 @@ static const float *guard_slot_boxes(const void *slot, unsigned key, unsigned bu
                 if (p[a] > b[3 + a]) b[3 + a] = p[a];
             }
         }
+        /* b199 p4_guard_small: the largest triangle of the chunk, as the radius of a sphere round its centroid */
+        float r2 = 0;
+        for (int t = first; t < last; t++) {
+            int at = prim == GU_TRIANGLE_STRIP ? t : t * 3;
+            const float *c[3];
+            for (int k = 0; k < 3; k++)
+                c[k] = (const float *)(pos + idx[at + k] * stride);
+            float m[3];
+            for (int a = 0; a < 3; a++)
+                m[a] = (c[0][a] + c[1][a] + c[2][a]) * (1.0f / 3);
+            for (int k = 0; k < 3; k++) {
+                float dx = c[k][0] - m[0], dy = c[k][1] - m[1], dz = c[k][2] - m[2], d = dx * dx + dy * dy + dz * dz;
+                if (d > r2)
+                    r2 = d;
+            }
+        }
+        e->rad[j] = sqrtf(r2);
     }
     e->slot = slot, e->key = key, e->built = built, e->n = n, e->chunk = chunk;
     guard_box_builds++;
+    *rad = e->rad;
     return e->box;
 }
 
@@ -3782,7 +4119,92 @@ static void guard_boxes_fpu(const float *box, int n, const float bp[5][4], const
     }
 }
 
-static void draw_guarded_compact(int prim, const unsigned short *idx, int nidx, const void *vertices, int nverts, int vtype,
+/* b199 p4_guard_small: a chunk that crosses the band but whose triangles are all small next to their distance cannot
+   hold a triangle that is both on screen and past the band. Band plane k is screen plane k plus (GUARD - 1) w, so a
+   point on screen has band value >= (GUARD - 1) w >= (GUARD - 1) w_min, and a corner past the band (value < 0) of a
+   triangle of radius r lies within 2 r of it: |grad| 2 r > (GUARD - 1) w_min. When that cannot hold, every triangle
+   of the chunk is either inside the band (the GE draws it) or wholly off screen (the GE drops it past its window, or
+   draws nothing visible), so the chunk goes to the GE uncut. Needs gnear (the GE clips the near plane) and a box
+   wholly in front of the near plane. *front: 1 when every culled chunk is also in front of the near plane (mode 2 may
+   then send the whole mesh to the GE as a recorded CALL; the GE transforms the off-screen chunks too). */
+static void guard_small_fix(const float *box, const float *rad, int n, const float m[4][4], float near, unsigned char *cls, int *partial,
+                            int *front)
+{
+    static const float band[4][4] = { { -1, 0, 0, GUARD }, { 1, 0, 0, GUARD }, { 0, -1, 0, GUARD }, { 0, 1, 0, GUARD } };
+    float g2 = 0, wq[4];
+    for (int k = 0; k < 4; k++) {
+        float q2 = 0;
+        for (int j = 0; j < 3; j++) {
+            float q = m[j][0] * band[k][0] + m[j][1] * band[k][1] + m[j][2] * band[k][2] + m[j][3] * band[k][3];
+            q2 += q * q;
+        }
+        if (q2 > g2)
+            g2 = q2;
+    }
+    for (int j = 0; j < 4; j++)
+        wq[j] = m[j][3];
+    float need = 2 * sqrtf(g2) * 1.01f / (GUARD - 1); /* a chunk is safe when w_min >= need x radius */
+    *front = 1;
+    for (int i = 0; i < n; i++, box += 6) {
+        if (!cls[i])
+            continue;
+        float cx = (box[0] + box[3]) * 0.5f, cy = (box[1] + box[4]) * 0.5f, cz = (box[2] + box[5]) * 0.5f;
+        float hx = (box[3] - box[0]) * 0.5f, hy = (box[4] - box[1]) * 0.5f, hz = (box[5] - box[2]) * 0.5f;
+        float wmin = wq[0] * cx + wq[1] * cy + wq[2] * cz + wq[3] - fabsf(wq[0]) * hx - fabsf(wq[1]) * hy - fabsf(wq[2]) * hz;
+        if (cls[i] == 2) {
+            if (!(wmin > near))
+                *front = 0;
+            continue;
+        }
+        if (wmin > near && wmin > 0 && wmin >= need * rad[i]) {
+            cls[i] = 0;
+            --*partial;
+            guard_small_chunks++;
+        }
+    }
+}
+
+/* the chunk classes of a cached guarded mesh, computed once a draw: by guard_slot_whole at the call site (then
+   draw_guarded_compact reuses them) or inside draw_guarded_compact */
+static struct { const void *slot; unsigned key, built; const Matrix *model; float near; const float *box; int n, partial, culled, front; GuardLazy lazy; } guard_pre;
+static unsigned char guard_cls[GUARD_MAX_CHUNKS];
+static const float *guard_classify_slot(const void *slot, unsigned slot_key, unsigned slot_built, int prim, const unsigned short *idx, int nidx,
+                                        const void *vertices, int vtype, const Matrix *model, float near)
+{
+    if (guard_pre.slot == slot && guard_pre.key == slot_key && guard_pre.built == slot_built && guard_pre.model == model && guard_pre.near == near)
+        return guard_pre.box;
+    prof_begin(PROF_GCLASS);
+    const float *rad = 0;
+    int n = 0, partial = 0, culled = 0, front = 0;
+    const float *box = guard_slot_boxes(slot, slot_key, slot_built, prim, idx, nidx, vertices, vtype, &n, &rad);
+    if (box) {
+        guard_matrix_cached(guard_pre.lazy.m, model);
+        guard_boxes_classify(box, n, (const float (*)[4])guard_pre.lazy.m, near, guard_cls, &partial, &culled);
+        if (p4_guard_small && p4_guard_gnear && rad)
+            guard_small_fix(box, rad, n, (const float (*)[4])guard_pre.lazy.m, near, guard_cls, &partial, &front);
+    }
+    prof_end(PROF_GCLASS);
+    guard_pre.slot = slot, guard_pre.key = slot_key, guard_pre.built = slot_built, guard_pre.model = model, guard_pre.near = near;
+    guard_pre.box = box, guard_pre.n = n, guard_pre.partial = partial, guard_pre.culled = culled, guard_pre.front = front;
+    return box;
+}
+
+/* mode 2: a cached guarded mesh none of whose chunks needs the CPU: the caller draws it as a plain hit (CALL) */
+static int guard_slot_whole(const void *slot, unsigned key, unsigned built, int prim, const unsigned short *idx, int nidx,
+                            const void *vertices, int nverts, int vtype, const Matrix *model, float near)
+{
+    if (p4_guard_small < 2 || !p4_guard_boxes || !p4_guard_gnear || nverts > MAX_GUARDED)
+        return 0;
+    if (!guard_classify_slot(slot, key, built, prim, idx, nidx, vertices, vtype, model, near))
+        return 0;
+    if (guard_pre.partial || (guard_pre.culled && !guard_pre.front))
+        return 0; /* draw_guarded_compact reuses the classes */
+    guard_pre.slot = 0;
+    guard_small_whole++;
+    return 1;
+}
+
+static void draw_guarded_compact_body(int prim, const unsigned short *idx, int nidx, const void *vertices, int nverts, int vtype,
                                  const Matrix *model, float near, const Material *material, int modulate, const SceneLight *light,
                                  const int *alpha, const void *slot, unsigned slot_key, unsigned slot_built)
 {
@@ -3791,16 +4213,11 @@ static void draw_guarded_compact(int prim, const unsigned short *idx, int nidx, 
     unsigned any = 1;
     if (slot && p4_guard_boxes && nverts <= MAX_GUARDED &&
         (guard_stamp || (guard_stamp = calloc(MAX_GUARDED, sizeof *guard_stamp)))) {
-        static unsigned char cls[GUARD_MAX_CHUNKS];
-        int n = 0, partial = 0, culled = 0;
-        prof_begin(PROF_GCLASS);
-        const float *box = guard_slot_boxes(slot, slot_key, slot_built, prim, idx, nidx, vertices, vtype, &n);
-        GuardLazy lazy;
-        if (box) {
-            guard_matrix_cached(lazy.m, model);
-            guard_boxes_classify(box, n, (const float (*)[4])lazy.m, near, cls, &partial, &culled);
-        }
-        prof_end(PROF_GCLASS);
+        unsigned char *cls = guard_cls;
+        const float *box = guard_classify_slot(slot, slot_key, slot_built, prim, idx, nidx, vertices, vtype, model, near);
+        int n = guard_pre.n, partial = guard_pre.partial, culled = guard_pre.culled;
+        GuardLazy lazy = guard_pre.lazy;
+        guard_pre.slot = 0;
         if (box) {
             guard_mesh_draws++;
             guard_box_inside += n - partial - culled, guard_box_partial += partial, guard_box_culled += culled;
@@ -3842,6 +4259,155 @@ static void draw_guarded_compact(int prim, const unsigned short *idx, int nidx, 
         draw_fixed_alpha = 0;
     }
     prof_end(PROF_GDRAW);
+}
+
+/* b236: persistent results of guarded cached meshes. Exact camera/model/geometry/options key; material,
+   lighting and textures are applied live by draw_mesh_vertices. Admit after the same key is seen in two frames.
+   Buffers are CPU-built, GE-read: eviction waits for the list's finish sequence, never just a camera change. */
+int p4_guard_result = 1, p4_guard_result_check = 0; /* b242: on by default (user, 2026-11-14); moving scenes still to be checked with the check switch */
+enum { GUARD_RESULT_SLOTS = 128, GUARD_RESULT_BUDGET = 256 * 1024 };
+typedef struct {
+    const void *slot, *v, *idx;
+    unsigned key, built;
+    int prim, vtype, nv, ni;
+    float near, model[12];
+    unsigned camera[18];
+    int options[8];
+} GuardResultKey;
+typedef struct {
+    GuardResultKey key;
+    void *data;
+    unsigned bytes, cut_off, seq, used, seen;
+    int nkept, ncut, kept_alpha[2], cut_alpha[2];
+} GuardResult;
+static GuardResult *guard_results;
+static unsigned gr_bytes, gr_hits, gr_misses, gr_builds, gr_pending, gr_refused, gr_checks, gr_diffs, gr_evictions;
+static int guard_result_busy(const GuardResult *e)
+{
+    return e->data && e->seq && (int)(ge_finished - e->seq) < 0;
+}
+static void guard_result_free(GuardResult *e)
+{
+    gr_bytes -= e->bytes; free(e->data); memset(e, 0, sizeof *e);
+}
+static void guard_result_clear(void) /* caller has waited for the GE */
+{
+    if (guard_results) {
+        for (int i = 0; i < GUARD_RESULT_SLOTS; i++) guard_result_free(&guard_results[i]);
+        free(guard_results); guard_results = 0;
+    }
+}
+static GuardResult *guard_result_set(const GuardResultKey *k)
+{
+    unsigned h = (((unsigned)k->slot >> 4) * 2654435761u >> 25) & ~3u;
+    return guard_results + h;
+}
+static GuardResult *guard_result_find(const GuardResultKey *k)
+{
+    GuardResult *set = guard_result_set(k);
+    for (int i = 0; i < 4; i++)
+        if (set[i].key.slot == k->slot && !memcmp(&set[i].key, k, sizeof *k)) return &set[i];
+    return 0;
+}
+static void guard_result_store(const GuardResultKey *k, const GuardCapture *cap)
+{
+    GuardResult *e = guard_result_find(k);
+    if (!e) {
+        GuardResult *set = guard_result_set(k), *take = 0;
+        for (int i = 0; i < 4; i++) {
+            GuardResult *p = set + i;
+            if (guard_result_busy(p)) continue;
+            if (!take || !p->key.slot || (!p->data && p->key.slot == k->slot) || p->used < take->used) take = p;
+            if (!p->key.slot) break;
+        }
+        if (!take) { gr_refused++; return; }
+        if (take->data) gr_evictions++;
+        guard_result_free(take); take->key = *k; take->seen = take->used = cache_frame;
+        gr_pending++; return; /* moving cameras incur no buffer allocations/copies */
+    }
+    e->used = cache_frame;
+    if (e->data || e->seen == cache_frame) return;
+    if (cap->nkept > 65535 || cap->ncut > 65535) { gr_refused++; return; }
+    unsigned stride = k->vtype & GU_NORMAL_8BIT ? sizeof(Vertex3DN) : sizeof(Vertex3D);
+    unsigned off = (cap->nkept * 2u + 15u) & ~15u, bytes = off + cap->ncut * stride;
+    if (!bytes) bytes = 16; /* valid empty result */
+    if (bytes > GUARD_RESULT_BUDGET) { gr_refused++; return; }
+    while (gr_bytes + bytes > GUARD_RESULT_BUDGET) {
+        GuardResult *old = 0;
+        for (int i = 0; i < GUARD_RESULT_SLOTS; i++) {
+            GuardResult *p = guard_results + i;
+            if (p != e && p->data && !guard_result_busy(p) && (!old || p->used < old->used)) old = p;
+        }
+        if (!old) { gr_refused++; return; }
+        guard_result_free(old); gr_evictions++;
+    }
+    void *data = memalign(16, bytes);
+    if (!data) { gr_refused++; return; }
+    if (cap->nkept) memcpy(data, cap->idx, cap->nkept * 2u);
+    if (cap->ncut) memcpy((char *)data + off, cap->cut, cap->ncut * stride);
+    sceKernelDcacheWritebackRange(data, bytes);
+    e->data = data; e->bytes = bytes; e->cut_off = off; e->nkept = cap->nkept; e->ncut = cap->ncut;
+    e->kept_alpha[0] = e->cut_alpha[0] = -1; gr_bytes += bytes; gr_builds++;
+}
+static void draw_guarded_compact(int prim, const unsigned short *idx, int nidx, const void *vertices, int nverts, int vtype,
+                                 const Matrix *model, float near, const Material *material, int modulate, const SceneLight *light,
+                                 const int *alpha, const void *slot, unsigned slot_key, unsigned slot_built)
+{
+    if (!p4_guard_result || !slot || !current_camera || nverts > MAX_GUARDED ||
+        (!guard_results && !(guard_results = calloc(GUARD_RESULT_SLOTS, sizeof *guard_results)))) {
+        draw_guarded_compact_body(prim, idx, nidx, vertices, nverts, vtype, model, near, material, modulate, light, alpha, slot, slot_key, slot_built);
+        return;
+    }
+    prof_begin(PROF_GDRAW);
+    GuardResultKey key; memset(&key, 0, sizeof key);
+    key.slot = slot; key.v = vertices; key.idx = idx; key.key = slot_key; key.built = slot_built;
+    key.prim = prim; key.vtype = vtype; key.nv = nverts; key.ni = nidx; key.near = near;
+    if (model) for (int i = 0; i < 4; i++) memcpy(key.model + i * 3, (const char *)model + i * 16, 12);
+    else key.model[0] = key.model[4] = key.model[8] = 1;
+    guard_world_planes(); memcpy(key.camera, guard_world.key, sizeof key.camera);
+    int opts[8] = {p4_guard_boxes, p4_guard_gnear, p4_guard_near_ge, p4_guard_clip_fast,
+                   p4_guard_small, p4_guard_chunk, p4_guard_loop2, p4_guard_box_vfpu};
+    memcpy(key.options, opts, sizeof opts);
+    GuardResult *e = guard_result_find(&key);
+    if (e && e->data && !p4_guard_result_check) {
+        gr_hits++; guard_mesh_draws++; e->used = cache_frame; e->seq = ge_queued + 1;
+        const void *saved_v = draw_slot_v; int *saved_alpha = draw_slot_alpha;
+        const int *saved_fixed = draw_fixed_alpha;
+        draw_fixed_alpha = alpha && alpha[0] >= 0 ? alpha : 0;
+        prof_begin(PROF_GSUB);
+        if (e->nkept) {
+            draw_slot_v = vertices; draw_slot_alpha = e->kept_alpha;
+            draw_mesh_vertices(GU_TRIANGLES, vtype, e->nkept, e->data, vertices, material, modulate, light);
+        }
+        if (e->ncut) {
+            const void *cut = (char *)e->data + e->cut_off;
+            draw_slot_v = cut; draw_slot_alpha = e->cut_alpha;
+            draw_mesh_vertices(GU_TRIANGLES, vtype & ~GU_INDEX_16BIT, e->ncut, 0, cut, material, modulate, light);
+        }
+        prof_end(PROF_GSUB);
+        draw_slot_v = saved_v; draw_slot_alpha = saved_alpha; draw_fixed_alpha = saved_fixed;
+        guard_pre.slot = 0;
+        prof_end(PROF_GDRAW); return;
+    }
+    gr_misses++;
+    GuardCapture cap = {0}, *saved_capture = guard_capture; guard_capture = &cap;
+    draw_guarded_compact_body(prim, idx, nidx, vertices, nverts, vtype, model, near, material, modulate, light, alpha, slot, slot_key, slot_built);
+    guard_capture = saved_capture;
+    if (e && e->data && p4_guard_result_check) {
+        unsigned stride = vtype & GU_NORMAL_8BIT ? sizeof(Vertex3DN) : sizeof(Vertex3D);
+        int bad = !cap.valid || cap.nkept != e->nkept || cap.ncut != e->ncut;
+        if (!bad && cap.nkept) bad = memcmp(cap.idx, e->data, cap.nkept * 2u) != 0;
+        if (!bad && cap.ncut) bad = memcmp(cap.cut, (char *)e->data + e->cut_off, cap.ncut * stride) != 0;
+        gr_checks++; gr_diffs += bad;
+        if (bad && gr_diffs <= 8) p4_log("TRACE guard result mismatch slot %p kept %d/%d cut %d/%d\n", slot, cap.nkept, e->nkept, cap.ncut, e->ncut);
+    } else if (cap.valid) guard_result_store(&key, &cap);
+    prof_end(PROF_GDRAW);
+}
+static void guard_result_report(void)
+{
+    p4_log("guard result %d check %d hits %u misses %u builds %u pending %u refused %u evictions %u bytes %u checks %u diffs %u\n",
+           p4_guard_result, p4_guard_result_check, gr_hits, gr_misses, gr_builds, gr_pending, gr_refused, gr_evictions, gr_bytes, gr_checks, gr_diffs);
+    gr_hits = gr_misses = gr_builds = gr_pending = gr_refused = gr_evictions = gr_checks = gr_diffs = 0;
 }
 
 /* On the PS2 0x80 is full brightness in a vertex colour. */
@@ -4048,8 +4614,9 @@ static void draw_mesh_vertices(int prim, int vtype, int count, const void *indic
 {
     if (census3d_skip(material, vtype, count, modulate))
         return;
+    int ge = (vtype & GU_NORMAL_8BIT) || draw_material_ge;
     prof_begin(PROF_DLIGHT);
-    if (vtype & GU_NORMAL_8BIT) {
+    if (ge) { /* draw_material_ge: unlit, the light is zero; the material colour comes as the GE's ambient */
         bind_ge_light(material, modulate, light);
         work_ge_draws++;
     }
@@ -4058,7 +4625,7 @@ static void draw_mesh_vertices(int prim, int vtype, int count, const void *indic
     prof_begin(PROF_DDRAW);
     draw_tested(prim, vtype, count, indices, vertices);
     prof_end(PROF_DDRAW);
-    if (vtype & GU_NORMAL_8BIT)
+    if (ge)
         st_enable(GU_LIGHTING, 0);
 }
 
@@ -4086,6 +4653,148 @@ int p4_shade_fast = 1; /* 0: shade_colour per vertex, as b68 */
 enum { CACHE_SLOTS = 4096 };
 typedef struct { const void *mesh; unsigned key, frame, built; int vertices, indices, capacity, churn, vtype; void *v; unsigned short *idx; int alpha_lo, alpha_hi; } MeshCache;
 static MeshCache mesh_cache[CACHE_SLOTS];
+/* b232: which copies are split (a bit each: an int in MeshCache pushed .bss into the data image) */
+static unsigned mesh_split_bits[CACHE_SLOTS / 32];
+#define SLOT_SPLIT(e) ((mesh_split_bits[((e) - mesh_cache) >> 5] >> (((e) - mesh_cache) & 31)) & 1u)
+static void mesh_set_split(MeshCache *e, int on)
+{
+    unsigned slot = e - mesh_cache, bit = 1u << (slot & 31);
+    mesh_split_bits[slot >> 5] = (mesh_split_bits[slot >> 5] & ~bit) | (on ? bit : 0);
+}
+/* b232 p4_guard_split: big triangles of a guarded mesh split when its compact copy is cached. The GE has no X/Y clip:
+   a triangle with a corner past the 8x guard band is dropped whole, so a mesh that crosses the band is cut on the CPU
+   every frame (b230 dialogue: 27 meshes, 5.3 ms). p4_guard_small lets a chunk go to the GE uncut when its triangles
+   are small next to their distance; with big floor and wall triangles none qualified (b200: 0 chunks). Here every
+   edge longer than p4_guard_split model units is halved at its midpoint, recursively, longest first. An edge is
+   split by its length alone and its midpoint is shared through a map, so both triangles on an edge split it the same
+   way: no T-junctions. Corners interpolate position, UV, colour (per byte) and normal. Strips become a list. At most
+   p4_guard_split_grow x the triangles, 65535 indices and 32 K vertices, else the mesh stays as it was.
+   The per-draw guard_small test must still prove each chunk safe; splitting alone never bypasses clipping. 0: off. */
+int p4_guard_split = 0, p4_guard_split_grow = 8;
+typedef struct { unsigned key; int v; } SplitEdge;
+static int split_mid(SplitEdge *map, int cap, int a, int b, char *verts, int *nv, int maxv, int stride, int lit)
+{
+    unsigned key = a < b ? (unsigned)a << 16 | b : (unsigned)b << 16 | a;
+    unsigned h = key * 2654435761u & (cap - 1);
+    while (map[h].key && map[h].key != key + 1)
+        h = (h + 1) & (cap - 1);
+    if (map[h].key)
+        return map[h].v;
+    if (*nv >= maxv)
+        return -1;
+    int m = (*nv)++;
+    char *va = verts + a * stride, *vb = verts + b * stride, *vm = verts + m * stride;
+    if (lit) {
+        const Vertex3DN *x = (const Vertex3DN *)va, *y = (const Vertex3DN *)vb;
+        Vertex3DN *o = (Vertex3DN *)vm;
+        o->u = (x->u + y->u) * 0.5f, o->v = (x->v + y->v) * 0.5f;
+        o->nx = (signed char)((x->nx + y->nx) / 2), o->ny = (signed char)((x->ny + y->ny) / 2), o->nz = (signed char)((x->nz + y->nz) / 2), o->pad = 0;
+        o->x = (x->x + y->x) * 0.5f, o->y = (x->y + y->y) * 0.5f, o->z = (x->z + y->z) * 0.5f;
+    } else {
+        const Vertex3D *x = (const Vertex3D *)va, *y = (const Vertex3D *)vb;
+        Vertex3D *o = (Vertex3D *)vm;
+        o->u = (x->u + y->u) * 0.5f, o->v = (x->v + y->v) * 0.5f;
+        o->x = (x->x + y->x) * 0.5f, o->y = (x->y + y->y) * 0.5f, o->z = (x->z + y->z) * 0.5f;
+    }
+    unsigned ca = *(const unsigned *)(va + 8), cb = *(const unsigned *)(vb + 8), cm = 0;
+    for (int k = 0; k < 32; k += 8)
+        cm |= (((ca >> k & 0xff) + (cb >> k & 0xff) + 1) >> 1) << k;
+    *(unsigned *)(vm + 8) = cm;
+    map[h].key = key + 1, map[h].v = m;
+    return m;
+}
+static float split_len2(const char *verts, int stride, int lit, int a, int b)
+{
+    const float *p = (const float *)(verts + a * stride + (lit ? offsetof(Vertex3DN, x) : offsetof(Vertex3D, x)));
+    const float *q = (const float *)(verts + b * stride + (lit ? offsetof(Vertex3DN, x) : offsetof(Vertex3D, x)));
+    float dx = p[0] - q[0], dy = p[1] - q[1], dz = p[2] - q[2];
+    return dx * dx + dy * dy + dz * dz;
+}
+/* returns a memalign'd buffer: vertices, then the u16 list indices; 0 when nothing is split or it does not fit */
+static void *guard_split_mesh(const void *v, int nv, int stride, int lit, const unsigned short *idx, int nidx, int strip,
+                              int *out_nv, int *out_nidx, int *out_bytes)
+{
+    if (p4_guard_split <= 0 || nv <= 0 || nv > MAX_GUARDED || nidx < 3)
+        return 0;
+    unsigned t0 = sceKernelGetSystemTimeLow();
+    float lim2 = (float)p4_guard_split * (float)p4_guard_split;
+    int ntri = strip ? nidx - 2 : nidx / 3;
+    if (ntri > 21845)
+        return 0;
+    int big = 0;
+    for (int t = 0; t < ntri && !big; t++) {
+        int a = strip ? idx[t] : idx[t * 3], b = strip ? idx[t + 1] : idx[t * 3 + 1], c = strip ? idx[t + 2] : idx[t * 3 + 2];
+        if (a == b || b == c || a == c)
+            continue;
+        big = split_len2(v, stride, lit, a, b) > lim2 || split_len2(v, stride, lit, b, c) > lim2 || split_len2(v, stride, lit, c, a) > lim2;
+    }
+    if (!big)
+        return 0;
+    int grow = p4_guard_split_grow < 2 ? 2 : p4_guard_split_grow > 64 ? 64 : p4_guard_split_grow;
+    /* GE PRIM has a 16-bit count, including when a cached mesh is submitted whole. */
+    int maxt = ntri > 21845 / grow ? 21845 : ntri * grow, maxv = nv + maxt;
+    if (maxv > MAX_GUARDED)
+        maxv = MAX_GUARDED;
+    int cap = 1;
+    while (cap < 2 * (maxv - nv) + 16)
+        cap <<= 1;
+    char *verts = malloc(maxv * stride);
+    unsigned short *tris = malloc(maxt * 3 * sizeof *tris);
+    SplitEdge *map = calloc(cap, sizeof *map);
+    int (*stack)[3] = malloc(64 * sizeof *stack);
+    int nverts = nv, nt = 0, ok = verts && tris && map && stack;
+    if (ok)
+        memcpy(verts, v, nv * stride);
+    for (int t = 0; t < ntri && ok; t++) {
+        int a, b, c;
+        if (strip) {
+            a = idx[t], b = idx[t + 1], c = idx[t + 2];
+            if (t & 1) { int x = a; a = b; b = x; } /* the GE's alternating winding, as a list */
+        } else
+            a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
+        if (a == b || b == c || a == c)
+            continue;
+        int sp = 0;
+        stack[sp][0] = a, stack[sp][1] = b, stack[sp][2] = c, sp++;
+        while (sp && ok) {
+            sp--;
+            int x = stack[sp][0], y = stack[sp][1], z = stack[sp][2];
+            float e0 = split_len2(verts, stride, lit, x, y), e1 = split_len2(verts, stride, lit, y, z), e2 = split_len2(verts, stride, lit, z, x);
+            int e = -1;
+            float best = lim2;
+            if (e0 > best) best = e0, e = 0;
+            if (e1 > best) best = e1, e = 1;
+            if (e2 > best) best = e2, e = 2;
+            if (e < 0) {
+                if (nt >= maxt) { ok = 0; break; }
+                tris[nt * 3] = x, tris[nt * 3 + 1] = y, tris[nt * 3 + 2] = z, nt++;
+                continue;
+            }
+            if (sp + 2 > 64) { ok = 0; break; }
+            int p = e == 0 ? x : e == 1 ? y : z, q = e == 0 ? y : e == 1 ? z : x, r = e == 0 ? z : e == 1 ? x : y; /* edge p-q, opposite r */
+            int m = split_mid(map, cap, p, q, verts, &nverts, maxv, stride, lit);
+            if (m < 0) { ok = 0; break; }
+            stack[sp][0] = p, stack[sp][1] = m, stack[sp][2] = r, sp++;
+            stack[sp][0] = m, stack[sp][1] = q, stack[sp][2] = r, sp++;
+        }
+    }
+    void *out = 0;
+    if (ok && nt > 0) {
+        int bytes = nverts * stride + nt * 3 * 2;
+        if ((out = memalign(16, bytes))) {
+            memcpy(out, verts, nverts * stride);
+            memcpy((char *)out + nverts * stride, tris, nt * 3 * 2);
+            *out_nv = nverts, *out_nidx = nt * 3, *out_bytes = bytes;
+            split_meshes++, split_tris_in += ntri, split_tris_out += nt;
+        }
+    } else
+        split_refused++;
+    free(verts), free(tris), free(map), free(stack);
+    split_us += sceKernelGetSystemTimeLow() - t0;
+    return out;
+}
+int p4_material_state = 1; /* b177: 1: GE-lit cache keys without the material; 2: unlit compact meshes too (material
+                              colour as GE state); 0: the material in every cache key, as b176 */
 int p4_cache_reuse_last = 1; /* 1: a miss may take its mesh's entry drawn last frame (pipeline off); 0: as b75 */
 static Geometry *draw_geometry; /* the atomic's geometry while its own arrays are drawn, else 0 */
 typedef struct { const Geometry *g; const void *pos, *uv, *pre, *nrm; int count; float du, dv; unsigned nsample, part[4]; } LockMemo;
@@ -4103,21 +4812,73 @@ static void churn_remember(int index, const unsigned part[6])
     if (churn_parts)
         memcpy(churn_parts[index], part, sizeof churn_parts[index]);
 }
-static void churn_why(int index, const unsigned part[6], int vertices)
+/* b178: which geometries rebuild for their positions (battle: ~15 meshes, 29k vertices a frame), and what moves them:
+   CPU skinning (a new array every frame), a lock (the game rewrote the morph target), or neither (written unlocked) */
+int p4_churn_top = 1;
+static Geometry *churn_atomic_g; /* the atomic being drawn (also when skinned on the CPU), else 0 */
+static int churn_atomic_locked, churn_atomic_skinned;
+typedef struct { const void *header; const Geometry *g; unsigned meshes, vertices, locked, skinned, flags, morphs, nverts, frames, last; char tex[24]; } ChurnTop;
+static ChurnTop churn_top[32];
+static void churn_top_note(const void *header, const Material *material, int vertices)
+{
+    ChurnTop *e = 0, *low = &churn_top[0];
+    for (int i = 0; i < 32; i++) {
+        if (churn_top[i].header == header) { e = &churn_top[i]; break; }
+        if (churn_top[i].vertices < low->vertices) low = &churn_top[i];
+    }
+    if (!e) {
+        e = low;
+        memset(e, 0, sizeof *e);
+        e->header = header;
+        e->g = churn_atomic_g;
+        if (churn_atomic_g)
+            e->flags = churn_atomic_g->flags, e->morphs = churn_atomic_g->numMorphTargets, e->nverts = churn_atomic_g->numVertices;
+        void **texture = material ? material->texture : 0;
+        if (texture && *texture)
+            memcpy(e->tex, (const char *)*texture + 0x10, 23);
+        e->last = ~0u;
+    }
+    e->meshes++;
+    e->vertices += vertices;
+    if (e->last != cache_frame) {
+        e->last = cache_frame;
+        e->frames++;
+        e->locked += churn_atomic_locked != 0;
+        e->skinned += churn_atomic_skinned;
+    }
+}
+static void churn_top_report(unsigned frames)
+{
+    for (int n = 0; n < 12; n++) {
+        ChurnTop *best = 0;
+        for (int i = 0; i < 32; i++)
+            if (churn_top[i].header && churn_top[i].vertices && (!best || churn_top[i].vertices > best->vertices))
+                best = &churn_top[i];
+        if (!best)
+            break;
+        p4_log("churn top geometry %p header %p v%u flags %x morphs %u: frames %u/%u vertices %u per frame meshes %u locked %u skinned %u tex %.23s\n",
+               best->g, best->header, best->nverts, best->flags, best->morphs, best->frames, frames, best->vertices / frames, best->meshes,
+               best->locked, best->skinned, best->tex);
+        best->vertices = 0;
+    }
+    memset(churn_top, 0, sizeof churn_top);
+}
+static int churn_why(int index, const unsigned part[6], int vertices)
 {
     if (!churn_parts)
-        return;
+        return -1;
     int k = 0;
     while (k < 6 && churn_parts[index][k] == part[k])
         k++;
     churn_count[k]++;
     churn_vertices[k] += vertices;
+    return k;
 }
 static void churn_report(unsigned frames)
 {
     for (int k = 0; k < 7; k++)
         if (churn_count[k])
-            p4_log("churn %s: %u meshes %u vertices per frame\n", churn_names[k], churn_count[k] / frames, churn_vertices[k] / frames);
+            p4_log("churn %s: %u meshes %u vertices per frame (material_state %d)\n", churn_names[k], churn_count[k] / frames, churn_vertices[k] / frames, p4_material_state);
     memset(churn_count, 0, sizeof churn_count);
     memset(churn_vertices, 0, sizeof churn_vertices);
 }
@@ -4305,6 +5066,8 @@ static int mesh_scratch(int count)
 }
 
 #include "mesh_topology.h"
+#include "meshkit.h"
+#include <stdio.h>
 int p4_topology_cache = 1;
 unsigned p4_topology_budget = 192 * 1024;
 static P4TopologyCache topology_cache;
@@ -4321,7 +5084,226 @@ static void draw_meshes_body(MeshHeader *header, const V3 *position, float (*uv)
    GE words it wrote after its model matrix are kept; the next copy sends its matrix and those words again when
    nothing was written to the list in between, every input the words depend on is the same, the GE state cache
    ended the copy as it began it (so no state the words skipped can differ), and its sphere needs no guard clip. */
+/* b189-b190 GE CALL records (p4_skin_call: GE-skinned batches; p4_mesh_call: mesh cache hits drawn whole). The
+   state and draw words of bind_mask, bind_raster, bind_ge_light and draw_tested are recorded once into a ring and
+   CALLed in later frames, so the CPU skips those calls. The key hashes every input they read: the drawn arrays,
+   material, texture, light, TEST_1, masks, alpha bounds and the state cache gs (its camera fields aside: nothing here
+   reads or sets them, and they change whenever the camera moves). A replay leaves gs and the bound texture globals as
+   the recording did. Two records per drawn thing: the body and its shadow pass. An entry older than half the ring is
+   copied forward before it is CALLed, and one frame writes at most an eighth of the ring, so an entry the GE may still
+   read (up to 2 frames late) is never overwritten. GE CALLs nest 2 deep on hardware; this is level 1. Instance replay
+   copies these BASE+CALL words like any others. */
+typedef struct { unsigned h[2], start, words, draws, used; } GeCall;
+int p4_skin_call = 1; /* 0: every skinned batch's state and draw built every frame, as b188 */
+int p4_mesh_call = 1; /* 0: every mesh cache hit's state and draw built every frame, as b189 */
+enum { CALL_RING_WORDS = 256 * 1024, CALL_FRAME_WORDS = CALL_RING_WORDS / 8, CALL_MAX_WORDS = 512 };
+enum { CALL_GS_WORDS = (sizeof gs + 3) / 4, CALL_HEAD = CALL_GS_WORDS + 4 };
+static unsigned *call_ring, call_head, call_frame, call_frame_words;
+static unsigned call_hits[2], call_records[2], call_misses[2], call_refreshes, call_refused, call_full; /* [0] skin, [1] mesh */
+#define CALL_CAM0 offsetof(__typeof__(gs), camera_known)
+#define CALL_CAM1 offsetof(__typeof__(gs), texscale_known)
+static unsigned *call_alloc(int words, unsigned *start)
+{
+    if (call_frame != cache_frame)
+        call_frame = cache_frame, call_frame_words = 0;
+    if (!call_ring && !(call_ring = memalign(64, CALL_RING_WORDS * 4)))
+        return 0;
+    unsigned at = call_head % CALL_RING_WORDS, skip = at + words > CALL_RING_WORDS ? CALL_RING_WORDS - at : 0;
+    if (call_frame_words + skip + words > CALL_FRAME_WORDS) {
+        call_full++;
+        return 0;
+    }
+    call_head += skip;
+    call_frame_words += skip + words;
+    *start = call_head;
+    call_head += words;
+    return call_ring + *start % CALL_RING_WORDS;
+}
+static inline void call_mix(unsigned h[2], unsigned w)
+{
+    h[0] = (h[0] ^ w) * 16777619u;
+    h[1] = (h[1] + w) * 2654435761u;
+    h[1] ^= h[1] >> 15;
+}
+/* the inputs every recorded draw shares, into w; -1: not recorded (camera or feedback texture, no mesh mode, a probe
+   or an experiment switch) */
+static int call_inputs(unsigned *w, const Material *m, int modulate, const SceneLight *light)
+{
+    if (!gu_mesh_mode || p4_draw_batch <= 1 || p4_gs_test_raw_prelit || p4_probe_3d || p4_hide_material)
+        return -1;
+    Raster *r = m->texture ? *(Raster **)m->texture : 0;
+    if (r && (r == &display_raster || rtt_find(r)))
+        return -1;
+    int n = 0;
+    w[n++] = (unsigned)m, w[n++] = m->colour;
+    memcpy(&w[n++], &m->ambient, 4);
+    memcpy(&w[n++], &m->diffuse, 4);
+    w[n++] = (unsigned)r, w[n++] = r ? (unsigned)r->originalPixels : 0, w[n++] = r ? (unsigned)r->palette : 0, w[n++] = texture_generation;
+    w[n++] = modulate;
+    memcpy(w + n, light, 36);
+    n += 9;
+    w[n++] = pixel_mask, w[n++] = sky_state[3], w[n++] = (unsigned)rtt_target, w[n++] = render_state[RS_ZWRITE];
+    w[n++] = p4_screen_date | p4_rtt_date << 1 | p4_alpha_pixel << 2 | p4_gs_test << 3 | p4_gs_test_skip << 4 |
+             p4_gs_mesh_alpha << 5 | p4_mipmaps << 6 | p4_glass_alpha_ref << 7;
+    w[n++] = draw_alpha_known, w[n++] = draw_skin_alpha ? draw_skin_alpha[0] : -1, w[n++] = draw_skin_alpha ? draw_skin_alpha[1] : -1;
+    w[n++] = (unsigned)draw_fixed_alpha, w[n++] = draw_material_ge;
+    return n;
+}
+static void call_key(const unsigned *w, int n, unsigned h[2])
+{
+    h[0] = 2166136261u, h[1] = 0x9e3779b9u;
+    for (int i = 0; i < n; i++)
+        call_mix(h, w[i]);
+    const unsigned *s = (const unsigned *)&gs;
+    for (unsigned i = 0; i < sizeof gs / 4; i++)
+        if (i < CALL_CAM0 / 4 || i >= CALL_CAM1 / 4)
+            call_mix(h, s[i]);
+}
+/* the record with this key, or 0 with *slot the one to record into (empty, else the longest unused) */
+static GeCall *call_find(GeCall c[2], const unsigned h[2], GeCall **slot)
+{
+    GeCall *spare = 0;
+    for (int i = 0; i < 2; i++) {
+        if (c[i].words && c[i].h[0] == h[0] && c[i].h[1] == h[1])
+            return &c[i];
+        if (!spare || !c[i].words || (spare->words && c[i].used < spare->used))
+            spare = &c[i];
+    }
+    *slot = spare;
+    return 0;
+}
+static int call_replay(GeCall *c, int kind)
+{
+    unsigned age = call_head - c->start;
+    if (age > CALL_RING_WORDS - CALL_MAX_WORDS) { /* overwritten since: record again */
+        c->words = 0;
+        return 0;
+    }
+    if (age > CALL_RING_WORDS / 2) {
+        unsigned start, *to = call_alloc(c->words, &start);
+        if (!to)
+            return 0;
+        memcpy(to, call_ring + c->start % CALL_RING_WORDS, c->words * 4);
+        sceKernelDcacheWritebackRange(to, c->words * 4);
+        c->start = start;
+        call_refreshes++;
+    }
+    const unsigned *e = call_ring + c->start % CALL_RING_WORDS, *ge = e + CALL_HEAD;
+    unsigned *l = gu_list->current;
+    l[0] = 0x10u << 24 | ((unsigned)ge >> 8 & 0xf0000); /* BASE */
+    l[1] = 0x0Au << 24 | ((unsigned)ge & 0xffffff);     /* CALL */
+    gu_list->current = l + 2;
+    memcpy(&gs, e, CALL_CAM0);
+    memcpy((char *)&gs + CALL_CAM1, (const char *)e + CALL_CAM1, sizeof gs - CALL_CAM1);
+    bound_alpha_min = e[CALL_GS_WORDS], bound_alpha_max = e[CALL_GS_WORDS + 1];
+    memcpy(&texture_w, &e[CALL_GS_WORDS + 2], 4);
+    memcpy(&texture_h, &e[CALL_GS_WORDS + 3], 4);
+    c->used = cache_frame;
+    call_hits[kind]++;
+    if (ge_work_on)
+        work_words(ge, e + c->words - 1);
+    mesh_draw_calls += c->draws;
+    draws_since_stall += c->draws;
+    if (draws_since_stall >= (unsigned)p4_draw_batch && !gu_object_stack_depth)
+        stall_flush();
+    return 1;
+}
+/* the words from..current just went into the list for this draw: keep them as c */
+static void call_record(GeCall *c, const unsigned h[2], const unsigned *from, int kind)
+{
+    int n = gu_list->current - from, draws = 0;
+    if (n <= 0 || n > CALL_MAX_WORDS || !gu_mesh_mode) {
+        call_refused++;
+        return;
+    }
+    for (int i = 0; i < n; i++) {
+        unsigned cmd = from[i] >> 24;
+        if (cmd == 0x08 || cmd == 0x0a || cmd == 0x0b || cmd == 0x0c || cmd == 0x0f) { /* JUMP, CALL, RET, END, FINISH */
+            call_refused++;
+            return;
+        }
+        draws += cmd == 0x04;
+    }
+    unsigned start, *e = call_alloc(CALL_HEAD + n + 1, &start);
+    if (!e)
+        return;
+    memcpy(e, &gs, sizeof gs);
+    e[CALL_GS_WORDS] = bound_alpha_min, e[CALL_GS_WORDS + 1] = bound_alpha_max;
+    memcpy(&e[CALL_GS_WORDS + 2], &texture_w, 4);
+    memcpy(&e[CALL_GS_WORDS + 3], &texture_h, 4);
+    memcpy(e + CALL_HEAD, from, n * 4);
+    e[CALL_HEAD + n] = 0x0Bu << 24; /* RET */
+    sceKernelDcacheWritebackRange(e, (CALL_HEAD + n + 1) * 4);
+    c->h[0] = h[0], c->h[1] = h[1];
+    c->start = start, c->words = CALL_HEAD + n + 1, c->draws = draws, c->used = cache_frame;
+    call_records[kind]++;
+}
+static void call_report(void)
+{
+    p4_log("ge call skin %d mesh %d per 256 frames: skin hits %u records %u misses %u; mesh hits %u records %u misses %u; refreshes %u refused %u full %u ring %u KB\n",
+           p4_skin_call, p4_mesh_call, call_hits[0], call_records[0], call_misses[0], call_hits[1], call_records[1], call_misses[1], call_refreshes,
+           call_refused, call_full, CALL_RING_WORDS / 256);
+    memset(call_hits, 0, sizeof call_hits), memset(call_records, 0, sizeof call_records), memset(call_misses, 0, sizeof call_misses);
+    call_refreshes = call_refused = call_full = 0;
+}
+
+/* b243 p4_mesh_persist: a whole draw_meshes call kept between frames. b240 on the PSP: 61% of the CPU's cycles are
+   memory stall, and a mesh draw that ends as a CALL replay still walks ~80 code lines and ~50 data lines to get there
+   (lights, setup, key, cache slot, call key, ring lookup). When every mesh of the call replayed a recorded CALL and
+   nothing was cut on the CPU, the words after the model matrix are just BASE + CALL pairs: they are kept with every
+   input the body read, and the next frame the call is the state setup (mesh_state), one comparison and a copy.
+   Compared exactly, no tolerance: arrays, count, modulate, camera and its view, model, render and sky state, pixel
+   mask, materials and their rasters, light, target, the state shadow after mesh_state, the geometry unlocked since,
+   each mesh cache slot (key, build stamp, vertices) and the age of the oldest ring record. The slots are stamped as
+   used so the cache does not evict what the GE reads. 0 off; check 1: the body runs anyway and its words must be the
+   recorded ones. */
+int p4_mesh_persist = 0, p4_mesh_persist_check = 0;
+enum { PERSIST_SLOTS = 512, PERSIST_WORDS = 48, PERSIST_MESHES = 8 };
+static int persist_capture, persist_noted;
+static struct { MeshCache *slot; unsigned start; } persist_note_at[PERSIST_MESHES];
+static void persist_note(MeshCache *slot, unsigned start)
+{
+    if (persist_capture) {
+        if (persist_noted < PERSIST_MESHES)
+            persist_note_at[persist_noted].slot = slot, persist_note_at[persist_noted].start = start;
+        persist_noted++;
+    }
+}
+static GeCall (*mesh_calls)[2]; /* heap, one pair per mesh_cache slot: .bss is full */
+static void draw_mesh_hit(MeshCache *slot, int prim, const Material *material, int modulate, const SceneLight *light)
+{
+    unsigned w[48], h[2];
+    GeCall *call = 0, *rec = 0;
+    int n = p4_mesh_call && (mesh_calls || (mesh_calls = calloc(CACHE_SLOTS, sizeof *mesh_calls))) ? call_inputs(w, material, modulate, light) : -1;
+    if (n >= 0) {
+        w[n++] = (unsigned)slot, w[n++] = (unsigned)slot->v, w[n++] = (unsigned)slot->idx, w[n++] = slot->vtype, w[n++] = slot->indices;
+        w[n++] = slot->key, w[n++] = slot->built, w[n++] = prim, w[n++] = slot->alpha_lo, w[n++] = slot->alpha_hi;
+        call_key(w, n, h);
+        call = call_find(mesh_calls[slot - mesh_cache], h, &rec);
+        if (call && call_replay(call, 1)) {
+            persist_note(slot, call->start);
+            return;
+        }
+        if (call) /* found but overwritten or no room to refresh: record it again */
+            rec = call;
+        else if (rec)
+            call_misses[1]++;
+    }
+    const unsigned *from = gu_list->current;
+    void **texture = material->texture;
+    prof_begin(PROF_HBIND);
+    bind_mask(material->colour >> 24);
+    bind_raster(texture ? *texture : 0, GU_REPEAT);
+    prof_end(PROF_HBIND);
+    draw_slot_v = slot->v, draw_slot_alpha = &slot->alpha_lo;
+    draw_mesh_vertices(prim, slot->vtype, slot->indices, slot->idx, slot->v, material, modulate, light);
+    draw_slot_v = 0;
+    if (rec)
+        call_record(rec, h, from, 1);
+}
+
 int p4_instance_replay = 1; /* 0: every copy through draw_meshes_body, as b93 */
+int p4_replay_census = 0; /* b207: 1 counts what instance replays send (replay_census) */
 static unsigned *mesh_model_mark;
 enum { REPLAY_MESHES = 8, REPLAY_WORDS = 512 };
 static struct {
@@ -4334,7 +5316,30 @@ static struct {
     SceneLight light;
 } replay;
 static unsigned replay_draws, replay_records, replay_refusals[6];
-static unsigned char gs_before[sizeof gs];
+/* b207: what an instance replay sends, its CALLs followed one level (BASE + CALL into the GeCall ring): words, draws,
+   CLUT loads (LOADCLUT 0xC4), texture flushes (0xCB) and texture address words (0xA0). b201 Margaret: 84 flowers a
+   frame, 32 vertices each, ~2.5 ms of GE with the timer: are they paying a CLUT load and a flush each? */
+static unsigned replay_words, replay_prims, replay_cluts, replay_flushes, replay_texaddr;
+static void replay_census(const unsigned *w, const unsigned *end, int depth)
+{
+    unsigned base = 0;
+    for (; w < end; w++) {
+        unsigned cmd = *w >> 24;
+        replay_words++;
+        replay_prims += cmd == 0x04, replay_cluts += cmd == 0xC4, replay_flushes += cmd == 0xCB, replay_texaddr += cmd == 0xA0;
+        if (cmd == 0x10)
+            base = *w & 0xffffff;
+        else if (cmd == 0x0A && depth == 0) { /* CALL: its words up to RET */
+            const unsigned *c = (const unsigned *)((base & 0xf0000) << 8 | (*w & 0xffffff)), *stop = c + CALL_MAX_WORDS + 1;
+            const unsigned *r = c;
+            while (r < stop && *r >> 24 != 0x0B)
+                r++;
+            replay_census(c, r, 1);
+        } else if (cmd == 0x0B)
+            return;
+    }
+}
+static unsigned char gs_before[sizeof gs], persist_gs_mark[sizeof gs];
 static int replay_inputs(MeshHeader *header, const Matrix *model, unsigned material[REPLAY_MESHES][3], unsigned view[18])
 {
     if (!model || header->numMeshes > REPLAY_MESHES || p4_mesh_frustum || p4_probe_depth_mode)
@@ -4378,12 +5383,16 @@ static int replay_try(MeshHeader *header, const V3 *position, float (*uv)[2], co
     else if (memcmp(replay.camera_view, view, sizeof view))
         why = 3;
     else if (normals) {
+        prof_begin(PROF_RLIGHT);
         SceneLight light = scene_lights();
+        prof_end(PROF_RLIGHT);
         if (memcmp(&light, &replay.light, sizeof light))
             why = 4;
     }
+    prof_begin(PROF_RGUARD);
     if (!why && !replay_unguarded(model, sphere))
         why = 5;
+    prof_end(PROF_RGUARD);
     if (why) {
         replay_refusals[why]++;
         return 0;
@@ -4395,6 +5404,10 @@ static int replay_try(MeshHeader *header, const V3 *position, float (*uv)[2], co
     gu_list->current = to + words;
     replay.from = to;
     replay.end = to + words;
+    if (p4_replay_census)
+        replay_census(to, to + words, 0);
+    if (ge_work_on)
+        work_words(to, to + words);
     mesh_draw_calls += replay.draws;
     replay_draws++;
     draws_since_stall += replay.draws;
@@ -4412,7 +5425,7 @@ static void replay_record(MeshHeader *header, const V3 *position, float (*uv)[2]
         return;
     for (int i = 0; i < words; i++) {
         unsigned cmd = mesh_model_mark[i] >> 24;
-        if (cmd == 0x08 || cmd == 0x0a || cmd == 0x0b || cmd == 0x0c || cmd == 0x0f) /* JUMP, CALL, RET, END, FINISH: inline data or flow */
+        if (cmd == 0x08 || cmd == 0x0b || cmd == 0x0c || cmd == 0x0f) /* JUMP, RET, END, FINISH: inline data or flow (b190: a CALL to a GeCall ring entry copies fine) */
             return;
         draws += cmd == 0x04;
     }
@@ -4430,27 +5443,236 @@ static void replay_record(MeshHeader *header, const V3 *position, float (*uv)[2]
     replay.end = gu_list->current;
     replay_records++;
 }
+typedef struct {
+    const void *header, *model_at, *position, *uv, *prelit, *normals, *camera, *geometry, *rtt;
+    int count, modulate, words, draws, nslots, churn, valid;
+    unsigned tex_generation, pixel, bits, ring_min, skip_until, alpha_min, alpha_max, stamp; /* stamp: last frame used */
+    float tw, th, sphere[4], model[12];
+    int render[MAX_STATE];
+    unsigned sky[8], view[18], material[REPLAY_MESHES][3];
+    const void *mat[PERSIST_MESHES][4]; /* material, raster, its pixels, its palette */
+    struct { MeshCache *slot; unsigned key, built; const void *v; } slot[PERSIST_MESHES];
+    SceneLight light;
+    unsigned char gs_mark[sizeof gs], gs_end[sizeof gs];
+    unsigned w[PERSIST_WORDS];
+} PersistDraw;
+static PersistDraw *persist_table;
+static unsigned persist_hits, persist_records, persist_miss[10], persist_checks, persist_diffs, persist_backoff;
+static SceneLight mesh_state(const Matrix *model, int lit);
+static unsigned persist_bits(void)
+{
+    return p4_screen_date | p4_rtt_date << 1 | p4_alpha_pixel << 2 | p4_gs_test << 3 | p4_gs_test_skip << 4 | p4_gs_mesh_alpha << 5 | p4_mipmaps << 6 |
+           p4_mesh_call << 7 | p4_guard_clip << 8 | p4_ge_light << 9 | (p4_fog & 3) << 10 |
+           (p4_material_state & 3) << 12 | p4_glass_alpha_ref << 14;
+}
+static void persist_model(float out[12], const Matrix *m)
+{
+    const float *f = &m->right.x;
+    for (int r = 0; r < 4; r++)
+        for (int c = 0; c < 3; c++)
+            out[r * 3 + c] = f[r * 4 + c];
+}
+static void persist_materials(MeshHeader *header, const void *mat[PERSIST_MESHES][4])
+{
+    Mesh *mesh = (Mesh *)((char *)header + sizeof(MeshHeader) + header->firstMeshOffset);
+    memset(mat, 0, PERSIST_MESHES * 4 * sizeof(void *));
+    for (int i = 0; i < header->numMeshes && i < PERSIST_MESHES; i++, mesh++) {
+        Raster *r = mesh->material->texture ? *(Raster **)mesh->material->texture : 0;
+        mat[i][0] = mesh->material, mat[i][1] = r, mat[i][2] = r ? r->originalPixels : 0, mat[i][3] = r ? r->palette : 0;
+    }
+}
+static PersistDraw *persist_entry(const void *header, const void *model)
+{
+    if (!persist_table && !(persist_table = calloc(PERSIST_SLOTS, sizeof *persist_table)))
+        return 0;
+    /* b244: the index of b243 (a few middle bits of two products) put ~17 calls a frame on each other's entry in the
+       dialogue. Mixed hash, two entries a set: the one that holds this call, else an empty one, else the older. */
+    unsigned h = ((unsigned)header >> 4) * 2654435761u ^ ((unsigned)model >> 4) * 2246822519u;
+    h ^= h >> 15, h *= 2654435761u, h ^= h >> 13;
+    PersistDraw *a = &persist_table[(h >> 8 & (PERSIST_SLOTS / 2 - 1)) * 2], *b = a + 1;
+    if (a->header == header && a->model_at == model)
+        return a;
+    if (b->header == header && b->model_at == model)
+        return b;
+    return !a->header ? a : !b->header ? b : (int)(a->stamp - b->stamp) <= 0 ? a : b;
+}
+/* 1: replayed. 2 (check mode): it would have replayed; the caller runs the body and compares. 0: the body. */
+static int persist_try(MeshHeader *header, const V3 *position, float (*uv)[2], const unsigned *preLit, int count, const Matrix *model, int modulate, const V3 *normals, const float *sphere)
+{
+    PersistDraw *e = persist_entry(header, model);
+    int why = 0;
+    if (!e || !e->valid || e->header != header || e->model_at != model)
+        return 0;
+    if (e->position != position || e->uv != uv || e->prelit != preLit || e->normals != normals || e->count != count || e->modulate != modulate ||
+        e->camera != current_camera || e->geometry != draw_geometry || !draw_geometry || draw_geometry->locked || e->rtt != rtt_target ||
+        draw_fixed_alpha || draw_skin_alpha || !sphere)
+        why = 1;
+    else if (e->tex_generation != texture_generation || e->pixel != pixel_mask || e->bits != persist_bits() ||
+             memcmp(e->render, render_state, sizeof e->render) || memcmp(e->sky, sky_state, sizeof e->sky))
+        why = 2;
+    else if (call_head - e->ring_min > CALL_RING_WORDS / 2)
+        why = 3;
+    else {
+        float m[12];
+        unsigned material[REPLAY_MESHES][3], view[18];
+        const void *mat[PERSIST_MESHES][4];
+        persist_model(m, model);
+        if (memcmp(m, e->model, sizeof m) || memcmp(sphere, e->sphere, sizeof e->sphere))
+            why = 4;
+        else if (!replay_inputs(header, model, material, view) || memcmp(view, e->view, sizeof view))
+            why = 5;
+        else if (memcmp(material, e->material, sizeof material) || (persist_materials(header, mat), memcmp(mat, e->mat, sizeof mat)))
+            why = 6;
+        for (int i = 0; !why && i < e->nslots; i++)
+            if (e->slot[i].slot->key != e->slot[i].key || e->slot[i].slot->built != e->slot[i].built || e->slot[i].slot->v != e->slot[i].v)
+                why = 7;
+    }
+    if (!why) {
+        begin_frame();
+        SceneLight light = mesh_state(model, normals != 0);
+        if (memcmp(&gs, e->gs_mark, sizeof gs))
+            why = 8;
+        else if (normals && memcmp(&light, &e->light, sizeof light))
+            why = 9;
+    }
+    if (why) {
+        persist_miss[why]++;
+        e->valid = 0;
+        if (++e->churn >= 4) /* inputs that move every frame: stop recording it for a while */
+            e->churn = 0, e->skip_until = cache_frame + 64, persist_backoff++;
+        return 0;
+    }
+    e->stamp = cache_frame;
+    if (p4_mesh_persist_check)
+        return 2;
+    unsigned *to = gu_list->current;
+    memcpy(to, e->w, e->words * 4);
+    gu_list->current = to + e->words;
+    memcpy(&gs, e->gs_end, sizeof gs);
+    bound_alpha_min = e->alpha_min, bound_alpha_max = e->alpha_max;
+    texture_w = e->tw, texture_h = e->th;
+    for (int i = 0; i < e->nslots; i++)
+        e->slot[i].slot->frame = cache_frame;
+    if (ge_work_on)
+        work_words(to, to + e->words);
+    e->churn = 0;
+    cache_hits += e->nslots;
+    mesh_draw_calls += e->draws;
+    draws_since_stall += e->draws;
+    persist_hits++;
+    replay.valid = 0;
+    draw_material_ge = 0;
+    if (draws_since_stall >= (unsigned)p4_draw_batch && !gu_object_stack_depth)
+        stall_flush();
+    return 1;
+}
+/* after the body, with persist_capture on: keep the call when it was CALL replays only. would: persist_try said 2 */
+static void persist_record(MeshHeader *header, const V3 *position, float (*uv)[2], const unsigned *preLit, int count, const Matrix *model, int modulate, const V3 *normals, const float *sphere, unsigned *start, int would)
+{
+    PersistDraw *e = persist_entry(header, model);
+    int words = mesh_model_mark ? gu_list->current - mesh_model_mark : -1, calls = 0;
+    if (!e || !gu_mesh_mode || !mesh_model_mark || mesh_model_mark < start || words <= 0 || words > PERSIST_WORDS)
+        return;
+    if (would) { /* check mode: the body's words against the record */
+        persist_checks++;
+        if (words != e->words || memcmp(mesh_model_mark, e->w, words * 4) || memcmp(&gs, e->gs_end, sizeof gs)) {
+            if (persist_diffs++ < 8)
+                p4_log("TRACE mesh persist differs: header %p words %d recorded %d\n", (void *)header, words, e->words);
+            e->valid = 0;
+        }
+        return;
+    }
+    if ((e->header == header && e->model_at == model && (int)(e->skip_until - cache_frame) > 0) || !sphere || !draw_geometry || draw_geometry->locked ||
+        draw_fixed_alpha || draw_skin_alpha || header->numMeshes > PERSIST_MESHES)
+        return;
+    for (int i = 0; i < words; i++) {
+        unsigned cmd = mesh_model_mark[i] >> 24;
+        if (cmd != 0x10 && cmd != 0x0A) /* anything but BASE and CALL: built this frame, or it reads the frame pool */
+            return;
+        calls += cmd == 0x0A;
+    }
+    if (!calls || calls != persist_noted || calls > PERSIST_MESHES || !replay_unguarded(model, sphere))
+        return;
+    int churn = e->header == header && e->model_at == model ? e->churn : 0;
+    e->valid = 0;
+    if (!replay_inputs(header, model, e->material, e->view))
+        return;
+    e->header = header, e->model_at = model, e->position = position, e->uv = uv, e->prelit = preLit, e->normals = normals;
+    e->camera = current_camera, e->geometry = draw_geometry, e->rtt = rtt_target;
+    e->count = count, e->modulate = modulate, e->words = words, e->draws = calls, e->nslots = calls, e->churn = churn;
+    e->tex_generation = texture_generation, e->pixel = pixel_mask, e->bits = persist_bits();
+    e->alpha_min = bound_alpha_min, e->alpha_max = bound_alpha_max, e->tw = texture_w, e->th = texture_h;
+    memcpy(e->sphere, sphere, sizeof e->sphere);
+    persist_model(e->model, model);
+    memcpy(e->render, render_state, sizeof e->render);
+    memcpy(e->sky, sky_state, sizeof e->sky);
+    persist_materials(header, e->mat);
+    e->ring_min = persist_note_at[0].start;
+    for (int i = 0; i < calls; i++) {
+        MeshCache *slot = persist_note_at[i].slot;
+        e->slot[i].slot = slot, e->slot[i].key = slot->key, e->slot[i].built = slot->built, e->slot[i].v = slot->v;
+        if ((int)(persist_note_at[i].start - e->ring_min) < 0)
+            e->ring_min = persist_note_at[i].start;
+    }
+    if (normals)
+        e->light = scene_lights();
+    memcpy(e->gs_mark, persist_gs_mark, sizeof gs);
+    memcpy(e->gs_end, &gs, sizeof gs);
+    memcpy(e->w, mesh_model_mark, words * 4);
+    e->valid = 1, e->stamp = cache_frame;
+    persist_records++;
+}
 static void replay_report(unsigned frames)
 {
+    p4_log("mesh persist %d check %d per 256 frames: replays %u records %u backoffs %u checks %u diffs %u\n", p4_mesh_persist, p4_mesh_persist_check,
+           persist_hits, persist_records, persist_backoff, persist_checks, persist_diffs);
+    p4_log("mesh persist misses: inputs %u state %u ring %u model %u camera %u material %u slot %u shadow %u light %u\n", persist_miss[1], persist_miss[2],
+           persist_miss[3], persist_miss[4], persist_miss[5], persist_miss[6], persist_miss[7], persist_miss[8], persist_miss[9]);
+    persist_hits = persist_records = persist_backoff = persist_checks = persist_diffs = 0;
+    memset(persist_miss, 0, sizeof persist_miss);
     p4_log("instance replay %d per frame: draws %u records %u refused state %u material %u camera %u light %u guard %u\n", p4_instance_replay,
            replay_draws / frames, replay_records / frames, replay_refusals[1] / frames, replay_refusals[2] / frames, replay_refusals[3] / frames,
            replay_refusals[4] / frames, replay_refusals[5] / frames);
+    if (p4_replay_census && replay_draws)
+        p4_log("instance replay sends per replay: words %u draws %u clut loads %u/100 flushes %u/100 texture address %u/100 (%u replays)\n",
+               replay_words / replay_draws, replay_prims / replay_draws, replay_cluts * 100 / replay_draws, replay_flushes * 100 / replay_draws,
+               replay_texaddr * 100 / replay_draws, replay_draws);
+    replay_words = replay_prims = replay_cluts = replay_flushes = replay_texaddr = 0;
     replay_draws = replay_records = 0;
     memset(replay_refusals, 0, sizeof replay_refusals);
 }
 static void draw_meshes(MeshHeader *header, const V3 *position, float (*uv)[2], const unsigned *preLit, int count, const Matrix *model, int modulate, const V3 *normals, const float *sphere)
 {
     prof_begin(PROF_MESH);
-    if (p4_instance_replay && model && replay_try(header, position, uv, preLit, count, model, modulate, normals, sphere)) {
+    prof_begin(PROF_RPLAY); /* b230: what a replay costs (b229: ~15k cycles each, 87 a frame in the dialogue) */
+    int replayed = p4_instance_replay && model && replay_try(header, position, uv, preLit, count, model, modulate, normals, sphere);
+    prof_end(PROF_RPLAY);
+    if (replayed) {
         prof_end(PROF_MESH);
         return;
+    }
+    int persist = 0;
+    if (p4_mesh_persist && model && header->numMeshes <= PERSIST_MESHES) {
+        prof_begin(PROF_PERSIST);
+        persist = persist_try(header, position, uv, preLit, count, model, modulate, normals, sphere);
+        prof_end(PROF_PERSIST);
+        if (persist == 1) {
+            prof_end(PROF_MESH);
+            return;
+        }
     }
     unsigned *start = gu_list->current;
     int record = p4_instance_replay && model && gu_mesh_mode;
     if (record)
         memcpy(gs_before, &gs, sizeof gs);
     mesh_model_mark = 0;
+    persist_capture = p4_mesh_persist && model, persist_noted = 0;
     draw_meshes_body(header, position, uv, preLit, count, model, modulate, normals, sphere);
+    draw_material_ge = 0; /* the body sets it for its compact meshes and may return early */
+    if (persist_capture) {
+        persist_capture = 0;
+        persist_record(header, position, uv, preLit, count, model, modulate, normals, sphere, start, persist == 2);
+    }
     if (record)
         replay_record(header, position, uv, preLit, count, model, modulate, normals, sphere, start);
     else
@@ -4497,11 +5719,7 @@ static SceneLight mesh_state(const Matrix *model, int lit)
         set_blend(blend);
         gs.blend_known = gu_mesh_mode, gs.blend = blend & 0xff;
     }
-    if (!gu_mesh_mode || !gs.texscale_known) {
-        sceGuTexScale(1, 1);
-        sceGuTexOffset(0, 0);
-        gs.texscale_known = gu_mesh_mode;
-    }
+    bind_texscale(0);
     bind_fog();
     set_camera();
     if (model) {
@@ -4512,6 +5730,8 @@ static SceneLight mesh_state(const Matrix *model, int lit)
         sceGuSetMatrix(GU_MODEL, &identity);
     }
     mesh_model_mark = gu_list->current;
+    if (persist_capture)
+        memcpy(persist_gs_mark, &gs, sizeof gs);
     return light;
 }
 
@@ -4603,6 +5823,8 @@ static void draw_meshes_body(MeshHeader *header, const V3 *position, float (*uv)
         unsigned geometry_key = 0;
         unsigned part[6] = { 0 }; /* the key after each input, for churn_why */
         int ge_lit = normals && p4_ge_light;
+        int ge_colour = !normals && modulate && p4_material_state == 2;
+        draw_material_ge = ge_colour;
         prof_begin(PROF_KEY);
         if (p4_mesh_cache) {
             unsigned h, nsample;
@@ -4638,6 +5860,8 @@ static void draw_meshes_body(MeshHeader *header, const V3 *position, float (*uv)
                     h = hash_words(h, model, 12 * 4); /* rotation rows; position does not light */
                 h = hash_words(h, &nsample, 4);
             }
+            h = hash_words(h, &p4_guard_split, 4); /* b232: a new split length builds new copies */
+            h = hash_words(h, &p4_guard_split_grow, 4);
             part[5] = h;
             geometry_key = h | 1;
             if (lm && !lm_hit) {
@@ -4680,13 +5904,15 @@ static void draw_meshes_body(MeshHeader *header, const V3 *position, float (*uv)
                 clip_this = (any & GUARD_MASK) != 0;
             }
             if (geometry_key && (!clip_this || compact_guard)) {
+                /* b177: GE-lit vertices do not hold the material (bind_ge_light sends it): a fading or recoloured
+                   material keeps its entry */
                 unsigned mk[3] = { material->colour, *(unsigned *)&material->ambient, *(unsigned *)&material->diffuse };
-                key = hash_words(geometry_key, mk, sizeof mk) | 1;
+                key = (ge_lit && p4_material_state) || ge_colour ? geometry_key : hash_words(geometry_key, mk, sizeof mk) | 1;
                 int hit;
                 prof_begin(PROF_MSLOT);
                 slot = cache_slot(mesh, key, &hit);
-                if (!hit && slot && slot->mesh == mesh)
-                    churn_why(slot - mesh_cache, part, count);
+                if (!hit && slot && slot->mesh == mesh && churn_why(slot - mesh_cache, part, count) == 1 && p4_churn_top)
+                    churn_top_note(header, material, count);
                 prof_end(PROF_MSLOT);
                 if (!slot) /* every entry of the window drawn this frame: arrays rewritten per instance (Heaven's flowers) */
                     cache_noslot++;
@@ -4707,19 +5933,20 @@ static void draw_meshes_body(MeshHeader *header, const V3 *position, float (*uv)
                             }
                         audit_stale_vertices += stale ? count : 0;
                     }
-                    void **texture = material->texture;
                     prof_begin(PROF_HEMPTY); /* the profiler's own cost per section, to subtract */
                     prof_end(PROF_HEMPTY);
-                    prof_begin(PROF_HBIND);
-                    bind_mask(material->colour >> 24);
-                    bind_raster(texture ? *texture : 0, GU_REPEAT);
-                    prof_end(PROF_HBIND);
-                    if (clip_this) {
-                        draw_guarded_compact(prim, slot->idx, slot->indices, slot->v, slot->vertices, slot->vtype, model, near, material, modulate, &light, &slot->alpha_lo, slot, slot->key, slot->built);
+                    int sprim = SLOT_SPLIT(slot) ? GU_TRIANGLES : prim; /* b232: a split copy is a list */
+                    if (clip_this && guard_slot_whole(slot, slot->key, slot->built, sprim, slot->idx, slot->indices, slot->v, slot->vertices, slot->vtype, model, near)) {
+                        draw_mesh_hit(slot, sprim, material, modulate, &light); /* b199: no chunk needs the CPU */
+                    } else if (clip_this) {
+                        void **texture = material->texture;
+                        prof_begin(PROF_HBIND);
+                        bind_mask(material->colour >> 24);
+                        bind_raster(texture ? *texture : 0, GU_REPEAT);
+                        prof_end(PROF_HBIND);
+                        draw_guarded_compact(sprim, slot->idx, slot->indices, slot->v, slot->vertices, slot->vtype, model, near, material, modulate, &light, &slot->alpha_lo, slot, slot->key, slot->built);
                     } else {
-                        draw_slot_v = slot->v, draw_slot_alpha = &slot->alpha_lo;
-                        draw_mesh_vertices(prim, slot->vtype, slot->indices, slot->idx, slot->v, material, modulate, &light);
-                        draw_slot_v = 0;
+                        draw_mesh_hit(slot, sprim, material, modulate, &light);
                     }
                     prof_end(PROF_HIT);
                     continue;
@@ -4797,6 +6024,7 @@ static void draw_meshes_body(MeshHeader *header, const V3 *position, float (*uv)
                             cache_bytes += need;
                         }
                         if (full_slot->v) {
+                            mesh_set_split(full_slot, 0);
                             memcpy(full_slot->v, full, need);
                             sceKernelDcacheWritebackRange(full_slot->v, need);
                             full_slot->mesh = header;
@@ -4817,7 +6045,9 @@ static void draw_meshes_body(MeshHeader *header, const V3 *position, float (*uv)
                 void **texture = material->texture;
                 bind_mask(material->colour >> 24);
                 bind_raster(texture ? *texture : 0, GU_REPEAT);
+                draw_material_ge = 0; /* this array has the material in its vertices */
                 draw_guarded(prim, mesh->indices, mesh->numIndices, full, ge_lit ? VT_3D | GU_NORMAL_8BIT : VT_3D, near, material, modulate, &light);
+                draw_material_ge = ge_colour;
                 prof_end(PROF_GDRAW);
                 continue;
             }
@@ -4827,7 +6057,7 @@ static void draw_meshes_body(MeshHeader *header, const V3 *position, float (*uv)
                 p4_log("TRACE vertex pool full\n");
                 return;
             }
-            unsigned colour = modulate ? material->colour : 0xffffffff;
+            unsigned colour = modulate && !ge_colour ? material->colour : 0xffffffff;
             char *out = (char *)(vertex_pool + vertex_used);
             unsigned short *remapped = index_pool + index_used;
             unsigned stamp = ++mesh_generation;
@@ -4898,13 +6128,33 @@ static void draw_meshes_body(MeshHeader *header, const V3 *position, float (*uv)
                         cache_bytes += need;
                     }
                 }
-                if (slot->v) {
+                int split_nv = 0, split_nidx = 0, split_bytes = 0;
+                /* Build independently of this camera: an inside mesh may cross the band on a later frame. */
+                void *split = slot->v ? guard_split_mesh(out, used, stride, ge_lit, remapped, n, prim == GU_TRIANGLE_STRIP,
+                                                                      &split_nv, &split_nidx, &split_bytes) : 0;
+                if (split && cache_bytes - slot->capacity + split_bytes > p4_cache_budget) {
+                    free(split), split = 0;
+                    split_refused++;
+                }
+                mesh_set_split(slot, 0);
+                if (split) {
+                    cache_bytes += split_bytes - slot->capacity;
+                    free(slot->v);
+                    slot->v = split, slot->capacity = split_bytes;
+                    slot->idx = (unsigned short *)((char *)split + split_nv * stride);
+                    slot->vtype = vtype;
+                    slot->alpha_lo = -1;
+                    mesh_set_split(slot, 1);
+                    sceKernelDcacheWritebackRange(slot->v, split_bytes);
+                } else if (slot->v) {
                     memcpy(slot->v, out, used * stride);
                     slot->idx = (unsigned short *)((char *)slot->v + used * stride);
                     slot->vtype = vtype;
                     slot->alpha_lo = -1; /* draw_tested scans it again */
                     memcpy(slot->idx, remapped, n * 2);
                     sceKernelDcacheWritebackRange(slot->v, need);
+                }
+                if (slot->v) {
                     slot->mesh = mesh;
                     slot->key = key;
                     slot->frame = cache_frame;
@@ -4912,8 +6162,8 @@ static void draw_meshes_body(MeshHeader *header, const V3 *position, float (*uv)
                     churn_remember(slot - mesh_cache, part);
                     if (p4_cache_audit && (audit_hash || (audit_hash = calloc(CACHE_SLOTS, sizeof *audit_hash))))
                         audit_inputs(audit_hash[slot - mesh_cache], position, uv, preLit, count);
-                    slot->vertices = used;
-                    slot->indices = n;
+                    slot->vertices = SLOT_SPLIT(slot) ? split_nv : used;
+                    slot->indices = SLOT_SPLIT(slot) ? split_nidx : n;
                     cache_builds++;
                 } else {
                     slot->mesh = 0;
@@ -4985,7 +6235,14 @@ const Matrix *p4r_003e9700(void *frame);
    28 rootParentOffset, 32 currentAnim. Interpolator: 36 frame size, 60 keyFrameToMatrixCB, 76 first frame (quat at
    +8, translation at +24). Frame: 3 private flags, 4 parent, 8 dirty link, 16 modelling, 80 ltm, 160 root.
    b141 Heaven: 9 calls, 0.64 Mcycles. p4_hanim_c 1 uses this; p4_hanim_check compares it with the original. */
-int p4_hanim_c = 0, p4_hanim_check = 0;
+int p4_hanim_c = 1, p4_hanim_check = 0;
+/* b188: the bone multiplies of p4_hanim_update on the VFPU (multiply_vfpu, flags as RwMatrixMultiply sets them);
+   an unaligned matrix falls back to RwMatrixMultiply and is counted. b142 found this update memory-bound (~3 data
+   misses a bone), so the gain is unproven until a device A/B. p4_hanim_c is chosen in hanim_update_now since b188:
+   the dispatch called it directly and so skipped the frameskip, far-LOD and NaN checks of func_00397c40. */
+int p4_hanim_vfpu = 1;
+static unsigned hanim_vfpu_unaligned;
+int p4_hanim_update(unsigned *h);
 /* b148: on a skipped frame (frameskip) the bone matrices and bone frames are not rebuilt: nothing draws them, and the
    next drawn frame rebuilds them from the animation, whose time still advances (RtAnimInterpolatorAddAnimTime is not
    this). Callers reach the original as p4r_00397c40. */
@@ -5038,6 +6295,186 @@ static void hanim_note(const void *h)
             return;
         }
     }
+}
+/* b213 p4_head_trace: the headless party members (b155-b181: bones 38-43 of the hero, 34.. of Naoto, beyond 1e7 at
+   skinning; b181 took it for a part the game parks). Right after each hierarchy update, the first node whose matrix
+   is beyond 1e7: its interpolated frame (q, t), both keys (time, q, t), the interpolator's time, the node's flags and
+   whether its local matrix or its parent is the bad one. One line per hierarchy and state change, 24 at most. */
+int p4_head_trace = 0;
+static unsigned head_trace_logged;
+static const void *head_trace_last[16];
+static int head_trace_node[16];
+static int head_big(const float *f, int n)
+{
+    for (int k = 0; k < n; k++)
+        if (!(f[k] == f[k] && f[k] < 1e7f && f[k] > -1e7f))
+            return 1;
+    return 0;
+}
+static void head_trace(unsigned *h)
+{
+    const float *m = (const float *)h[2];
+    char *interp = (char *)h[8];
+    int n = (int)h[1];
+    if (!m || !interp || n <= 0 || n > 256 || (unsigned)interp - 0x08800000u >= 0x03800000u)
+        return;
+    int bad = -1;
+    for (int i = 0; i < n && bad < 0; i++)
+        if (head_big(m + i * 16, 3) || head_big(m + i * 16 + 4, 3) || head_big(m + i * 16 + 8, 3) || head_big(m + i * 16 + 12, 3))
+            bad = i;
+    int slot = ((unsigned)h >> 4) & 15;
+    if (head_trace_last[slot] == h && head_trace_node[slot] == bad)
+        return;
+    head_trace_last[slot] = h, head_trace_node[slot] = bad;
+    if (bad < 0 || head_trace_logged >= 24)
+        return;
+    head_trace_logged++;
+    int stride = *(int *)(interp + 36);
+    const char *f = interp + 76 + bad * stride, *k1 = *(const char **)f, *k2 = *(const char **)(f + 4);
+    const float *q = (const float *)(f + 8);
+    const unsigned *info = (const unsigned *)h[4] + bad * 4;
+    #define K1000(x) (int)((x) > 2e6f ? 2e9f : (x) < -2e6f ? -2e9f : (x) * 1000)
+    p4_log("TRACE head h %p node %d/%d flags %x anim %p time %d: frame q %d %d %d %d t %d %d %d (x1000)\n", (void *)h, bad, n, info[2],
+           *(void **)interp, K1000(*(float *)(interp + 4)), K1000(q[0]), K1000(q[1]), K1000(q[2]), K1000(q[3]), K1000(q[4]), K1000(q[5]), K1000(q[6]));
+    for (int j = 0; j < 2; j++) {
+        const char *k = j ? k2 : k1;
+        if (!k || (unsigned)k - 0x08800000u >= 0x03800000u || ((unsigned)k & 3)) {
+            p4_log("TRACE head   key%d %p (not a key)\n", j + 1, (const void *)k);
+            continue;
+        }
+        const float *kq = (const float *)(k + 8);
+        p4_log("TRACE head   key%d %p prev %p time %d q %d %d %d %d t %d %d %d\n", j + 1, (const void *)k, *(void **)k, K1000(*(float *)(k + 4)),
+               K1000(kq[0]), K1000(kq[1]), K1000(kq[2]), K1000(kq[3]), K1000(kq[4]), K1000(kq[5]), K1000(kq[6]));
+    }
+    const float *b = m + bad * 16;
+    p4_log("TRACE head   matrix right %d %d %d up %d %d %d at %d %d %d pos %d %d %d; node before %s; frame %p\n", K1000(b[0]), K1000(b[1]), K1000(b[2]),
+           K1000(b[4]), K1000(b[5]), K1000(b[6]), K1000(b[8]), K1000(b[9]), K1000(b[10]), K1000(b[12]), K1000(b[13]), K1000(b[14]),
+           bad ? (head_big(b - 16, 3) || head_big(b - 4, 3) ? "bad" : "fine") : "-", (void *)info[3]);
+    #undef K1000
+}
+/* b214 around mdlUpdateHierarchyPose (census FIXES): the head look-at (node id 0x1389). b213 on the PSP: the bones
+   go bad inside mainDraw, after a clean hierarchy update, from bone 38 (the head) down. The look state (MdlLookState
+   at controllerState: flags, blend, limits, rotation, limitedRotation, scale, target, offsets) keeps its rotation
+   between ticks and slerps it toward the target, so one NaN stays for good: a headless member for the rest of the
+   battle. p4_head_trace logs the call where the head goes bad (look state before and after). p4_look_fix 1: a look
+   rotation that is not finite before the call is reseeded from the animation (flag 0x200, the game's own reset);
+   one made non-finite by the call is put back; a body pose (no parent transform) with a bad head is redone as the
+   plain bone update for that tick. */
+int p4_look_fix = 1;
+static unsigned look_calls, look_bad_before, look_bad_after, look_redone, look_logged;
+static unsigned char look_before[0x50] __attribute__((aligned(4)));
+static int look_head_node(const unsigned *h)
+{
+    const unsigned *info = (const unsigned *)h[4];
+    int n = (int)h[1];
+    if (!info || n <= 0 || n > 256)
+        return -1;
+    for (int i = 0; i < n; i++)
+        if (info[i * 4] == 0x1389)
+            return i;
+    return -1;
+}
+static void look_print(const char *when, const unsigned char *c)
+{
+    const float *f = (const float *)c;
+    #define L1000(x) (int)((x) == (x) ? (x) > 2e6f ? 2e9f : (x) < -2e6f ? -2e9f : (x) * 1000 : -1)
+    p4_log("TRACE look %s flags %04x blend %d limits %d %d rot %d %d %d %d lim %d %d %d %d scale %d %d %d target %d %d %d off %d %d\n", when,
+           *(const unsigned short *)c, L1000(f[1]), L1000(f[2]), L1000(f[3]), L1000(f[4]), L1000(f[5]), L1000(f[6]), L1000(f[7]), L1000(f[8]),
+           L1000(f[9]), L1000(f[10]), L1000(f[11]), L1000(f[12]), L1000(f[13]), L1000(f[14]), L1000(f[15]), L1000(f[16]), L1000(f[17]),
+           L1000(f[18]), L1000(f[19]));
+    #undef L1000
+}
+/* b218: values inside the look-at call (census FIXES probes 0-7), cleared at its start, printed when it goes bad */
+static float look_probe_v[8][12];
+static unsigned char look_probe_n[8];
+void p4_look_probe(int id, const float *v, int n)
+{
+    if (id < 0 || id >= 8 || !p4_head_trace)
+        return;
+    if (n > 12)
+        n = 12;
+    memcpy(look_probe_v[id], v, n * sizeof *v);
+    look_probe_n[id] = n;
+}
+static void look_probe_print(void)
+{
+    static const char *const names[8] = { "angles p bp y by look3 wv3", "rot from matrix", "output matrix", "rot after limits",
+                                          "slerp cache from to omega flag", "blended limit", "fallback angle q", "local matrix" };
+    for (int id = 0; id < 8; id++) {
+        if (!look_probe_n[id]) {
+            p4_log("TRACE look   %d %s: not reached\n", id, names[id]);
+            continue;
+        }
+        char line[200];
+        int at = 0;
+        for (int k = 0; k < look_probe_n[id] && at < 180; k++) {
+            float x = look_probe_v[id][k];
+            at += snprintf(line + at, sizeof line - at, " %d", x != x ? -999999999 : x > 2e6f ? 2000000000 : x < -2e6f ? -2000000000 : (int)(x * 1000));
+        }
+        p4_log("TRACE look   %d %s:%s\n", id, names[id], line);
+    }
+}
+int func_00397c40(void *hierarchy);
+void p4_look_check(void *hierarchy, void *controller, void *parent, int after)
+{
+    unsigned *h = hierarchy;
+    unsigned char *c = controller;
+    if (!h || !c)
+        return;
+    float *rot = (float *)(c + 16);
+    if (!after) {
+        look_calls++;
+        memcpy(look_before, c, sizeof look_before);
+        memset(look_probe_n, 0, sizeof look_probe_n);
+        if (head_big(rot, 4)) {
+            look_bad_before++;
+            if (p4_look_fix) {
+                rot[0] = rot[1] = rot[2] = 0.0f, rot[3] = 1.0f;
+                *(unsigned short *)c |= 0x200;
+            }
+        }
+        return;
+    }
+    int head = look_head_node(h);
+    const float *m = (const float *)h[2];
+    int bad_matrix = head >= 0 && m && (head_big(m + head * 16, 3) || head_big(m + head * 16 + 4, 3) || head_big(m + head * 16 + 8, 3) ||
+                                        head_big(m + head * 16 + 12, 3));
+    int bad_rot = head_big(rot, 4);
+    if (!bad_matrix && !bad_rot)
+        return;
+    look_bad_after++;
+    if (p4_head_trace && look_logged < 8) {
+        look_logged++;
+        p4_log("TRACE look went bad: hierarchy %p head node %d parent %p matrix %s rotation %s\n", (void *)h, head, parent,
+               bad_matrix ? "bad" : "fine", bad_rot ? "bad" : "fine");
+        look_print("before", look_before);
+        look_print("after ", c);
+        look_probe_print();
+    }
+    if (!p4_look_fix)
+        return;
+    if (bad_rot) {
+        memcpy(rot, look_before + 16, 16);
+        if (head_big(rot, 4))
+            rot[0] = rot[1] = rot[2] = 0.0f, rot[3] = 1.0f;
+        *(unsigned short *)c |= 0x200;
+    }
+    if (bad_matrix && !parent) {
+        func_00397c40(h);
+        look_redone++;
+    }
+}
+static void look_report(void)
+{
+    extern unsigned p4_acos_clamped;
+    extern unsigned p4_2d_nan_report(void);
+    extern unsigned p4_rwmul_vfpu_calls, p4_rwmul_fpu_calls;
+    extern int p4_rwmul_vfpu;
+    p4_log("rw matrix multiply vfpu %d: vfpu %u fpu %u per 256 frames\n", p4_rwmul_vfpu, p4_rwmul_vfpu_calls, p4_rwmul_fpu_calls);
+    p4_rwmul_vfpu_calls = p4_rwmul_fpu_calls = 0;
+    p4_log("look fix %d: calls %u bad rotation before %u bad after %u redone %u; acos inputs clamped %u; 2d draws with NaN corners dropped %u\n",
+           p4_look_fix, look_calls, look_bad_before, look_bad_after, look_redone, p4_acos_clamped, p4_2d_nan_report());
+    look_calls = look_bad_before = look_bad_after = look_redone = p4_acos_clamped = 0;
 }
 /* b159: after every task, the hierarchies updated in the last 2 frames are checked; the first task after which one has
    a bad bone matrix (it was clean right after its update) is logged: who writes over the bones. */
@@ -5192,8 +6629,12 @@ float p4_head_acos_input(float v)
 int p4_anim_cull = 0, p4_anim_far = 0, p4_anim_far_step = 2; /* Keep event animation clocks and attachments current. */
 float p4_anim_far_depth = 500.0f;
 enum { ANIM_STATES = 128 };
-typedef struct { const void *h, *matrices, *interp; int nodes; unsigned drawn, updated, advanced, moved; float depth, pending, at[3]; unsigned char stale, skinned; } AnimState;
+typedef struct { const void *h, *matrices, *interp; int nodes; unsigned drawn, updated, advanced, moved, used[8]; float depth, pending, at[3]; unsigned char stale, skinned, lod; } AnimState;
 static AnimState anim_state[ANIM_STATES];
+/* b228: each state's interpolator in an array of its own. AddAnimTime looked an interpolator up by scanning the
+   128 states (80 bytes each, a cache line apiece), ~10k cycles a call, ~100 calls a drawn tick, most of them for
+   interpolators that are no character's (UV animations): kadd minus its interpolation was ~1.2 Mcycles a frame. */
+static const void *anim_interp_of[ANIM_STATES];
 static unsigned anim_updates, anim_unskinned, anim_unseen, anim_far_due, anim_culled, anim_far_skipped, anim_lazy, anim_full;
 static unsigned anim_draws, anim_depth_bins[6];
 static float anim_depth_max;
@@ -5208,6 +6649,7 @@ static AnimState *anim_find(const void *h)
             continue;
         if (!s->h || s->nodes != (int)w[1] || s->matrices != (const void *)w[2]) { /* new, or another hierarchy here now */
             memset(s, 0, sizeof *s);
+            anim_interp_of[s - anim_state] = 0;
             s->h = h, s->nodes = (int)w[1], s->matrices = (const void *)w[2];
         }
         return s;
@@ -5262,6 +6704,7 @@ static void anim_seen_at(const void *hierarchy, float depth, const Matrix *model
     } else
         s->moved = p4_anim_tick;
     s->interp = (const void *)((const unsigned *)hierarchy)[8]; /* the hierarchy's interpolator (hanim_sanitize) */
+    anim_interp_of[s - anim_state] = s->interp;
     static const float edge[5] = { 250, 500, 1000, 2000, 4000 };
     int bin = 0;
     while (bin < 5 && depth >= edge[bin])
@@ -5281,6 +6724,66 @@ void p4_anim_report(void)
     anim_updates = anim_unskinned = anim_unseen = anim_far_due = anim_culled = anim_far_skipped = anim_lazy = anim_draws = anim_full = 0;
     memset(anim_depth_bins, 0, sizeof anim_depth_bins);
     anim_depth_max = 0;
+    { void bone_census_report(void); bone_census_report(); }
+}
+/* b208 p4_bone_census: which nodes of a drawn skinned hierarchy anybody needs. Weighted: some skin drawn with it has a
+   vertex weight on the node. Attached: the node's RwFrame holds objects (objectList at +144 not empty: a weapon, an
+   atomic). Live: those and their ancestors (RpHAnim node flags: 2 push the parent, 1 pop it). Dead: the rest, which
+   neither the interpolation nor the matrix build would need. A count only: the game may still read a dead node's
+   matrix (effects on frames, mdlCopyIndexedMatrix), so nothing is skipped. */
+int p4_bone_census = 0;
+static void bone_census_note(const void *hierarchy, const unsigned *used)
+{
+    AnimState *st = anim_find(hierarchy);
+    if (st)
+        for (int k = 0; k < 8; k++)
+            st->used[k] |= used[k];
+}
+void bone_census_report(void)
+{
+    if (!p4_bone_census)
+        return;
+    unsigned hier = 0, nodes = 0, weighted = 0, attached = 0, live = 0, shown = 0;
+    for (int i = 0; i < ANIM_STATES; i++) {
+        AnimState *st = &anim_state[i];
+        const unsigned *h = st->h;
+        int used_any = 0;
+        for (int k = 0; k < 8; k++)
+            used_any |= st->used[k] != 0;
+        if (!h || !st->skinned || !used_any || p4_anim_tick - st->drawn > 300)
+            continue;
+        int n = (int)h[1];
+        const char *info = (const char *)h[4];
+        if (n <= 0 || n > 256 || !info)
+            continue;
+        short parent[256], stack[256];
+        unsigned char keep[256];
+        int cur = -1, depth = 0, w = 0, a = 0, l = 0;
+        for (int j = 0; j < n; j++) {
+            unsigned flags = *(const unsigned *)(info + j * 16 + 8);
+            parent[j] = cur;
+            if ((flags & 2) && depth < 256)
+                stack[depth++] = cur;
+            cur = (flags & 1) && depth > 0 ? stack[--depth] : j;
+            const char *frame = *(char *const *)(info + j * 16 + 12);
+            int weighted_j = st->used[j >> 5] >> (j & 31) & 1;
+            int attached_j = frame && (unsigned)frame - 0x08800000u < 0x03800000u && *(char *const *)(frame + 144) != frame + 144;
+            keep[j] = weighted_j || attached_j;
+            w += weighted_j, a += attached_j && !weighted_j;
+        }
+        for (int j = n - 1; j >= 0; j--) /* parents come before their children */
+            if (keep[j] && parent[j] >= 0)
+                keep[parent[j]] = 1;
+        for (int j = 0; j < n; j++)
+            l += keep[j];
+        hier++, nodes += n, weighted += w, attached += a, live += l;
+        if (shown++ < 4)
+            p4_log("bone census hierarchy %p: nodes %d weighted %d attached only %d live %d dead %d\n", (const void *)h, n, w, a, l, n - l);
+        memset(st->used, 0, sizeof st->used);
+    }
+    if (hier)
+        p4_log("bone census: %u drawn skinned hierarchies, nodes %u, weighted %u, attached only %u, live with ancestors %u, dead %u\n", hier, nodes,
+               weighted, attached, live, nodes - live);
 }
 /* b172: RpHAnim's compressed-keyframe interpolate (p4r_00415bc0, the AddAnimTime callback; ~1000 cycles a node on
    the FPU: polynomial acos and three polynomial sines). Read off the MIPS: keys {prev, time, q x y z w, t x y z} with
@@ -5365,13 +6868,69 @@ static void interp_fast(void *out_, void *in1_, void *in2_, float time, void *da
     for (int i = 0; i < 4; i++)
         o->q[i] = w[2] * q2[i] + w[1] * q1[i];
 }
+/* b239 p4_interp_fast 2: the whole node on the VFPU. The 14 packed reals are unpacked with integer code into an
+   aligned block, f is the FPU division retail does, and the lerp of q and t (with the custom scale and offset) is
+   ~10 VFPU instructions instead of ~60 FPU ones. Slerp nodes (|dot| < 0.999, ~5% in the dialogue) and a NaN dot
+   take the retail function. Reads every input before it writes. p4_interp_check compares with retail as for 1. */
+static inline unsigned rw_half_bits(unsigned h)
+{
+    unsigned v = (h & 0x8000u) << 16;
+    if (h & 0x7fff)
+        v |= (((h & 0x7800u) << 12) + 0x38000000u) | ((h & 0x7ffu) << 12);
+    return v;
+}
+static unsigned interp_vfpu_nodes, interp_vfpu_slerps;
+static void interp_vfpu(void *out_, void *in1_, void *in2_, float time, void *data)
+{
+    const CKey *a = in1_, *b = in2_;
+    unsigned w[16] __attribute__((aligned(16)));
+    union { float f; unsigned u; } f, dot;
+    f.f = (time - a->time) / (b->time - a->time);
+    for (int i = 0; i < 4; i++)
+        w[i] = rw_half_bits(a->q[i]), w[4 + i] = rw_half_bits(b->q[i]);
+    for (int i = 0; i < 3; i++)
+        w[8 + i] = rw_half_bits(a->t[i]), w[12 + i] = rw_half_bits(b->t[i]);
+    w[11] = w[15] = 0;
+    __asm__ volatile(
+        "lv.q    C000, 0(%[w])\n lv.q C010, 16(%[w])\n lv.q C020, 32(%[w])\n lv.q C030, 48(%[w])\n"
+        "vdot.q  S100, C000, C010\n"
+        "mfv     %[d], S100\n"
+        : [d] "=r"(dot.u) : [w] "r"(w) : "memory");
+    int neg = dot.f < 0;
+    if (!((neg ? -dot.f : dot.f) >= 0.999f)) {
+        interp_vfpu_slerps++;
+        p4r_00415bc0(out_, in1_, in2_, time, data);
+        return;
+    }
+    unsigned g = f.u ^ (neg ? 0x80000000u : 0); /* the weight of q2: f, negated with q2 */
+    __asm__ volatile(
+        "mtv     %[f], S101\n mtv %[g], S102\n"
+        "vocp.s  S103, S101\n"
+        "lv.s    S110, 0(%[cd])\n lv.s S111, 4(%[cd])\n lv.s S112, 8(%[cd])\n"
+        "lv.s    S120, 12(%[cd])\n lv.s S121, 16(%[cd])\n lv.s S122, 20(%[cd])\n"
+        "vscl.q  C010, C010, S102\n"
+        "vscl.q  C000, C000, S103\n"
+        "vadd.q  C000, C010, C000\n"
+        "vsub.t  C030, C030, C020\n"
+        "vscl.t  C030, C030, S101\n"
+        "vadd.t  C020, C020, C030\n"
+        "vmul.t  C020, C020, C120\n"
+        "vadd.t  C020, C020, C110\n"
+        "sv.s    S000, 8(%[o])\n sv.s S001, 12(%[o])\n sv.s S002, 16(%[o])\n sv.s S003, 20(%[o])\n"
+        "sv.s    S020, 24(%[o])\n sv.s S021, 28(%[o])\n sv.s S022, 32(%[o])\n"
+        : : [f] "r"(f.u), [g] "r"(g), [cd] "r"(data), [o] "r"(out_) : "memory");
+    interp_vfpu_nodes++;
+}
 static void interp_checked(void *out, void *in1, void *in2, float time, void *data)
 {
     if (p4_hanim_key_span && ((const CKey *)in1)->time == ((const CKey *)in2)->time) {
         func_00415bc0(out, in1, in2, time, data);
         return;
     }
-    interp_fast(out, in1, in2, time, data);
+    if (p4_interp_fast == 2)
+        interp_vfpu(out, in1, in2, time, data);
+    else
+        interp_fast(out, in1, in2, time, data);
     if (!p4_interp_check)
         return;
     IFrame ref = *(IFrame *)out;
@@ -5397,33 +6956,573 @@ KInterp p4_interp_pick(KInterp cb)
     interp_other++;
     return cb;
 }
+/* b234: batch known callbacks without an indirect call/selector per node. Semantics checked against
+   Izanagi bfb12b6896955b626cc45254c92e8b76789ae147 overrides/{003955a0,00415bc0}.c and our mdlManager.c.
+   The copy hook writes SIX floats (translation.z stays untouched). Uncompressed lerp negates key2 IN PLACE.
+   Slerp and unknown callbacks keep retail. Profiling retains a begin/end per node for comparable A/B costs. */
+int p4_interp_batch = 0, p4_interp_batch_check = 0;
+static unsigned batch_calls, batch_copy, batch_plain, batch_packed, batch_fallback, batch_checks, batch_diffs, batch_key_diffs;
+static float batch_max_diff;
+extern void mdlKeyFrameInterpolateCopy(void *, void *);
+
+/* b235: decoded compressed-key pairs, dense per interpolator. Validate the complete 18-byte payload
+   (time, quaternion, translation), not only pointers: animations may modify or reuse their keys in place.
+   Custom translation scale/offset and current time are never cached. No changes to mutable plain keys. */
+int p4_interp_pairs = 0, p4_interp_pairs_check = 0;
+typedef struct {
+    const void *a, *b;
+    unsigned raw[10];
+    float ta, tb, q1[4], q2[4], t1[3], t2[3];
+    int linear;
+} InterpPair;
+typedef struct { const void *ip; InterpPair *node; unsigned used; int n; } InterpPairs;
+enum { INTERP_PAIR_SETS = 64, INTERP_PAIR_BUDGET = 256 * 1024 };
+static InterpPairs *interp_pairs;
+static unsigned pair_bytes, pair_hits, pair_misses, pair_mutated, pair_fallback, pair_evictions, pair_refused;
+static void interp_pair_free(InterpPairs *e)
+{
+    pair_bytes -= e->n * sizeof(InterpPair);
+    free(e->node); memset(e, 0, sizeof *e);
+}
+static void interp_pair_forget(const void *ip)
+{
+    if (interp_pairs)
+        for (int i = 0; i < INTERP_PAIR_SETS; i++)
+            if (interp_pairs[i].ip == ip) interp_pair_free(&interp_pairs[i]);
+}
+static InterpPair *interp_pair_nodes(const void *ip, int n)
+{
+    if (n <= 0 || n > 256) return 0;
+    if (!interp_pairs && !(interp_pairs = calloc(INTERP_PAIR_SETS, sizeof *interp_pairs))) return 0;
+    InterpPairs *take = 0;
+    for (int i = 0; i < INTERP_PAIR_SETS; i++) {
+        InterpPairs *e = &interp_pairs[i];
+        if (e->ip == ip) {
+            if (e->n == n) { e->used = p4_anim_tick; return e->node; }
+            interp_pair_free(e); take = e; break;
+        }
+        if (!take || (!e->ip && take->ip) || (e->ip && take->ip && e->used < take->used)) take = e;
+    }
+    if (take->ip) { interp_pair_free(take); pair_evictions++; }
+    unsigned bytes = n * sizeof(InterpPair);
+    while (pair_bytes + bytes > INTERP_PAIR_BUDGET) {
+        InterpPairs *old = 0;
+        for (int i = 0; i < INTERP_PAIR_SETS; i++) {
+            InterpPairs *e = &interp_pairs[i];
+            if (e->ip && (!old || e->used < old->used)) old = e;
+        }
+        if (!old) { pair_refused++; return 0; }
+        interp_pair_free(old); pair_evictions++;
+    }
+    InterpPair *nodes = calloc(n, sizeof *nodes);
+    if (!nodes) { pair_refused++; return 0; }
+    take->ip = ip; take->n = n; take->node = nodes; take->used = p4_anim_tick; pair_bytes += bytes;
+    return nodes;
+}
+static void interp_pair_decode(InterpPair *e, const CKey *a, const CKey *b, const unsigned *raw)
+{
+    if (e->a == a && e->b == b) pair_mutated++;
+    e->a = a; e->b = b; memcpy(e->raw, raw, sizeof e->raw);
+    e->ta = a->time; e->tb = b->time;
+    for (int k = 0; k < 4; k++) e->q1[k] = rw_half(a->q[k]), e->q2[k] = rw_half(b->q[k]);
+    for (int k = 0; k < 3; k++) e->t1[k] = rw_half(a->t[k]), e->t2[k] = rw_half(b->t[k]);
+    float dot = e->q1[1] * e->q2[1] + e->q1[0] * e->q2[0] + e->q1[2] * e->q2[2] + e->q1[3] * e->q2[3];
+    e->linear = fabsf(dot) >= 0.999f;
+    if (dot < 0) for (int k = 0; k < 4; k++) e->q2[k] = -e->q2[k];
+    pair_misses++;
+}
+static inline __attribute__((always_inline)) void interp_pair_node(InterpPair *e, KInterp cb, IFrame *out,
+                                                                  const CKey *a, const CKey *b, float time, void *custom)
+{
+    const char *pa = (const char *)a, *pb = (const char *)b;
+    unsigned raw[10];
+#define PAIR_WORDS(p, at) \
+    memcpy(&raw[at], (p) + 4, 16); \
+    raw[(at) + 4] = *(const unsigned short *)((p) + 20)
+    PAIR_WORDS(pa, 0); PAIR_WORDS(pb, 5);
+#undef PAIR_WORDS
+    unsigned d = (e->raw[0] ^ raw[0]) | (e->raw[1] ^ raw[1]) | (e->raw[2] ^ raw[2]) | (e->raw[3] ^ raw[3]) |
+                 (e->raw[4] ^ raw[4]) | (e->raw[5] ^ raw[5]) | (e->raw[6] ^ raw[6]) | (e->raw[7] ^ raw[7]) |
+                 (e->raw[8] ^ raw[8]) | (e->raw[9] ^ raw[9]);
+    if (e->a != a || e->b != b || d) interp_pair_decode(e, a, b, raw);
+    else pair_hits++;
+    if (!e->linear || (p4_hanim_key_span && e->ta == e->tb) ||
+        (void *)out == (const void *)a || (void *)out == (const void *)b) {
+        pair_fallback++; cb(out, (void *)a, (void *)b, time, custom); return;
+    }
+    float f = (time - e->ta) / (e->tb - e->ta), g = 1.0f - f;
+    const float *cd = custom;
+    for (int k = 0; k < 3; k++) out->t[k] = (e->t1[k] + f * (e->t2[k] - e->t1[k])) * cd[3 + k] + cd[k];
+    for (int k = 0; k < 4; k++) out->q[k] = f * e->q2[k] + g * e->q1[k];
+}
+static inline __attribute__((always_inline)) void interp_batch_node(int mode, KInterp cb, IFrame *out,
+                                                                   void *a_, void *b_, float time, void *custom)
+{
+    if (mode == 1) {
+        const IFrame *a = a_;
+        for (int k = 0; k < 4; k++) out->q[k] = a->q[k];
+        out->t[0] = a->t[0]; out->t[1] = a->t[1];
+        return;
+    }
+    if (p4_hanim_key_span && ((const HAnimKey *)a_)->time == ((const HAnimKey *)b_)->time) {
+        batch_fallback++;
+        cb(out, a_, b_, time, custom);
+        return;
+    }
+    float q1[4], q2[4], t1[3], t2[3], f, dot;
+    if (mode == 2) {
+        const IFrame *a = a_, *b = b_;
+        f = (time - *(float *)((char *)a + 4)) / (*(float *)((char *)b + 4) - *(float *)((char *)a + 4));
+        for (int k = 0; k < 4; k++) q1[k] = a->q[k], q2[k] = b->q[k];
+        for (int k = 0; k < 3; k++) t1[k] = a->t[k], t2[k] = b->t[k];
+    } else {
+        const CKey *a = a_, *b = b_;
+        f = (time - a->time) / (b->time - a->time);
+        for (int k = 0; k < 4; k++) q1[k] = rw_half(a->q[k]), q2[k] = rw_half(b->q[k]);
+        for (int k = 0; k < 3; k++) t1[k] = rw_half(a->t[k]), t2[k] = rw_half(b->t[k]);
+    }
+    dot = q1[1] * q2[1] + q1[0] * q2[0] + q1[2] * q2[2] + q1[3] * q2[3];
+    if (!(fabsf(dot) >= 0.999f) || out == a_ || out == b_) {
+        batch_fallback++;
+        cb(out, a_, b_, time, custom);
+        return;
+    }
+    for (int k = 0; k < 3; k++) {
+        float t = t1[k] + f * (t2[k] - t1[k]);
+        out->t[k] = mode == 3 ? t * ((float *)custom)[3 + k] + ((float *)custom)[k] : t;
+    }
+    if (dot < 0) {
+        for (int k = 0; k < 4; k++) {
+            q2[k] = -q2[k];
+            if (mode == 2) ((IFrame *)b_)->q[k] = q2[k];
+        }
+    }
+    for (int k = 0; k < 4; k++) out->q[k] = f * q2[k] + (1.0f - f) * q1[k];
+}
+static void interp_batch_checked(int mode, KInterp cb, IFrame *out, void *a, void *b, float time, void *custom, InterpPair *pair)
+{
+    /* Preserve input keys before the fast path, including the sign mutation of uncompressed key2. */
+    union { float f[12]; unsigned u[12]; char b[48]; } ca, cbkey, ref;
+    int bytes = mode == 1 ? 32 : mode == 2 ? 36 : 22, count = mode == 1 ? 6 : 7;
+    if (out == a || out == b) { cb(out, a, b, time, custom); return; }
+    memset(&ca, 0, sizeof ca); memset(&cbkey, 0, sizeof cbkey); memset(&ref, 0, sizeof ref);
+    memcpy(ca.b, a, bytes); memcpy(cbkey.b, b, bytes); memcpy(ref.b, out, mode == 1 ? 32 : 36);
+    if (pair) interp_pair_node(pair, cb, out, a, b, time, custom);
+    else interp_batch_node(mode, cb, out, a, b, time, custom);
+    cb(ref.b, ca.b, cbkey.b, time, custom);
+    int bad = 0;
+    for (int k = 0; k < count; k++) {
+        float x = ((float *)out)[k + 2], y = ref.f[k + 2];
+        unsigned u; memcpy(&u, &x, 4);
+        if (u == ref.u[k + 2]) continue; /* identical NaNs/infinities too; the existing sanitizer follows */
+        float d = fabsf(x - y) / (1 + fabsf(y));
+        if (!(d <= 1e-5f)) bad = 1;
+        if (d > batch_max_diff) batch_max_diff = d;
+    }
+    int key_bad = mode == 2 && memcmp(b, cbkey.b, bytes);
+    batch_checks++; batch_diffs += bad; batch_key_diffs += key_bad != 0;
+    if ((bad || key_bad) && batch_diffs + batch_key_diffs <= 8)
+        p4_log("TRACE interp batch mismatch mode %d out %d key %d\n", mode, bad, key_bad != 0);
+}
 /* AddAnimTime (RtAnimInterpolatorAddAnimTime). The interpolate callback is swapped for the call (a pointer at +0x44);
    p4_anim_far_kadd: the interpolator of a hierarchy held by p4_anim_far (or culled by p4_anim_cull) keeps its time
    step for later and is advanced by the sum when it is due. */
 int p4_anim_far_kadd = 1;
-static unsigned kadd_calls, kadd_mapped, kadd_held;
+/* b201 p4_anim_skip_kadd: in a tick frameskip leaves undrawn the bones are not updated (p4_frameskip_bones), so the
+   interpolated pose of a drawn skinned character is not used either: its time step is kept and added with the drawn
+   tick's (at most a second kept back), as p4_anim_far_kadd does for far characters. Layer time and the animation's
+   callbacks then move on the drawn tick, at most 2 ticks late. */
+int p4_anim_skip_kadd = 1;
+static unsigned kadd_calls, kadd_mapped, kadd_held, kadd_skip_held;
 int p4r_003d5bc0(void *interpolator, float time);
 static AnimState *anim_by_interp(const void *interp)
 {
+    if (!interp)
+        return 0;
     for (int i = 0; i < ANIM_STATES; i++)
-        if (anim_state[i].h && anim_state[i].interp == interp)
+        if (anim_interp_of[i] == interp && anim_state[i].h && anim_state[i].interp == interp)
             return &anim_state[i];
     return 0;
+}
+/* b202 p4_anim_lazy: in a tick frameskip leaves undrawn a layer's own interpolators (its hierarchy's currentAnim and
+   its rebase input, inside mdlAdvanceLayer) only move their clock. RtAnim's AddAnimTime adds the step, walks the key
+   stream up to the new time and interpolates every node; walk and interpolation depend on the final time alone, so
+   both wait for the first reader. A step that crosses the callback time or loops takes the retail call. The layer
+   blend and the rebase of such a tick read the frames, so they are recorded and replayed after the interpolation.
+   Readers that materialise: the bone update (hanim_update_now), look-at, a blend or rebase outside a deferral and the
+   RtAnim calls SubAnimTime, SetCurrentAnim, Blend, Destroy. A retail AddAnimTime catches the walk up by itself.
+   0 off, 1 undrawn ticks, 2 every tick (PPSSPP test: same picture). p4_anim_lazy_check: a copy of each deferred
+   interpolator runs the retail calls and is compared when materialised (with p4_interp_fast 0). */
+int p4_anim_lazy = 1, p4_anim_lazy_check = 0;
+int p4_anim_native = 1; /* b204: plain AddAnimTime steps in C (func_003d5bc0) */
+static unsigned native_adds, retail_adds;
+enum { LAZY_SLOTS = 128 }; /* b203: material UV interpolators too */
+typedef struct { char *ip, *first, *layer, *input, *rotation, *clone; unsigned stamp; float blend; } LazyAnim;
+static LazyAnim lazy_slot[LAZY_SLOTS];
+static const void *lazy_ip[LAZY_SLOTS]; /* b228: lazy_slot[i].ip, scanned instead of the 32-byte slots */
+static int lazy_used, lazy_paused;
+static char *lazy_cur, *lazy_input, *lazy_replay_input;
+static unsigned lazy_deferred, lazy_refused, lazy_blends, lazy_rebases, lazy_materialized, lazy_obsolete, lazy_full, lazy_checks, lazy_diffs;
+int func_003d5bc0(void *interpolator, float time);
+unsigned p4_mdlBlendAnimInterpolators(void *destination, void *first, void *second, float blend);
+void p4_mdlRebaseLayerPose(void *layer);
+static LazyAnim *lazy_find(const void *ip)
+{
+    if (!lazy_used || !ip)
+        return 0;
+    for (int i = 0; i < LAZY_SLOTS; i++)
+        if (lazy_ip[i] == ip)
+            return &lazy_slot[i];
+    return 0;
+}
+static void lazy_drop(LazyAnim *e)
+{
+    free(e->clone);
+    memset(e, 0, sizeof *e);
+    lazy_ip[e - lazy_slot] = 0;
+    lazy_used--;
+}
+/* b204: the node of every key, once per animation. SetCurrentAnim (3d5840) gives node i keys i and i + n, so key k < 2n
+   belongs to node k mod n, and a later key to the node of its previous key. The walk checks each answer (the node's
+   second key must be the previous key) and searches as retail does when it is wrong, so a stale map costs time only. */
+typedef struct { const char *anim, *frames; int count, size, nodes; unsigned short *node; } KeyMap;
+enum { KEY_MAPS = 128 };
+static KeyMap key_map[KEY_MAPS];
+static unsigned key_maps_built, key_map_misses, key_walked;
+int p4_anim_keymap = 1;
+static const unsigned short *key_nodes(const char *ip)
+{
+    const char *anim = *(char **)ip, *frames = *(char **)(anim + 0x10);
+    int count = *(int *)(anim + 4), size = *(int *)(ip + 0x28), n = *(int *)(ip + 0x2c);
+    KeyMap *m = &key_map[((unsigned)anim >> 4) * 2654435761u >> 25];
+    if (m->anim == anim && m->frames == frames && m->count == count && m->size == size && m->nodes == n)
+        return m->node;
+    free(m->node);
+    memset(m, 0, sizeof *m);
+    if (!p4_anim_keymap || count <= 0 || n <= 0 || n > 0xffff || size <= 0)
+        return 0;
+    unsigned short *node = malloc(count * sizeof *node);
+    if (!node)
+        return 0;
+    for (int k = 0; k < count; k++) {
+        if (k < 2 * n) {
+            node[k] = k % n;
+            continue;
+        }
+        const char *prev = *(char **)(frames + k * size);
+        int at = prev - frames;
+        if (at < 0 || at % size || at / size >= k) { /* not this layout: no map */
+            free(node);
+            return 0;
+        }
+        node[k] = node[at / size];
+    }
+    m->anim = anim, m->frames = frames, m->count = count, m->size = size, m->nodes = n, m->node = node;
+    key_maps_built++;
+    return node;
+}
+/* retail AddAnimTime's key walk (func_003d5bc0 at 3d5cac): every key whose previous key is due goes to the node
+   whose second key that is, searched from where the last one was found */
+static void lazy_walk(char *ip)
+{
+    char *anim = *(char **)ip, *frames = *(char **)(anim + 0x10), *end = frames + *(int *)(anim + 4) * *(int *)(ip + 0x28);
+    int nodes = *(int *)(ip + 0x2c), a = 0;
+    const unsigned short *map = 0;
+    while (*(char **)(ip + 8) < end) {
+        char *next = *(char **)(ip + 8), *prev = *(char **)next, *f;
+        if (!(*(float *)(prev + 4) <= *(float *)(ip + 4)))
+            break;
+        if (!map && p4_anim_keymap)
+            map = key_nodes(ip);
+        key_walked++;
+        if (map && (f = ip + 0x4c + map[(next - frames) / *(int *)(ip + 0x28)] * *(int *)(ip + 0x24), *(char **)(f + 4) == prev)) {
+            a = map[(next - frames) / *(int *)(ip + 0x28)] + 1; /* where retail's search would go on */
+            if (a >= nodes)
+                a = 0;
+        } else {
+            if (map)
+                key_map_misses++;
+            do {
+                f = ip + 0x4c + a * *(int *)(ip + 0x24);
+                if (++a >= nodes)
+                    a = 0;
+            } while (*(char **)(f + 4) != prev);
+        }
+        *(char **)f = prev;
+        *(char **)(f + 4) = next;
+        *(char **)(ip + 8) = next + *(int *)(ip + 0x28);
+    }
+}
+/* and its interpolation (3d5dd0): every node from its two keys at the current time */
+static void lazy_interpolate(char *ip)
+{
+    char *f = ip + 0x4c;
+    KInterp cb = *(KInterp *)(ip + 0x44), actual = cb;
+    int timed = 0;
+#ifdef P4_HW_PROFILE
+    if (cb == kinterp_timed) actual = kinterp_now, timed = 1;
+#endif
+    int mode = 0;
+    if (p4_interp_batch || p4_interp_pairs) {
+        if (p4_interp_pairs && actual == func_00415bc0 && !p4_interp_fast) mode = 3;
+        else if (p4_interp_batch && actual == (KInterp)mdlKeyFrameInterpolateCopy) mode = 1;
+        else if (p4_interp_batch && actual == func_003955a0) mode = 2;
+        else if (p4_interp_batch && actual == func_00415bc0 && !p4_interp_fast) mode = 3;
+    }
+    InterpPair *pairs = mode == 3 && p4_interp_pairs && *(int *)(ip + 0x28) >= 22 ?
+                        interp_pair_nodes(ip, *(int *)(ip + 0x2c)) : 0;
+    if (p4_interp_pairs && !p4_interp_batch && !pairs) mode = 0;
+    if (!mode || *(int *)(ip + 0x24) < (mode == 1 ? 32 : 36)) {
+        for (int i = 0; i < *(int *)(ip + 0x2c); i++, f += *(int *)(ip + 0x24)) {
+            cb = *(KInterp *)(ip + 0x44);
+            p4_interp_pick(cb)(f, *(void **)f, *(void **)(f + 4), *(float *)(ip + 4), *(void **)(*(char **)ip + 0x14));
+        }
+        return;
+    }
+    int n = *(int *)(ip + 0x2c), stride = *(int *)(ip + 0x24);
+    float time = *(float *)(ip + 4);
+    void *custom = *(void **)(*(char **)ip + 0x14);
+    batch_calls++;
+    if (mode == 1) batch_copy += n;
+    else if (mode == 2) batch_plain += n;
+    else batch_packed += n;
+    /* Separate loops let GCC inline and fold the callback format out of each node. */
+#define INTERP_BATCH_LOOP(kind) \
+    for (int i = 0; i < n; i++, f += stride) { \
+        void *a = *(void **)f, *b = *(void **)(f + 4); \
+        if (timed) prof_begin(PROF_KINTERP); \
+        InterpPair *pair = (kind) == 3 && pairs ? pairs + i : 0; \
+        if (p4_interp_batch_check || (pair && p4_interp_pairs_check)) interp_batch_checked(kind, actual, (IFrame *)f, a, b, time, custom, pair); \
+        else if (pair) interp_pair_node(pair, actual, (IFrame *)f, a, b, time, custom); \
+        else interp_batch_node(kind, actual, (IFrame *)f, a, b, time, custom); \
+        if (timed) prof_end(PROF_KINTERP); \
+    }
+    if (mode == 1) { INTERP_BATCH_LOOP(1) }
+    else if (mode == 2) { INTERP_BATCH_LOOP(2) }
+    else { INTERP_BATCH_LOOP(3) }
+#undef INTERP_BATCH_LOOP
+}
+static int lazy_bytes(const char *ip) { return 0x4c + *(int *)(ip + 0x2c) * *(int *)(ip + 0x24); }
+static int lazy_compare(const char *ip, const char *clone);
+void p4_anim_materialize(void *interp)
+{
+    LazyAnim *e = lazy_find(interp), copy;
+    if (!e)
+        return;
+    copy = *e;
+    e->clone = 0;
+    lazy_drop(e); /* first: the replays below may reach this interpolator again */
+    lazy_materialized++;
+    lazy_walk(copy.ip);
+    lazy_interpolate(copy.ip);
+    if (copy.clone) { /* the header's callbacks may hold the profiler's trampoline: lazy_compare skips them */
+        lazy_compare(copy.ip, copy.clone);
+        free(copy.clone);
+    }
+    if (copy.first) {
+        p4_anim_materialize(copy.first);
+        p4_mdlBlendAnimInterpolators(copy.ip, copy.first, copy.ip, copy.blend);
+    }
+    if (copy.layer) {
+        p4_anim_materialize(copy.input);
+        p4_anim_materialize(copy.rotation);
+        lazy_replay_input = copy.input; /* the rebase's own AddAnimTime of its input happened when it was recorded */
+        p4_mdlRebaseLayerPose(copy.layer);
+        lazy_replay_input = 0;
+    }
+}
+/* the frames are rebuilt from the keys by the caller: what was waiting is obsolete */
+static void lazy_obsolete_now(const void *ip)
+{
+    LazyAnim *e = lazy_find(ip);
+    if (e)
+        lazy_obsolete++, lazy_drop(e);
+}
+/* census FIXES around mdlAdvanceLayer in mdlAdvanceModel: this layer's interpolators, or 0 after it */
+void p4_anim_lazy_scope(void *cur, void *input)
+{
+    int on = cur && (p4_anim_lazy == 2 || (p4_anim_lazy == 1 && skip_frame && p4_frameskip_bones));
+    lazy_cur = on ? cur : 0;
+    lazy_input = on ? input : 0;
+}
+/* b203: around mdlAdvanceAnimControl (census FIXES) every interpolator it steps is the material UV animation's own;
+   in an undrawn tick their apply (func_003d7cf0, the material's UV matrices) is left out too: nothing draws them, and
+   the drawn tick steps and applies again. 2 = the test mode: the apply runs and materialises. */
+static int lazy_all;
+void p4_anim_lazy_materials(int begin)
+{
+    lazy_all = !begin ? 0 : p4_anim_lazy == 2 ? 2 : p4_anim_lazy == 1 && skip_frame && p4_frameskip_bones;
+}
+static int lazy_owned(const void *ip) { return !lazy_paused && ip && (lazy_all || ip == lazy_cur || ip == lazy_input); }
+static unsigned lazy_uv_skipped;
+void *func_003d8130(void *material, int slot); /* the material's UV interpolator, slot 0 or 1 */
+int p4r_003d7cf0(void *material);
+int func_003d7cf0(void *material) /* RpMaterialUVAnimApplyUpdate: UV matrices from both slots' frames */
+{
+    if (lazy_all == 1) {
+        lazy_uv_skipped++;
+        return 1;
+    }
+    p4_anim_materialize(func_003d8130(material, 0));
+    p4_anim_materialize(func_003d8130(material, 1));
+    return p4r_003d7cf0(material);
+}
+/* an AddAnimTime step where retail fires no callback (3d5bc0 start), does not loop (3d5c30) and has a next key:
+   then it is the clock, the walk and the interpolation only; *t is the new time */
+static int add_plain(char *ip, float time, float *t)
+{
+    char *anim = *(char **)ip;
+    if (!(time > 0.0f) || !anim || !*(char **)(ip + 8))
+        return 0;
+    float now = *(float *)(ip + 4), at = *(float *)(ip + 0x14);
+    *t = now + time;
+    return *t <= *(float *)(anim + 0xc) && !(now < at && !(*t < at));
+}
+static int lazy_compare(const char *ip, const char *clone) /* time, next key and the frames */
+{
+    int at = -1, n = lazy_bytes(ip);
+    for (int k = 4; k < n && at < 0; k += 4)
+        if ((k < 0xc || k >= 0x4c) && *(unsigned *)(ip + k) != *(unsigned *)(clone + k))
+            at = k;
+    lazy_checks++;
+    if (at >= 0 && lazy_diffs++ < 8)
+        p4_log("TRACE anim check: interpolator %p offset %x: %08x, retail copy %08x (time %d/1000, nodes %d, frame %d)\n", (void *)ip, at,
+               *(unsigned *)(ip + at), *(unsigned *)(clone + at), (int)(*(float *)(ip + 4) * 1000), *(int *)(ip + 0x2c), *(int *)(ip + 0x24));
+    return at < 0;
+}
+static int lazy_defer(char *ip, float time)
+{
+    float t;
+    if (!add_plain(ip, time, &t))
+        return 0;
+    LazyAnim *e = lazy_find(ip);
+    if (!e) {
+        for (int i = 0; i < LAZY_SLOTS && !e; i++)
+            if (!lazy_ip[i])
+                e = &lazy_slot[i];
+        if (!e) {
+            lazy_full++;
+            return 0;
+        }
+        lazy_used++;
+        e->ip = ip;
+        lazy_ip[e - lazy_slot] = ip;
+        if (p4_anim_lazy_check && (e->clone = malloc(lazy_bytes(ip))))
+            memcpy(e->clone, ip, lazy_bytes(ip));
+    }
+    if (e->clone)
+        p4r_003d5bc0(e->clone, time);
+    e->first = e->layer = 0; /* this tick interpolates afresh: an older blend or rebase is overwritten */
+    e->stamp = p4_anim_tick;
+    *(float *)(ip + 4) = t;
+    lazy_deferred++;
+    return 1;
+}
+static LazyAnim *lazy_fresh(const void *ip)
+{
+    LazyAnim *e = lazy_find(ip);
+    return e && e->stamp == p4_anim_tick ? e : 0;
+}
+/* mdlBlendAnimInterpolators (census FIXES): 1 = recorded, the caller returns */
+int p4_anim_lazy_blend(void *destination, void *first, void *second, float blend)
+{
+    LazyAnim *e;
+    if (lazy_owned(destination) && destination == second && (e = lazy_fresh(destination)) && !e->first && !e->layer) {
+        e->first = first, e->blend = blend;
+        lazy_blends++;
+        return 1;
+    }
+    p4_anim_materialize(first);
+    p4_anim_materialize(second);
+    p4_anim_materialize(destination);
+    return 0;
+}
+/* mdlRebaseLayerPose (census FIXES); active: it has an input and flag 0x80. 1 = recorded, the caller returns */
+int p4_anim_lazy_rebase(void *layer, void *cur, void *input, void *rotation, int active, float step)
+{
+    LazyAnim *e;
+    if (lazy_replay_input || !active)
+        return 0;
+    if (lazy_owned(cur) && input == lazy_input && (e = lazy_fresh(cur)) && !e->layer) {
+        func_003d5bc0(input, step);
+        e->layer = layer, e->input = input, e->rotation = rotation;
+        lazy_rebases++;
+        return 1;
+    }
+    p4_anim_materialize(cur);
+    p4_anim_materialize(input);
+    p4_anim_materialize(rotation);
+    return 0;
+}
+/* mdlUpdateHierarchyPose (census FIXES) reads the frames and runs RtAnim calls of its own */
+void p4_anim_lazy_pause(void *cur, int pause)
+{
+    if (pause)
+        p4_anim_materialize(cur);
+    lazy_paused += pause ? 1 : -1;
+}
+int p4r_003d59d0(void *interpolator, float time);
+int func_003d59d0(void *interpolator, float time) /* SubAnimTime: walks back from the keys, then interpolates all */
+{
+    LazyAnim *e = lazy_find(interpolator);
+    if (e) {
+        lazy_walk(interpolator);
+        lazy_obsolete++, lazy_drop(e);
+    }
+    return p4r_003d59d0(interpolator, time);
+}
+int p4r_003d5840(void *interpolator, void *animation);
+int func_003d5840(void *interpolator, void *animation) /* SetCurrentAnim */
+{
+    lazy_obsolete_now(interpolator);
+    return p4r_003d5840(interpolator, animation);
+}
+int p4r_003d5e90(void *out, void *in1, void *in2, float alpha);
+int func_003d5e90(void *out, void *in1, void *in2, float alpha) /* Blend: every node of out from in1 and in2 */
+{
+    p4_anim_materialize(in1);
+    p4_anim_materialize(in2);
+    lazy_obsolete_now(out);
+    return p4r_003d5e90(out, in1, in2, alpha);
+}
+void p4r_003d5830(void *interpolator);
+void func_003d5830(void *interpolator) /* Destroy */
+{
+    interp_pair_forget(interpolator);
+    lazy_obsolete_now(interpolator);
+    for (int i = 0; i < LAZY_SLOTS; i++) { /* a recorded blend or rebase that reads it cannot be replayed */
+        LazyAnim *e = &lazy_slot[i];
+        if (e->ip && e->first == interpolator)
+            e->first = 0;
+        if (e->ip && (e->input == interpolator || e->rotation == interpolator))
+            e->layer = 0;
+    }
+    p4r_003d5830(interpolator);
 }
 int func_003d5bc0(void *interpolator, float time)
 {
     kadd_calls++;
-    if (p4_anim_far_kadd && (p4_anim_far || p4_anim_cull)) {
+    if (interpolator == lazy_replay_input)
+        return 1;
+    int owned = lazy_owned(interpolator);
+    if (owned) {
+        if (lazy_defer(interpolator, time))
+            return 1;
+        lazy_refused++;
+    }
+    if ((p4_anim_far_kadd && (p4_anim_far || p4_anim_cull)) || (p4_anim_skip_kadd && skip_frame && p4_frameskip_bones && !owned)) {
         AnimState *s = anim_by_interp(interpolator);
         if (s && s->skinned) {
             kadd_mapped++;
             int unseen = p4_anim_tick - s->drawn > 2;
-            int hold = (p4_anim_cull && unseen) ||
+            int hold = p4_anim_far_kadd && ((p4_anim_cull && unseen) ||
                        (p4_anim_far && !unseen && s->depth > p4_anim_far_depth && p4_anim_tick - s->advanced < (unsigned)p4_anim_far_step &&
-                        p4_anim_tick - s->moved >= 8);
-            if (hold && s->pending < 1.0f) { /* at most a second kept back */
+                        p4_anim_tick - s->moved >= 8));
+            int skip = !hold && p4_anim_skip_kadd && skip_frame && p4_frameskip_bones && !owned;
+            if ((hold || skip) && s->pending < 1.0f) { /* at most a second kept back */
                 s->pending += time;
-                kadd_held++;
+                kadd_held += hold;
+                kadd_skip_held += skip;
                 return 1;
             }
             time += s->pending;
@@ -5431,21 +7530,59 @@ int func_003d5bc0(void *interpolator, float time)
             s->advanced = p4_anim_tick;
         }
     }
+    /* b204 p4_anim_native: a plain step (no callback, no loop) in C: clock, keyed walk, interpolation. Exactly
+       retail's work in retail's order; p4_anim_lazy_check runs retail on a copy and compares. */
+    float t;
+    if (p4_anim_native && add_plain(interpolator, time, &t)) {
+        char *ip = interpolator, *clone = 0;
+        if (p4_anim_lazy_check && (clone = malloc(lazy_bytes(ip))))
+            memcpy(clone, ip, lazy_bytes(ip));
+        lazy_obsolete_now(ip); /* the walk catches up and every node is interpolated */
+        *(float *)(ip + 4) = t;
+        lazy_walk(ip);
+        lazy_interpolate(ip);
+        native_adds++;
+        if (clone) {
+            p4r_003d5bc0(clone, time);
+            lazy_compare(ip, clone);
+            free(clone);
+        }
+        return 1;
+    }
     KInterp *cb = (KInterp *)((char *)interpolator + 0x44), saved = *cb;
     KInterp pick = saved ? p4_interp_pick(saved) : saved;
     if (pick != saved)
         *cb = pick;
+    retail_adds++;
     int r = p4r_003d5bc0(interpolator, time);
     if (pick != saved)
         *cb = saved;
+    if (time > 0.0f) /* walked and interpolated: nothing waits any more */
+        lazy_obsolete_now(interpolator);
     return r;
 }
 void p4_interp_report(void)
 {
-    p4_log("interp fast %d calls %u other %u slerps %u checks %u diffs %u max_diff %d/1e6; kadd far %d calls %u mapped %u held %u\n",
+    p4_log("interp fast %d calls %u other %u slerps %u checks %u diffs %u max_diff %d/1e6; kadd far %d calls %u mapped %u held %u skip %d held %u\n",
            p4_interp_fast, interp_calls, interp_other, interp_slerps, interp_checks, interp_diffs, (int)(interp_max_diff * 1e6f),
-           p4_anim_far_kadd, kadd_calls, kadd_mapped, kadd_held);
-    interp_calls = interp_other = interp_slerps = interp_checks = interp_diffs = kadd_calls = kadd_mapped = kadd_held = 0;
+           p4_anim_far_kadd, kadd_calls, kadd_mapped, kadd_held, p4_anim_skip_kadd, kadd_skip_held);
+    p4_log("anim lazy %d: deferred %u refused %u blends %u rebases %u materialized %u obsolete %u full %u waiting %d check %u diffs %u uv skipped %u\n",
+           p4_anim_lazy, lazy_deferred, lazy_refused, lazy_blends, lazy_rebases, lazy_materialized, lazy_obsolete, lazy_full, lazy_used,
+           lazy_checks, lazy_diffs, lazy_uv_skipped);
+    p4_log("anim native %d: adds %u retail %u; keymap %d: keys walked %u maps built %u misses %u\n", p4_anim_native, native_adds, retail_adds,
+           p4_anim_keymap, key_walked, key_maps_built, key_map_misses);
+    p4_log("interp batch %d calls %u copy %u plain %u packed %u fallback %u check %d checked %u diffs %u key_diffs %u max %d/1e6\n",
+           p4_interp_batch, batch_calls, batch_copy, batch_plain, batch_packed, batch_fallback, p4_interp_batch_check,
+           batch_checks, batch_diffs, batch_key_diffs, (int)(batch_max_diff * 1e6f));
+    batch_calls = batch_copy = batch_plain = batch_packed = batch_fallback = batch_checks = batch_diffs = batch_key_diffs = 0;
+    batch_max_diff = 0;
+    p4_log("interp pairs %d check %d: hits %u misses %u mutated %u fallback %u bytes %u evictions %u refused %u\n",
+           p4_interp_pairs, p4_interp_pairs_check, pair_hits, pair_misses, pair_mutated, pair_fallback, pair_bytes, pair_evictions, pair_refused);
+    pair_hits = pair_misses = pair_mutated = pair_fallback = pair_evictions = pair_refused = 0;
+    native_adds = retail_adds = key_walked = key_maps_built = key_map_misses = 0;
+    lazy_deferred = lazy_refused = lazy_blends = lazy_rebases = lazy_materialized = lazy_obsolete = lazy_full = lazy_checks = lazy_diffs = 0;
+    lazy_uv_skipped = 0;
+    interp_calls = interp_other = interp_slerps = interp_checks = interp_diffs = kadd_calls = kadd_mapped = kadd_held = kadd_skip_held = 0;
     interp_max_diff = 0;
 }
 int func_00397c40(void *hierarchy)
@@ -5477,12 +7614,30 @@ int func_00397c40(void *hierarchy)
         s->stale = 0, s->updated = p4_anim_tick;
     return hanim_update_now(hierarchy);
 }
+/* b240 p4_hanim_time (profiling build): cycles of the hierarchy update by part, read from the cycle counter around
+   each part (4 reads a node, ~15 cycles each): waiting frames interpolated, the NaN scan, the prologue (parent LTM,
+   dirty list), per node the matrix (callback or conversion, multiply) and the RwFrame writes; and the ordinary runs
+   of the look-at pose (p4_pose_runs 1) so that apose minus them is the head and the tail. */
+int p4_hanim_time = 1;
+static unsigned long long hanim_t_wait, hanim_t_scan, hanim_t_pre, hanim_t_math, hanim_t_frame, pose_t_runs;
+static unsigned hanim_t_nodes, hanim_t_framed, hanim_t_callback, hanim_t_calls;
+#ifdef P4_HW_PROFILE
+#define HANIM_NOW() (p4_hanim_time && prof_state > 0 ? prof_cycles() : 0)
+#else
+#define HANIM_NOW() 0u
+#endif
 static int hanim_update_now(void *hierarchy)
 {
+    unsigned t_w = HANIM_NOW();
+    p4_anim_materialize((void *)((unsigned *)hierarchy)[8]); /* b202: currentAnim's frames, if they wait */
+    unsigned t_s = HANIM_NOW();
     if (p4_hanim_nan_fix)
         hanim_sanitize(hierarchy);
-    int r = p4r_00397c40(hierarchy);
+    hanim_t_wait += t_s - t_w, hanim_t_scan += HANIM_NOW() - t_s;
+    int r = p4_hanim_c ? p4_hanim_update(hierarchy) : p4r_00397c40(hierarchy);
     hanim_note(hierarchy);
+    if (p4_head_trace)
+        head_trace(hierarchy);
     if (p4_bone_check) { /* b157: are the matrices already bad right after the update, or made bad later? */
         unsigned *h = hierarchy;
         const float *m = (const float *)h[2];
@@ -5536,10 +7691,173 @@ static void hanim_key_to_matrix(Matrix *m, const char *key)
     m->pos.x = t[0], m->pos.y = t[1], m->pos.z = t[2];
 }
 
+static int multiply_vfpu(Matrix *out, const Matrix *a, const Matrix *b);
+static void hanim_mul(void *out, const void *a, const void *b)
+{
+    if (p4_hanim_vfpu && multiply_vfpu(out, a, b)) {
+        ((Matrix *)out)->flags = ((const Matrix *)a)->flags & ((const Matrix *)b)->flags;
+        return;
+    }
+    hanim_vfpu_unaligned += p4_hanim_vfpu;
+    RwMatrixMultiply(out, a, b);
+}
+
+/* b239 p4_hanim_vfpu 2: one bone on the VFPU: the unit quaternion to the local matrix (the values of
+   RpHAnimKeyFrameToMatrix: 1 - (2yy + 2zz) and so on) built in M600, where multiply_vfpu wants the rows of a, then
+   through the parent as multiply_vfpu does. No FPU work and no call per bone. local and out get the rows; flags as
+   the C path sets them. out, local and parent must be 16-byte aligned. */
+static unsigned hanim_fused_nodes, hanim_hook_nodes;
+static inline void hanim_node_vfpu(Matrix *out, Matrix *local, const char *key, const Matrix *parent)
+{
+    __asm__ volatile(
+        "lv.s    S000, 8(%[k])\n lv.s S001, 12(%[k])\n lv.s S002, 16(%[k])\n lv.s S003, 20(%[k])\n"
+        "lv.s    S630, 24(%[k])\n lv.s S631, 28(%[k])\n lv.s S632, 32(%[k])\n vone.s S633\n"
+        "lv.q    C400, 0(%[b])\n lv.q C410, 16(%[b])\n lv.q C420, 32(%[b])\n lv.q C430, 48(%[b])\n"
+        "vadd.q  C010, C000, C000\n"       /* 2x 2y 2z 2w */
+        "vscl.t  C020, C010, S000\n"       /* 2xx 2xy 2xz */
+        "vscl.t  C030, C010, S001\n"       /* 2xy 2yy 2yz */
+        "vmul.s  S100, S002, S012\n"       /* 2zz */
+        "vscl.t  C110, C010, S003\n"       /* 2wx 2wy 2wz */
+        "vadd.s  S600, S031, S100\n vocp.s S600, S600\n"
+        "vadd.s  S601, S021, S112\n"
+        "vsub.s  S602, S022, S111\n"
+        "vsub.s  S610, S021, S112\n"
+        "vadd.s  S611, S020, S100\n vocp.s S611, S611\n"
+        "vadd.s  S612, S032, S110\n"
+        "vadd.s  S620, S022, S111\n"
+        "vsub.s  S621, S032, S110\n"
+        "vadd.s  S622, S020, S031\n vocp.s S622, S622\n"
+        "vzero.s S603\n vzero.s S613\n vzero.s S623\n"
+        "vtfm4.q C700, E400, C600\n"
+        "vtfm4.q C710, E400, C610\n"
+        "vtfm4.q C720, E400, C620\n"
+        "vtfm4.q C730, E400, C630\n"
+        "sv.q    C600, 0(%[l])\n sv.q C610, 16(%[l])\n sv.q C620, 32(%[l])\n sv.q C630, 48(%[l])\n"
+        "sv.q    C700, 0(%[o])\n sv.q C710, 16(%[o])\n sv.q C720, 32(%[o])\n sv.q C730, 48(%[o])\n"
+        : : [o] "r"(out), [l] "r"(local), [k] "r"(key), [b] "r"(parent) : "memory");
+    local->flags = 3;
+    out->flags = 3 & parent->flags;
+}
+/* The per-node hook of the game (mdlHierarchyScaleHook, installed for layers with flag 0x10) scales the key
+   translation of one node, calls the saved callback and scales the matrix of one node: for every other node it is
+   the saved callback. 1 when that is the stock conversion; *ka and *kb are the two keys the hook treats specially. */
+void mdlHierarchyScaleHook(unsigned char *matrix, int key);
+/* b241: the apply callback the characters really carry is the compressed-key scheme's p4r_00415ad0 (read from a live
+   interpolator on the PSP, b240: +0x3c = 0x0889513c), not RpHAnim's func_003954b0. Its code is the same conversion
+   (1 - 2(yy + zz) ..., pos = t, flags 3), so the fused node may stand in for either. */
+void p4r_00415ad0(void *matrix, void *key);
+static int hanim_convertible(const void *cb) { return cb == (const void *)func_003954b0 || cb == (const void *)p4r_00415ad0; }
+static int hanim_hook_stock(const void *cb, const char **ka, const char **kb)
+{
+    if (cb != (const void *)mdlHierarchyScaleHook || !hanim_convertible((const void *)R32(0x922ba0)))
+        return 0;
+    *ka = (const char *)R32(0x922ba4), *kb = (const char *)R32(0x922ba8);
+    return 1;
+}
+static inline void copy64(void *d, const void *s) /* 4-byte aligned words, no call */
+{
+    unsigned *x = d;
+    const unsigned *y = s;
+    for (int k = 0; k < 16; k++)
+        x[k] = y[k];
+}
+
+/* b237/b238: ordinary runs of the special look-at hierarchy. Head/controller code
+   stays in mdlUpdateHierarchyPose. Custom apply callbacks run exactly once, in the
+   original order, since the scale hook can mutate keyframes and global state. */
+int p4_pose_runs = 0;
+int p4_pose_runs_check = 0;
+static unsigned pose_runs, pose_nodes, pose_custom_nodes, pose_checks, pose_diffs, pose_flags_diffs, pose_exact_diffs;
+static float pose_max_diff;
+static int pose_compare(const Matrix *a, const Matrix *b)
+{
+    int bad = a->flags != b->flags;
+    pose_flags_diffs += bad;
+    const float *x = (const float *)a, *y = (const float *)b;
+    for (int k = 0; k < 16; k++) {
+        if ((k & 3) == 3) continue; /* unused matrix padding is not initialized */
+        float d = fabsf(x[k] - y[k]);
+        float scale = fabsf(x[k]) > fabsf(y[k]) ? fabsf(x[k]) : fabsf(y[k]);
+        pose_exact_diffs += !(x[k] == y[k]);
+        if (!(d <= 0.00001f * (1.0f + scale))) bad = 1;
+        if (d > pose_max_diff) pose_max_diff = d;
+    }
+    pose_checks++;
+    pose_diffs += bad;
+    return bad;
+}
+/* Keep diagnostics out of the hot loop's stack/register allocation. */
+static __attribute__((noinline)) void pose_check_bone(Matrix *local, Matrix *out, const Matrix *parent, const char *key, int stock)
+{
+    Matrix reference __attribute__((aligned(16))), expected __attribute__((aligned(16)));
+    if (stock) ((void (*)(void *, const void *))func_003954b0)(&reference, key);
+    else reference = *local; /* preserve the custom callback's single invocation */
+    RwMatrixMultiply(&expected, &reference, parent);
+    int bad = stock ? pose_compare(local, &reference) : 0;
+    bad |= pose_compare(out, &expected);
+    if (bad) { *local = reference; *out = expected; }
+}
+static __attribute__((noinline)) void pose_check_ltm(Matrix *out, const Matrix *m, const Matrix *base)
+{
+    Matrix expected __attribute__((aligned(16)));
+    RwMatrixMultiply(&expected, m, base);
+    if (pose_compare(out, &expected)) memcpy(out, &expected, sizeof expected);
+}
+int p4_pose_run(unsigned *h, int first, const char *key, Matrix *m, unsigned *info,
+                const Matrix **parent_io, const Matrix ***stack_io, const Matrix *base, void (*apply)(void *, const void *))
+{
+    const Matrix *parent = *parent_io;
+    const Matrix **stack = *stack_io;
+    const int stride = *(int *)((char *)h[8] + 36), flags = h[0];
+    unsigned t_run = HANIM_NOW();
+    int count = 0, stock = (const void *)apply == (const void *)func_003954b0;
+    const char *hook_a = 0, *hook_b = 0;
+    int fused = p4_hanim_vfpu >= 2 && !((unsigned)m & 15) && (hanim_convertible(apply) || hanim_hook_stock(apply, &hook_a, &hook_b));
+    for (int i = first; i < (int)h[1] && info[0] != 0x1389; i++, count++, m++, key += stride, info += 4) {
+        Matrix local __attribute__((aligned(16)));
+        if (fused && key != hook_a && key != hook_b && !((unsigned)parent & 15)) {
+            hanim_node_vfpu(m, &local, key, parent);
+            hanim_fused_nodes++, hanim_hook_nodes += !stock;
+        } else {
+            if (stock) hanim_key_to_matrix(&local, key);
+            else { apply(&local, key); pose_custom_nodes++; }
+            hanim_mul(m, &local, parent);
+        }
+        /* The original head/controller slerp still advances only once. */
+        if (p4_pose_runs_check) pose_check_bone(&local, m, parent, key, stock);
+        unsigned char *frame = (unsigned char *)info[3];
+        if (frame) {
+            if (flags & 0x1000) {
+                memcpy(frame + 16, &local, sizeof local);
+                if (!(flags & 0x2000)) func_003e9680(frame);
+            }
+            if (flags & 0x2000) {
+                if (flags & 0x4000) {
+                    hanim_mul(frame + 80, m, base);
+                    if (p4_pose_runs_check) pose_check_ltm((Matrix *)(frame + 80), m, base);
+                } else memcpy(frame + 80, m, sizeof *m);
+                frame[3] = (frame[3] & ~4) | 8;
+            }
+        }
+        switch (info[2] & 3) {
+        case 0: parent = m; break;
+        case 1: parent = *--stack; break;
+        case 2: *stack++ = parent; parent = m; break;
+        default: break;
+        }
+    }
+    *parent_io = parent;
+    *stack_io = stack;
+    if (count) { pose_runs++; pose_nodes += count; }
+    pose_t_runs += HANIM_NOW() - t_run;
+    return count;
+}
+
 int p4_hanim_update(unsigned *h)
 {
     unsigned flags = h[0];
-    Matrix ltm_parent, local_root;
+    unsigned t_in = HANIM_NOW();
+    Matrix ltm_parent __attribute__((aligned(16))), local_root __attribute__((aligned(16)));
     const Matrix *parent = &ltm_parent;
     char *frame = 0;
     int have_frame = 0;
@@ -5592,28 +7910,49 @@ int p4_hanim_update(unsigned *h)
     unsigned *info = (unsigned *)h[4];
     const Matrix *stack[64];
     int depth = 0;
+    /* b239: stock conversion, or the scale hook over it (every node but its two special keys), on the VFPU */
+    const char *hook_a = 0, *hook_b = 0;
+    int stock = (char *)key_to_matrix == func_003954b0;
+    int fused = p4_hanim_vfpu >= 2 && !((unsigned)m & 15) && (hanim_convertible(key_to_matrix) || hanim_hook_stock(key_to_matrix, &hook_a, &hook_b));
+    hanim_t_pre += HANIM_NOW() - t_in;
+    hanim_t_calls++, hanim_t_nodes += n, hanim_t_callback += stock ? 0 : n;
     for (int i = 0; i < n; i++, m++, key += stride, info += 4) {
-        Matrix local;
-        if ((char *)key_to_matrix == func_003954b0)
-            hanim_key_to_matrix(&local, key);
-        else
-            key_to_matrix(&local, key);
-        RwMatrixMultiply(m, &local, parent);
+        Matrix local __attribute__((aligned(16)));
+        unsigned t_a = HANIM_NOW();
+        if (fused && key != hook_a && key != hook_b && !((unsigned)parent & 15)) {
+            hanim_node_vfpu(m, &local, key, parent);
+            hanim_fused_nodes++, hanim_hook_nodes += !stock;
+        } else {
+            if (stock)
+                hanim_key_to_matrix(&local, key);
+            else
+                key_to_matrix(&local, key);
+            hanim_mul(m, &local, parent);
+        }
+        unsigned t_b = HANIM_NOW();
+        hanim_t_math += t_b - t_a;
         unsigned char *f = (unsigned char *)info[3];
+        hanim_t_framed += f != 0;
         if (f) {
             if (flags & 0x1000) {
-                memcpy(f + 16, &local, sizeof local);
+                if (fused && !((unsigned)f & 3))
+                    copy64(f + 16, &local);
+                else
+                    memcpy(f + 16, &local, sizeof local);
                 if (!update_ltm)
                     func_003e9680(f);
             }
             if (update_ltm) {
                 if (flags & 0x4000)
-                    RwMatrixMultiply(f + 80, m, &ltm_parent);
+                    hanim_mul(f + 80, m, &ltm_parent);
+                else if (fused && !((unsigned)f & 3))
+                    copy64(f + 80, m);
                 else
                     memcpy(f + 80, m, sizeof *m);
                 f[3] = (f[3] & ~4) | 8;
             }
         }
+        hanim_t_frame += HANIM_NOW() - t_b;
         switch (info[2] & 3) {
         case 0: parent = m; break;
         case 1: if (depth > 0) parent = stack[--depth]; break;
@@ -5631,7 +7970,7 @@ int p4_hanim_dispatch(unsigned *h, int (*original)(void *))
     if (p4_hanim_check && !(hanim_calls & 7) && !(h[0] & 2) && (int)h[1] > 0 && (int)h[1] <= 256) {
         static Matrix saved[256];
         int n = (int)h[1];
-        original(h);
+        p4r_00397c40(h); /* the retail update, not original: that is func_00397c40, which may take the C path now */
         memcpy(saved, (void *)h[2], n * sizeof(Matrix));
         p4_hanim_update(h);
         const Matrix *now = (const Matrix *)h[2];
@@ -5649,15 +7988,155 @@ int p4_hanim_dispatch(unsigned *h, int (*original)(void *))
         }
         return 1;
     }
-    return p4_hanim_c ? p4_hanim_update(h) : original(h);
+    return original(h);
 }
 static void hanim_report(void)
 {
-    p4_log("hanim c %d check %d: calls %u checks %u differing floats %u max diff %d/1000000\n", p4_hanim_c, p4_hanim_check, hanim_calls,
-           hanim_checks, hanim_diffs, (int)(hanim_max_diff * 1000000));
-    hanim_calls = hanim_checks = hanim_diffs = 0;
+    p4_log("hanim c %d vfpu %d check %d: calls %u checks %u differing floats %u max diff %d/1000000 unaligned %u\n", p4_hanim_c,
+           p4_hanim_vfpu, p4_hanim_check, hanim_calls, hanim_checks, hanim_diffs, (int)(hanim_max_diff * 1000000), hanim_vfpu_unaligned);
+    p4_log("pose runs %d check %d: runs %u nodes %u custom %u matrices checked %u diffs %u flags %u exact floats %u max %d/1e6\n",
+           p4_pose_runs, p4_pose_runs_check, pose_runs, pose_nodes, pose_custom_nodes, pose_checks, pose_diffs, pose_flags_diffs, pose_exact_diffs,
+           (int)(pose_max_diff * 1000000));
+    p4_log("hanim fused nodes %u of them not through func_003954b0 %u; interp vfpu nodes %u slerps to retail %u\n", hanim_fused_nodes, hanim_hook_nodes,
+           interp_vfpu_nodes, interp_vfpu_slerps);
+    p4_log("hanim time %d kcycles: calls %u nodes %u framed %u callback %u; waiting frames %u nan scan %u prologue %u matrices %u frame writes %u; pose runs %u\n",
+           p4_hanim_time, hanim_t_calls, hanim_t_nodes, hanim_t_framed, hanim_t_callback, (unsigned)(hanim_t_wait / 1000), (unsigned)(hanim_t_scan / 1000),
+           (unsigned)(hanim_t_pre / 1000), (unsigned)(hanim_t_math / 1000), (unsigned)(hanim_t_frame / 1000), (unsigned)(pose_t_runs / 1000));
+    hanim_t_wait = hanim_t_scan = hanim_t_pre = hanim_t_math = hanim_t_frame = pose_t_runs = 0;
+    hanim_t_nodes = hanim_t_framed = hanim_t_callback = hanim_t_calls = 0;
+    p4_log("skin free waits %u (wait %d); skin dummy words %u (dummy %d)\n", skin_free_waits, p4_skin_free_wait, skin_dummies, p4_skin_dummy);
+    p4_log("skin lod depth %d keep %d: draws simplified %u full %u\n", (int)p4_skin_lod_depth, p4_skin_lod_keep, skin_lod_draws, skin_full_draws);
+    skin_lod_draws = skin_full_draws = 0;
+    skin_free_waits = skin_dummies = 0;
+    hanim_fused_nodes = hanim_hook_nodes = interp_vfpu_nodes = interp_vfpu_slerps = 0;
+    pose_runs = pose_nodes = pose_checks = pose_diffs = pose_flags_diffs = pose_exact_diffs = 0;
+    pose_max_diff = 0; pose_custom_nodes = 0;
+    hanim_calls = hanim_checks = hanim_diffs = hanim_vfpu_unaligned = 0;
     hanim_max_diff = 0;
 }
+
+#ifdef P4_HW_PROFILE
+/* b239: what the animation arithmetic costs by itself, once at boot when the thread profiler is live (no scene
+   needed). (1) every counter word around a read of 4096 lines never touched before and around 4096 reads of 64 warm
+   lines: which word counts data misses, and what a miss costs. (2) the compressed-key interpolate, retail and
+   interp_vfpu, on 32 warm key pairs and on 1024 pairs two cold lines each. (3) one bone, FPU conversion +
+   multiply_vfpu against hanim_node_vfpu, warm. The results of both paths are compared. */
+static unsigned bench_half(float v)
+{
+    union { float f; unsigned u; } x = { v };
+    int e = (int)((x.u >> 23) & 0xff) - 112;
+    if (!(x.u & 0x7fffffff) || e <= 0)
+        return 0;
+    if (e > 15)
+        e = 15;
+    return ((x.u >> 16) & 0x8000) | (e << 11) | ((x.u >> 12) & 0x7ff);
+}
+static void bench_key(CKey *k, float time, int i, float turn)
+{
+    float q[4] = { 0.1f + 0.01f * (i & 31) + turn, 0.2f, 0.3f - turn, 0.9f }, n = 0;
+    for (int c = 0; c < 4; c++)
+        n += q[c] * q[c];
+    n = 1.0f / sqrtf(n);
+    k->prev = 0, k->time = time;
+    for (int c = 0; c < 4; c++)
+        k->q[c] = bench_half(q[c] * n);
+    for (int c = 0; c < 3; c++)
+        k->t[c] = bench_half(0.5f + 0.125f * c + turn);
+}
+static void prof_bench(void)
+{
+    enum { LINES = 4096, PAIRS = 32, COLD = 1024 };
+    char *raw = malloc(LINES * 64 + 16384 + 64);
+    if (!raw) {
+        p4_log("hwbench: no memory\n");
+        return;
+    }
+    char *p = (char *)(((unsigned)raw + 63) & ~63u), *small = p + LINES * 64;
+    unsigned b[20], e[20], sum = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < 20; i++)
+            b[i] = prof_regs[i];
+        for (int i = 0; i < LINES; i++)
+            sum += *(volatile unsigned *)(pass ? small + (i & 63) * 64 : p + i * 64);
+        for (int i = 0; i < 20; i++)
+            e[i] = prof_regs[i];
+        p4_log("hwbench %s lines, words 1..19: %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u\n", pass ? "4096 reads of 64 warm" : "4096 cold",
+               e[1] - b[1], e[2] - b[2], e[3] - b[3], e[4] - b[4], e[5] - b[5], e[6] - b[6], e[7] - b[7], e[8] - b[8], e[9] - b[9], e[10] - b[10],
+               e[11] - b[11], e[12] - b[12], e[13] - b[13], e[14] - b[14], e[15] - b[15], e[16] - b[16], e[17] - b[17], e[18] - b[18], e[19] - b[19]);
+    }
+    /* interpolation */
+    static const float custom[6] = { 0.25f, -0.5f, 1.0f, 2.0f, 3.0f, 0.5f };
+    CKey *wa = (CKey *)small, *wb = wa + PAIRS;
+    IFrame *fr = (IFrame *)(small + 4096), *fv = fr + PAIRS;
+    Matrix *bm = (Matrix *)(small + 8192), *bv = bm + PAIRS; /* 64-byte aligned */
+    for (int i = 0; i < PAIRS; i++)
+        bench_key(wa + i, 0.0f, i, 0.0f), bench_key(wb + i, 1.0f, i, 0.004f);
+    for (int i = 0; i < COLD; i++)
+        bench_key((CKey *)(p + i * 128), 0.0f, i, 0.0f), bench_key((CKey *)(p + 131072 + i * 128), 1.0f, i, 0.004f);
+    unsigned t[5];
+    KInterp fn[2] = { (KInterp)p4r_00415bc0, interp_vfpu };
+    for (int k = 0; k < 2; k++) {
+        fn[k](k ? fv : fr, wa, wb, 0.4f, (void *)custom); /* code warm */
+        t[0] = prof_cycles();
+        for (int r = 0; r < 64; r++)
+            for (int i = 0; i < PAIRS; i++)
+                fn[k]((k ? fv : fr) + i, wa + i, wb + i, 0.4f, (void *)custom);
+        t[1 + k * 2] = prof_cycles() - t[0];
+        for (int i = 0; i < 512; i++) /* 32 KB of other lines: the cold keys leave the cache */
+            sum += *(volatile unsigned *)(p + 196608 + i * 64 + 32);
+        t[0] = prof_cycles();
+        for (int i = 0; i < COLD; i++)
+            fn[k]((k ? fv : fr) + (i & 31), p + i * 128, p + 131072 + i * 128, 0.4f, (void *)custom);
+        t[2 + k * 2] = prof_cycles() - t[0];
+    }
+    for (int i = 0; i < PAIRS; i++) { /* the cold loop left other pairs in the frames */
+        p4r_00415bc0(fr + i, wa + i, wb + i, 0.4f, (void *)custom);
+        interp_vfpu(fv + i, wa + i, wb + i, 0.4f, (void *)custom);
+    }
+    float worst = 0;
+    for (int i = 0; i < PAIRS; i++)
+        for (int c = 0; c < 7; c++) {
+            float d = fabsf(fr[i].q[c] - fv[i].q[c]);
+            if (!(d <= worst))
+                worst = d;
+        }
+    p4_log("hwbench interp cycles a node: retail warm %u cold %u; vfpu warm %u cold %u; max diff %d/1e6, slerps %u, q0 %d t0 %d /1000\n", t[1] / (64 * PAIRS),
+           t[2] / COLD, t[3] / (64 * PAIRS), t[4] / COLD, (int)(worst * 1e6f), interp_vfpu_slerps, (int)(fr[0].q[0] * 1000), (int)(fr[0].t[0] * 1000));
+    /* one bone */
+    Matrix parent __attribute__((aligned(16)));
+    hanim_identity(&parent);
+    parent.right.x = 0.6f, parent.right.y = 0.8f, parent.up.x = -0.8f, parent.up.y = 0.6f, parent.pos.x = 3, parent.pos.y = -2, parent.pos.z = 5;
+    t[0] = prof_cycles();
+    for (int r = 0; r < 64; r++)
+        for (int i = 0; i < PAIRS; i++) {
+            Matrix local __attribute__((aligned(16)));
+            hanim_key_to_matrix(&local, (const char *)(fr + i));
+            hanim_mul(bm + i, &local, &parent);
+        }
+    t[1] = prof_cycles() - t[0];
+    t[0] = prof_cycles();
+    for (int r = 0; r < 64; r++)
+        for (int i = 0; i < PAIRS; i++) {
+            Matrix local __attribute__((aligned(16)));
+            hanim_node_vfpu(bv + i, &local, (const char *)(fr + i), &parent);
+        }
+    t[2] = prof_cycles() - t[0];
+    worst = 0;
+    int flags = 0;
+    for (int i = 0; i < PAIRS; i++) {
+        flags += bm[i].flags != bv[i].flags;
+        for (int c = 0; c < 16; c++) {
+            float d = fabsf((&bm[i].right.x)[c] - (&bv[i].right.x)[c]);
+            if ((c & 3) != 3 && !(d <= worst))
+                worst = d;
+        }
+    }
+    p4_log("hwbench bone cycles a node: fpu + multiply_vfpu %u; fused vfpu %u; max diff %d/1e6, flags differing %d (sum %u)\n", t[1] / (64 * PAIRS),
+           t[2] / (64 * PAIRS), (int)(worst * 1e6f), flags, sum);
+    interp_vfpu_nodes = interp_vfpu_slerps = hanim_fused_nodes = 0;
+    free(raw);
+}
+#endif
 
 /* RpSkin and RpHAnimHierarchy prefixes */
 typedef struct {
@@ -5694,6 +8173,158 @@ static inline V3 transform(const V3 *v, const Matrix *m)
 }
 
 /* a, then b */
+static void multiply(Matrix *out, const Matrix *a, const Matrix *b);
+/* b182: does the shadow pass's flattened pose equal the normal pose times the shear it builds (mdlUpdateDrawState's
+   identity: up row = -light.xz / light.y, 0.01)? phase 0 before its pose update (snapshot), 1 after it (plain update;
+   11 the look-at pose), 2 after the pose is restored, 3 a shadow at alpha 0 (pose only). Every 16th frame. If 1 holds,
+   the GE can draw the shadow from the body's bones with the shear as its world matrix. */
+int p4_shadow_probe = 0; /* b182-b185 diagnostic: 1 checks the shadow pose every 16th frame */
+/* b186: b185 on the PSP, every plain shadow pose (no look-at) was the body pose times the shear, to 1e-3. With
+   p4_shadow_shear the shadow pass (census FIXES in mdlUpdateDrawState) poses the skeleton once, for the body, and
+   draws the shadow from it: atomic models and world-space bones go through the shear (p4_shadow_shear_set). Look-at
+   poses keep the game's own way (b187: blend tracks no longer do). 0: as b185. */
+int p4_shadow_shear = 1;
+static Matrix shadow_shear_copy __attribute__((aligned(16)));
+static const Matrix *shadow_shear_m;
+static unsigned shadow_shear_draws;
+int p4_shadow_capsule = 1; /* b194: 0 original projected model, 1 projected capsule mask */
+static unsigned capsule_draws, capsule_segments, capsule_fallbacks, capsule_rigid;
+static unsigned capsule_alpha = 128;
+static void capsule_report(unsigned frames);
+static void capsule_begin(void);
+static void capsule_end(void);
+int p4_shadow_shear_on(void) { return p4_shadow_shear || p4_shadow_capsule; }
+/* b192: look-at models drawn from the body pose too (census FIXES). mdlUpdateHierarchyPose slerps the stored look-at
+   rotation toward its target by blend and keeps it; the game called it twice a tick (the shadow with the shear as
+   parent, then the body). The one body call takes 1 - (1 - blend)^2: two steps, so a head turns as fast; once turned,
+   the head points at the target without the shadow call's sheared one. 0: look-at shadows as b191. */
+int p4_shadow_lookat = 1;
+int p4_shadow_lookat_on(void) { return p4_shadow_lookat || p4_shadow_capsule; }
+void p4_shadow_shear_set(const void *m)
+{
+    if (m) {
+        memcpy(&shadow_shear_copy, m, sizeof shadow_shear_copy);
+        shadow_shear_m = &shadow_shear_copy;
+        capsule_begin();
+        shadow_shear_draws++;
+    } else {
+        if (shadow_shear_m) capsule_end();
+        shadow_shear_m = 0;
+    }
+}
+void p4_shadow_shear_set_color(const void *m, unsigned alpha)
+{
+    capsule_alpha = alpha;
+    p4_shadow_shear_set(m);
+}
+static Matrix *shadow_snap; /* heap, 8 KB: .bss must end below the data image */
+static int shadow_snap_n, shadow_snap_ok;
+static Matrix *shadow_pose, shadow_shear; /* b184: the shadow pose and its shear, checked against the restored pose */
+static unsigned shadow_post_checked, shadow_post_match, shadow_post_bad;
+static float shadow_post_worst;
+static unsigned shadow_calls[4], shadow_checked[3], shadow_match[3], shadow_logged;
+static float shadow_worst[3];
+static float matrix_diff(const Matrix *a, const Matrix *b)
+{
+    const float *x = &a->right.x, *y = &b->right.x;
+    float worst = 0;
+    for (int k = 0; k < 16; k++) {
+        if ((k & 3) == 3)
+            continue;
+        float d = fabsf(x[k] - y[k]) / (1 + fabsf(y[k]));
+        if (!(d <= worst))
+            worst = d == d ? d : 1e30f;
+    }
+    return worst;
+}
+void p4_shadow_check(void *hierarchy, const void *shear, int phase)
+{
+    const Hierarchy *h = hierarchy;
+    int p = phase == 11 ? 1 : phase;
+    if (p >= 0 && p < 4)
+        shadow_calls[p]++;
+    if (!p4_shadow_probe || !h || !h->matrices || (cache_frame & 15))
+        return;
+    int n = h->numNodes < 128 ? h->numNodes : 128;
+    if (!shadow_snap && !(shadow_snap = memalign(16, 128 * sizeof *shadow_snap)))
+        return;
+    if (p == 0) {
+        memcpy(shadow_snap, h->matrices, n * sizeof *shadow_snap);
+        shadow_snap_n = n, shadow_snap_ok = 1;
+        return;
+    }
+    if (p == 3 || !shadow_snap_ok || shadow_snap_n != n || !shear)
+        return;
+    if (!shadow_pose && !(shadow_pose = memalign(16, 128 * sizeof *shadow_pose)))
+        return;
+    if (p == 1) {
+        memcpy(shadow_pose, h->matrices, n * sizeof *shadow_pose);
+        shadow_shear = *(const Matrix *)shear;
+    } else if (p == 2) {
+        float post = 0;
+        int bad = 0;
+        for (int i = 0; i < n; i++) {
+            Matrix want;
+            multiply(&want, &h->matrices[i], &shadow_shear);
+            float d = matrix_diff(&shadow_pose[i], &want);
+            bad += !(d < 1e-3f);
+            if (d > post)
+                post = d;
+        }
+        shadow_post_checked++;
+        shadow_post_match += post < 1e-3f;
+        shadow_post_bad += bad;
+        if (post > shadow_post_worst)
+            shadow_post_worst = post;
+    }
+    float worst = 0;
+    int worst_bone = 0, bad = 0, parked = 0;
+    Matrix worst_want;
+    for (int i = 0; i < n; i++) {
+        Matrix want;
+        if (p == 1)
+            multiply(&want, &shadow_snap[i], (const Matrix *)shear);
+        else
+            want = shadow_snap[i];
+        float d = matrix_diff(&h->matrices[i], &want);
+        bad += !(d < 1e-3f);
+        parked += !(fabsf(shadow_snap[i].pos.x) < 1e6f && fabsf(shadow_snap[i].pos.y) < 1e6f && fabsf(shadow_snap[i].pos.z) < 1e6f);
+        if (d > worst)
+            worst = d, worst_bone = i, worst_want = want;
+    }
+    int k = p == 1 ? (phase == 11 ? 2 : 0) : 1; /* 0 plain shadow pose, 1 restored, 2 look-at shadow pose */
+    shadow_checked[k]++;
+    shadow_match[k] += worst < 1e-3f;
+    if (worst > shadow_worst[k])
+        shadow_worst[k] = worst;
+    if (worst >= 1e-3f && shadow_logged < 40) {
+        shadow_logged++;
+        /* b184: which bones differ, and how: the worst one's now / expected / snapshot (pos, then up x1000) */
+        const Matrix *a = &h->matrices[worst_bone], *w = &worst_want, *b = &shadow_snap[worst_bone];
+        p4_log("TRACE shadow check ph %d h %p n %d bad %d parked %d worst %d/1e6 bone %d now %d %d %d u %d %d %d want %d %d %d u %d %d %d snap %d %d %d\n",
+               phase, hierarchy, n, bad, parked, (int)(worst > 1e3f ? 1e9f : worst * 1e6f), worst_bone, (int)a->pos.x, (int)a->pos.y, (int)a->pos.z,
+               (int)(a->up.x * 1000), (int)(a->up.y * 1000), (int)(a->up.z * 1000), (int)w->pos.x, (int)w->pos.y, (int)w->pos.z, (int)(w->up.x * 1000),
+               (int)(w->up.y * 1000), (int)(w->up.z * 1000), (int)b->pos.x, (int)b->pos.y, (int)b->pos.z);
+    }
+    if (p == 2)
+        shadow_snap_ok = 0;
+}
+static void shadow_report(unsigned frames)
+{
+    capsule_report(frames);
+    p4_log("shadow skip %d: %u calls per %u frames; shear %d: %u shadows\n", p4_shadow_skip_on, shadow_skips, frames, p4_shadow_shear,
+           shadow_shear_draws), shadow_skips = 0, shadow_shear_draws = 0;
+    p4_log("shadow pose vs restored x shear: checked %u match %u bad bones %u worst %d/1e6\n", shadow_post_checked, shadow_post_match,
+           shadow_post_bad, (int)(shadow_post_worst > 1e3f ? 1e9f : shadow_post_worst * 1e6f));
+    shadow_post_checked = shadow_post_match = shadow_post_bad = 0, shadow_post_worst = 0;
+    p4_log("shadow probe %d per %u frames: calls before %u after %u restored %u invisible %u; checked/match/worst(1e-6) plain %u %u %d restored %u %u %d lookat %u %u %d\n",
+           p4_shadow_probe, frames, shadow_calls[0], shadow_calls[1], shadow_calls[2], shadow_calls[3], shadow_checked[0], shadow_match[0],
+           (int)(shadow_worst[0] > 1e3f ? 1e9f : shadow_worst[0] * 1e6f), shadow_checked[1], shadow_match[1],
+           (int)(shadow_worst[1] > 1e3f ? 1e9f : shadow_worst[1] * 1e6f), shadow_checked[2], shadow_match[2],
+           (int)(shadow_worst[2] > 1e3f ? 1e9f : shadow_worst[2] * 1e6f));
+    memset(shadow_calls, 0, sizeof shadow_calls), memset(shadow_checked, 0, sizeof shadow_checked), memset(shadow_match, 0, sizeof shadow_match);
+    memset(shadow_worst, 0, sizeof shadow_worst);
+}
 static void multiply(Matrix *out, const Matrix *a, const Matrix *b)
 {
     out->right = rotate(&a->right, b);
@@ -5846,12 +8477,88 @@ static const V3 *skin_vertices_body(const Geometry *g, const Skin *skin, const H
    go to the GE, which skins positions and normals and lights them (bind_ge_light; unlit meshes get the material
    colour through the same path with no light). A skeleton whose sphere may leave the guard band stays on the CPU. */
 int p4_ge_skin = 1; /* 0: every skinned atomic on the CPU, as b76 */
-typedef struct { int mesh, bones, vtype, indices; unsigned char palette[8]; unsigned char *v; unsigned short *idx; int alpha[2]; } SkinBatch;
-typedef struct { const Geometry *g; const V3 *verts; int vertices, lit, batches, nradius; unsigned sample, frame, bytes; SkinBatch *batch; float *radius; } SkinGeometry;
+typedef struct { int mesh, bones, vtype, indices, vertices, wreal, rigid, strip_count; unsigned char palette[8]; unsigned char *v; unsigned short *idx, *src, *strip; int alpha[2]; GeCall call[2]; float uvs[4]; } SkinBatch;
+typedef struct { const Geometry *g; const V3 *verts; int vertices, lit, batches, nradius, packed; unsigned sample, frame, bytes, used[8]; SkinBatch *batch; float *radius; unsigned short regroup[8]; float pack[4]; } SkinGeometry;
 enum { SKIN_GEOMETRIES = 64, SKIN_PALETTE = 8 };
 static SkinGeometry *skin_cache; /* heap: .bss is full */
 
+/* b205 P3P-shaped skin vertices (P3P's battle frame: s16 positions and u16 UVs on every 3D draw). Position: s16 over
+   the geometry's bind-pose box, pack = centre xyz and half extent s, the GE reading q / 32768; draw_skinned_ge folds
+   p = centre + s q / 32768 into each bone matrix it sends (rotation x s, translation + rotation . centre). The
+   skinned normal grows by s too: the GE divides its lighting dot products by the normal's length (PPSSPP's
+   software GE, from hardware probes), so a uniform s does not change the light. UV: u16 over the batch's range,
+   TEXSCALE/TEXOFFSET (batch uvs) mapping it back; the offset loses its whole part (skins bind GU_REPEAT), as a
+   float24 offset of 100.3 would move texels. 8 bones lit: 36 -> 28 bytes a vertex, unlit 32 -> 24. */
+int p4_skin_pack = 1; /* 0: float positions and UVs, as b204 */
+/* b207 p4_skin_rigid: a mesh's triangles whose corners all hang from one bone alone go to a batch of that one bone,
+   drawn with 1 weight instead of the whole palette (b206 Margaret/battle: ~1.1 weights used a vertex, ~6.2 blended,
+   45-64% of triangles rigid), when that bone has at least p4_skin_rigid of them in the mesh (each batch is a draw and
+   a bone upload). Opaque meshes only (skin_mesh_regroup), as the triangle order changes. 0 off; in the cache key. */
+int p4_skin_rigid = 0;
+/* b208 p4_skin_palette: at most this many bones a batch (1-8; the GE blends that many weights a vertex). A first
+   triangle with more bones than the cap still starts a batch of its own. In the cache key. */
+int p4_skin_palette = 8;
+typedef struct { int uv, colour, normal, position, stride; } SkinLayout;
+static SkinLayout skin_layout(int bones, int lit, int packed)
+{
+    SkinLayout l;
+    if (packed) { /* GE order u8 weights, u16 UV, 8888 colour, s8 normal, s16 position; each at its own size, stride x4 */
+        l.uv = (bones + 1) & ~1;
+        l.colour = (l.uv + 4 + 3) & ~3;
+        l.normal = l.colour + 4;
+        l.position = l.normal + (lit ? 4 : 0);
+        l.stride = (l.position + 6 + 3) & ~3;
+    } else {
+        l.uv = (bones + 3) & ~3;
+        l.colour = l.uv + 8;
+        l.normal = l.colour + 4;
+        l.position = l.normal + (lit ? 4 : 0);
+        l.stride = l.position + 12;
+    }
+    return l;
+}
+/* a batch vertex's bind position and UV as floats (pack 0: stored as floats) */
+static void skin_vertex_read(const unsigned char *in, const SkinLayout *l, const float *pack, const float *uvs, V3 *bind, float uv[2])
+{
+    if (!pack) {
+        memcpy(bind, in + l->position, 12);
+        memcpy(uv, in + l->uv, 8);
+        return;
+    }
+    short q[3];
+    unsigned short t[2];
+    memcpy(q, in + l->position, 6);
+    memcpy(t, in + l->uv, 4);
+    float k = pack[3] * (1.0f / 32768);
+    *bind = (V3){ pack[0] + q[0] * k, pack[1] + q[1] * k, pack[2] + q[2] * k };
+    uv[0] = t[0] * (1.0f / 32768) * uvs[0] + uvs[2];
+    uv[1] = t[1] * (1.0f / 32768) * uvs[1] + uvs[3];
+}
+static inline int clamp_round(float x, int lo, int hi)
+{
+    if (!(x > lo)) return lo; /* NaN too */
+    if (!(x < hi)) return hi;
+    return (int)lrintf(x);
+}
+
 /* the bones a vertex hangs from, with their weights (RenderWare leaves a single weight out of the stream) */
+static int vertex_bones(const Skin *skin, int nbones, int i, unsigned char bone[4], float weight[4]);
+static void mk_tri_bones(const Skin *skin, int nbones, const int *c, unsigned char *set)
+{
+    set[0] = 0;
+    for (int k = 0; k < 3; k++) {
+        unsigned char bone[4];
+        float weight[4];
+        int n = vertex_bones(skin, nbones, c[k], bone, weight);
+        for (int w = 0; w < n; w++) {
+            int have = 0;
+            for (int s = 1; s <= set[0] && !have; s++)
+                have = set[s] == bone[w];
+            if (!have && set[0] < 12)
+                set[++set[0]] = bone[w];
+        }
+    }
+}
 static int vertex_bones(const Skin *skin, int nbones, int i, unsigned char bone[4], float weight[4])
 {
     if (skin->maxWeights == 1) {
@@ -5868,10 +8575,13 @@ static int vertex_bones(const Skin *skin, int nbones, int i, unsigned char bone[
     return n;
 }
 
+/* b241 p4_skin_dummy: the word 0xFF000000 after each GE-skinned PRIM (PS2RC does this in its skinned sub-lists and
+   calls it "the dummy word the GE's skinning needs"; PSPSDK's sceGuDrawArray does not). A lead for the strip hang,
+   not an established cause: 0 by default. */
 static void skin_free(SkinGeometry *e)
 {
     for (int b = 0; b < e->batches; b++)
-        free(e->batch[b].v);
+        free(e->batch[b].v), free(e->batch[b].src), free(e->batch[b].strip);
     free(e->batch);
     free(e->radius);
     skin_ge_bytes -= e->bytes;
@@ -5879,6 +8589,293 @@ static void skin_free(SkinGeometry *e)
 }
 
 /* one batch: the triangles in tri (corner indices), their own vertex numbering */
+/* b209 p4_skin_strip: each GE batch's triangle list also as one triangle strip (greedy: from a triangle, on through the
+   neighbour across the last edge while its winding fits the strip's alternation), strips joined by zero-area
+   triangles (repeat the last index and the next first one, plus one more when the next must start on an even
+   index). The GE then reads ~1 index a triangle, not 3 (b206: indices ~2.9x the vertices); whether it also
+   transforms fewer vertices is the device's question. The strip is unrolled and compared with the list (same
+   triangles, same winding) before it is kept; idx stays the list for the CPU paths and checks. In the cache key. */
+int p4_skin_strip = 1; /* b243: on again. b227-b229 hung at the battle start (flicker, black scene); b241 put the strip address and count into the recorded CALL key (a rebuilt geometry replayed a record pointing at a freed strip) and b242 went through the boss battle with strips on. One pass: repeat before calling it closed. */
+int p4_strip_why = 0, p4_strip_check = 0;
+/* b211 meshkit (port/meshkit.h), one simplifier for both ways of reshaping a skinned geometry's triangles:
+   p4_skin_simplify N (percent of triangles kept, 0 off): online, at skin cache build, many collapses a pass.
+   p4_mesh_capture 1: every geometry built writes capture/<key>.bin (positions, dominant bone per vertex, each mesh's
+   triangles) next to the EBOOT; tools/meshkit_offline.c simplifies those on the PC (one collapse a pass) into
+   override/<key>.bin, triangle lists only. p4_mesh_override 1: a geometry with such a file takes its lists.
+   Keys: a hash of the bind positions, vertex and mesh counts. Files hold game data: they stay on the user's card.
+   Vertices are never made or moved (half-edge collapse), so UVs, normals and weights stay as they are. */
+int p4_skin_simplify = 0, p4_mesh_override = 0, p4_mesh_capture = 0;
+typedef struct { unsigned char *data; int size, cap; } MkBuf;
+static void mk_put(MkBuf *b, const void *p, int n)
+{
+    if (!b->data && b->cap < 0)
+        return;
+    if (b->size + n > b->cap) {
+        int cap = (b->size + n) * 2 + 256;
+        unsigned char *grown = realloc(b->data, cap);
+        if (!grown) {
+            free(b->data), b->data = 0, b->cap = -1;
+            return;
+        }
+        b->data = grown, b->cap = cap;
+    }
+    memcpy(b->data + b->size, p, n);
+    b->size += n;
+}
+static void mk_write_file(const char *dir, unsigned key, const MkBuf *b)
+{
+    char path[48];
+    if (!b->data)
+        return;
+    sceIoMkdir(dir, 0777);
+    snprintf(path, sizeof path, "%s/%08x.bin", dir, key);
+    SceUID fd = sceIoOpen(path, PSP_O_WRONLY | PSP_O_CREAT | PSP_O_TRUNC, 0777);
+    if (fd < 0)
+        return;
+    sceIoWrite(fd, b->data, b->size);
+    sceIoClose(fd);
+}
+/* override/<key>.bin: 'P4MO' 1 key meshes, then per mesh ntri and ntri x 3 u16; 0 if missing or not this geometry */
+static unsigned char *mk_read_override(unsigned key, int meshes, int *size_out)
+{
+    char path[48];
+    snprintf(path, sizeof path, "override/%08x.bin", key);
+    SceUID fd = sceIoOpen(path, PSP_O_RDONLY, 0);
+    if (fd < 0)
+        return 0;
+    int size = sceIoLseek32(fd, 0, PSP_SEEK_END);
+    sceIoLseek32(fd, 0, PSP_SEEK_SET);
+    unsigned char *d = size >= 16 ? malloc(size) : 0;
+    if (d && sceIoRead(fd, d, size) != size)
+        free(d), d = 0;
+    sceIoClose(fd);
+    unsigned *h = (unsigned *)d;
+    if (d && (h[0] != 0x4f4d3450u || h[1] != 1 || h[2] != key || (int)h[3] != meshes))
+        free(d), d = 0;
+    *size_out = d ? size : 0;
+    return d;
+}
+/* the bone set of one triangle (set[0] the count), as the batcher wants it */
+static void mk_tri_bones(const Skin *skin, int nbones, const int *c, unsigned char *set);
+typedef struct { unsigned key; int tri; } StripEdge;
+static int strip_edge_cmp(const void *a, const void *b)
+{
+    unsigned x = ((const StripEdge *)a)->key, y = ((const StripEdge *)b)->key;
+    return x < y ? -1 : x > y;
+}
+static unsigned strip_key(int a, int b) { return a < b ? (unsigned)a << 16 | b : (unsigned)b << 16 | a; }
+/* a triangle by its corners, rotated so the smallest comes first (keeps the winding) */
+static unsigned long long strip_canon(int a, int b, int c)
+{
+    if (b < a && b < c) { int t = a; a = b; b = c; c = t; }
+    else if (c < a && c < b) { int t = c; c = b; b = a; a = t; }
+    return (unsigned long long)a << 32 | (unsigned long long)b << 16 | (unsigned)c;
+}
+static int strip_ull_cmp(const void *a, const void *b)
+{
+    unsigned long long x = *(const unsigned long long *)a, y = *(const unsigned long long *)b;
+    return x < y ? -1 : x > y;
+}
+typedef struct { int *t, n, cap; } StripHeap; /* b213: min-heap of triangle numbers */
+static int strip_heap_push(StripHeap *h, int t)
+{
+    if (h->n == h->cap) {
+        int cap = h->cap * 2 + 64, *grown = realloc(h->t, cap * sizeof *grown);
+        if (!grown)
+            return 0;
+        h->t = grown, h->cap = cap;
+    }
+    int i = h->n++;
+    for (; i && h->t[(i - 1) / 2] > t; i = (i - 1) / 2)
+        h->t[i] = h->t[(i - 1) / 2];
+    h->t[i] = t;
+    return 1;
+}
+static void strip_heap_pop(StripHeap *h)
+{
+    int last = h->t[--h->n], i = 0;
+    for (;;) {
+        int c = 2 * i + 1;
+        if (c >= h->n)
+            break;
+        if (c + 1 < h->n && h->t[c + 1] < h->t[c])
+            c++;
+        if (h->t[c] >= last)
+            break;
+        h->t[i] = h->t[c], i = c;
+    }
+    if (h->n)
+        h->t[i] = last;
+}
+/* b213: triangle t is used: each unused neighbour has one unused neighbour fewer per shared edge */
+static int strip_take(int t, const StripEdge *edges, const int *range, const unsigned char *used, int *count, StripHeap *heap)
+{
+    for (int k = 0; k < 3; k++)
+        for (int e = range[t * 6 + k * 2]; e < range[t * 6 + k * 2 + 1]; e++) {
+            int u = edges[e].tri;
+            if (u == t || used[u])
+                continue;
+            if (--count[u] < 4 && !strip_heap_push(&heap[count[u]], u))
+                return 0;
+        }
+    return 1;
+}
+/* out: strip indices (room for 6 n + 6: b229, a strip of one triangle and its join take 6; 5 n + 4 overran the heap on
+   batches of lone triangles and crashed the PSP in free() as a battle loaded); returns their count, or 0 when it does not check out. slow: b209's linear
+   start search (the reference for p4_strip_check); else (b213) per-triangle counts of unused neighbours in buckets
+   0..3 give the same choice (fewest, then the lowest triangle number) without rescanning every triangle per strip:
+   b212 on the PSP, 10 characters' strips 6.7-7.9 s. */
+static int skin_stripify(const unsigned short *list, int corners, unsigned short *out, int slow)
+{
+    int n = corners / 3, m = 0, len = 0;
+    StripEdge *edges = malloc(n * 3 * sizeof *edges);
+    unsigned char *used = calloc(n ? n : 1, 1);
+    unsigned long long *want = malloc(n * sizeof *want), *got = malloc(n * sizeof *got);
+    if (!edges || !used || !want || !got) {
+        free(edges), free(used), free(want), free(got);
+        return 0;
+    }
+    for (int t = 0; t < n; t++) {
+        const unsigned short *c = list + t * 3;
+        if (c[0] == c[1] || c[1] == c[2] || c[0] == c[2]) { /* draws nothing: left out */
+            used[t] = 1;
+            continue;
+        }
+        want[m++] = strip_canon(c[0], c[1], c[2]);
+        for (int k = 0; k < 3; k++)
+            edges[(t * 3 + k)] = (StripEdge){ strip_key(c[k], c[(k + 1) % 3]), t };
+    }
+    int ne = 0;
+    for (int t = 0; t < n; t++)
+        if (!used[t])
+            for (int k = 0; k < 3; k++)
+                edges[ne++] = edges[t * 3 + k];
+    qsort(edges, ne, sizeof *edges, strip_edge_cmp);
+    /* b213: each triangle's edges as ranges of the sorted edges, its unused-neighbour count, buckets by count */
+    int *range = slow ? 0 : malloc((n ? n : 1) * 6 * sizeof *range), *count = slow ? 0 : malloc((n ? n : 1) * sizeof *count);
+    StripHeap heap[4] = { { 0 } };
+    if (!slow && (!range || !count))
+        slow = 1;
+    for (int t = 0; t < n && !slow; t++) {
+        count[t] = 0;
+        if (used[t])
+            continue;
+        for (int k = 0; k < 3; k++) {
+            const unsigned short *c = list + t * 3;
+            StripEdge key = { strip_key(c[k], c[(k + 1) % 3]), 0 }, *hit = bsearch(&key, edges, ne, sizeof *edges, strip_edge_cmp);
+            while (hit && hit > edges && hit[-1].key == key.key)
+                hit--;
+            range[t * 6 + k * 2] = hit ? hit - edges : 0;
+            for (; hit && hit < edges + ne && hit->key == key.key; hit++)
+                count[t] += hit->tri != t;
+            range[t * 6 + k * 2 + 1] = hit ? hit - edges : 0;
+        }
+        if (count[t] < 4 && !strip_heap_push(&heap[count[t]], t))
+            slow = 1;
+    }
+    for (;;) {
+        /* start where the fewest unused neighbours are (an edge of what is left), so strips do not cut it in two */
+        int start = -1, fewest = 4;
+        for (int b = 0; !slow && b < 4 && start < 0; b++) { /* stale entries (used, or moved to a lower bucket) go */
+            while (heap[b].n && (used[heap[b].t[0]] || count[heap[b].t[0]] != b))
+                strip_heap_pop(&heap[b]);
+            if (heap[b].n)
+                start = heap[b].t[0];
+        }
+        for (int t = 0; slow && t < n && fewest > 0; t++) {
+            if (used[t])
+                continue;
+            int free_n = 0;
+            for (int k = 0; k < 3; k++) {
+                const unsigned short *c = list + t * 3;
+                StripEdge key = { strip_key(c[k], c[(k + 1) % 3]), 0 }, *hit = bsearch(&key, edges, ne, sizeof *edges, strip_edge_cmp);
+                while (hit && hit > edges && hit[-1].key == key.key)
+                    hit--;
+                for (; hit && hit < edges + ne && hit->key == key.key; hit++)
+                    free_n += hit->tri != t && !used[hit->tri];
+            }
+            if (free_n < fewest)
+                fewest = free_n, start = t;
+        }
+        if (start < 0)
+            break;
+        const unsigned short *c = list + start * 3;
+        int v[3] = { c[0], c[1], c[2] }, best = 0;
+        for (int r = 0; r < 3 && !best; r++) { /* a rotation whose last edge leads on */
+            int p = c[(r + 1) % 3], q = c[(r + 2) % 3];
+            StripEdge key = { strip_key(p, q), 0 }, *hit = bsearch(&key, edges, ne, sizeof *edges, strip_edge_cmp);
+            while (hit && hit > edges && hit[-1].key == key.key)
+                hit--;
+            for (; hit && hit < edges + ne && hit->key == key.key && !best; hit++)
+                if (hit->tri != start && !used[hit->tri])
+                    best = 1, v[0] = c[r], v[1] = p, v[2] = q;
+        }
+        used[start] = 1;
+        if (!slow && !strip_take(start, edges, range, used, count, heap))
+            break; /* out of memory: the check below fails and the batch stays a list */
+        if (len) { /* join: zero-area triangles, the next strip starting on an even index */
+            out[len] = out[len - 1], len++;
+            out[len++] = v[0];
+            if (len & 1)
+                out[len++] = v[0];
+        }
+        int first = len;
+        out[len++] = v[0], out[len++] = v[1], out[len++] = v[2];
+        for (;;) {
+            int p = out[len - 2], q = out[len - 1], odd = (len - 2 - first) & 1, next = -1, r = 0;
+            StripEdge key = { strip_key(p, q), 0 }, *hit = bsearch(&key, edges, ne, sizeof *edges, strip_edge_cmp);
+            while (hit && hit > edges && hit[-1].key == key.key)
+                hit--;
+            for (; hit && hit < edges + ne && hit->key == key.key && next < 0; hit++) {
+                if (used[hit->tri])
+                    continue;
+                const unsigned short *u = list + hit->tri * 3;
+                int third = u[0] != p && u[0] != q ? u[0] : u[1] != p && u[1] != q ? u[1] : u[2];
+                /* triangle number len - 2 - first of the strip: even (p, q, r), odd (q, p, r) */
+                unsigned long long need = odd ? strip_canon(q, p, third) : strip_canon(p, q, third);
+                if (need == strip_canon(u[0], u[1], u[2]))
+                    next = hit->tri, r = third;
+            }
+            if (next < 0)
+                break;
+            used[next] = 1;
+            out[len++] = r;
+            if (!slow && !strip_take(next, edges, range, used, count, heap))
+                break;
+        }
+    }
+    /* unroll and compare */
+    int k = 0, ok = 1;
+    for (int i = 0; i + 2 < len && ok; i++) {
+        int a = out[i], b = out[i + 1], c = out[i + 2];
+        if (a == b || b == c || a == c)
+            continue;
+        if (k >= m)
+            ok = 0;
+        else
+            got[k++] = i & 1 ? strip_canon(b, a, c) : strip_canon(a, b, c);
+    }
+    if (ok && k == m) {
+        qsort(want, m, sizeof *want, strip_ull_cmp);
+        qsort(got, k, sizeof *got, strip_ull_cmp);
+        ok = !memcmp(want, got, m * sizeof *want);
+    } else
+        ok = 0;
+    free(edges), free(used), free(want), free(got), free(range), free(count);
+    for (int b = 0; b < 4; b++)
+        free(heap[b].t);
+    if (!ok)
+        strip_failed++;
+    return ok ? len : 0;
+}
+
+static const V3 *weld_verts;
+static int weld_cmp(const void *a, const void *b) /* by position bits, then index (stable: the first is the lowest) */
+{
+    int i = *(const int *)a, j = *(const int *)b, c = memcmp(&weld_verts[i], &weld_verts[j], sizeof *weld_verts);
+    return c ? c : i - j;
+}
+
 static int skin_batch(SkinGeometry *e, int mesh, const unsigned char *palette, int bones, const int *tri, int corners,
                       const Geometry *g, const Skin *skin, int nbones)
 {
@@ -5889,8 +8886,8 @@ static int skin_batch(SkinGeometry *e, int mesh, const unsigned char *palette, i
             mesh_stamp[tri[k]] = stamp;
             mesh_remap[tri[k]] = used++;
         }
-    int uv_at = (bones + 3) & ~3, colour_at = uv_at + 8, normal_at = colour_at + 4, position_at = normal_at + (e->lit ? 4 : 0);
-    int stride = position_at + 12, bytes = stride * used + corners * 2;
+    SkinLayout l = skin_layout(bones, e->lit, e->packed);
+    int stride = l.stride, bytes = stride * used + corners * 2;
     unsigned char *v = memalign(16, bytes);
     SkinBatch *grown = realloc(e->batch, (e->batches + 1) * sizeof *grown);
     if (!v || !grown) {
@@ -5905,12 +8902,33 @@ static int skin_batch(SkinGeometry *e, int mesh, const unsigned char *palette, i
     b->mesh = mesh;
     b->bones = bones;
     memcpy(b->palette, palette, bones);
-    b->vtype = GU_WEIGHTS(bones) | GU_WEIGHT_8BIT | GU_TEXTURE_32BITF | GU_COLOR_8888 | (e->lit ? GU_NORMAL_8BIT : 0) | GU_VERTEX_32BITF | GU_INDEX_16BIT | GU_TRANSFORM_3D;
+    b->vtype = GU_WEIGHTS(bones) | GU_WEIGHT_8BIT | (e->packed ? GU_TEXTURE_16BIT | GU_VERTEX_16BIT : GU_TEXTURE_32BITF | GU_VERTEX_32BITF) | GU_COLOR_8888 |
+               (e->lit ? GU_NORMAL_8BIT : 0) | GU_INDEX_16BIT | GU_TRANSFORM_3D;
     b->v = v;
     b->idx = (unsigned short *)(v + stride * used);
+    b->src = malloc(used * 2); /* b178: the geometry vertex of each batch vertex, for p4_skin_diff */
     b->indices = corners;
+    b->vertices = used;
     const V3 *verts = g->morphTarget->verts, *normals = g->morphTarget->normals;
     float (*uv)[2] = g->numTexCoordSets ? g->texCoords[0] : 0;
+    float lo[2] = { 0, 0 }, range[2] = { 0, 0 }; /* packed: the batch's UV box */
+    if (e->packed && uv) {
+        float hi[2] = { uv[tri[0]][0], uv[tri[0]][1] };
+        lo[0] = hi[0], lo[1] = hi[1];
+        for (int k = 1; k < corners; k++)
+            for (int c = 0; c < 2; c++) {
+                float x = uv[tri[k]][c];
+                if (x < lo[c]) lo[c] = x;
+                if (x > hi[c]) hi[c] = x;
+            }
+        for (int c = 0; c < 2; c++) {
+            range[c] = hi[c] - lo[c];
+            if (!(range[c] < 1e6f) || !(lo[c] > -1e6f)) /* not finite: every vertex at 0 */
+                lo[c] = range[c] = 0;
+            b->uvs[c] = range[c] * (32768.0f / 65535);
+            b->uvs[2 + c] = lo[c] - floorf(lo[c]);
+        }
+    }
     b->alpha[0] = 255, b->alpha[1] = 0; /* the vertex colours' alpha; the material's comes on top when drawn */
     stamp = ++mesh_generation;
     for (int k = 0; k < corners; k++) {
@@ -5919,6 +8937,8 @@ static int skin_batch(SkinGeometry *e, int mesh, const unsigned char *palette, i
         if (mesh_stamp[j] == stamp)
             continue;
         mesh_stamp[j] = stamp;
+        if (b->src)
+            b->src[mesh_remap[j]] = j;
         unsigned char *out = v + stride * mesh_remap[j];
         memset(out, 0, stride);
         unsigned char bone[4];
@@ -5937,35 +8957,260 @@ static int skin_batch(SkinGeometry *e, int mesh, const unsigned char *palette, i
                 largest = s;
         }
         out[largest] += 128 - sum; /* exactly 128: the GE sums weight x bone as given */
-        float *f = (float *)(out + uv_at);
-        f[0] = uv ? uv[j][0] : 0;
-        f[1] = uv ? uv[j][1] : 0;
+        for (int s = 0; s < bones; s++)
+            b->wreal += out[s] != 0;
+        if (e->packed) {
+            unsigned short t[2];
+            for (int c = 0; c < 2; c++)
+                t[c] = uv && range[c] > 0 ? clamp_round((uv[j][c] - lo[c]) / range[c] * 65535, 0, 65535) : 0;
+            memcpy(out + l.uv, t, 4);
+            float k = 32768 / e->pack[3];
+            short q[3] = { clamp_round((verts[j].x - e->pack[0]) * k, -32768, 32767), clamp_round((verts[j].y - e->pack[1]) * k, -32768, 32767),
+                           clamp_round((verts[j].z - e->pack[2]) * k, -32768, 32767) };
+            memcpy(out + l.position, q, 6);
+        } else {
+            float f[2] = { uv ? uv[j][0] : 0, uv ? uv[j][1] : 0 };
+            memcpy(out + l.uv, f, 8);
+            memcpy(out + l.position, &verts[j], 12);
+        }
         unsigned base = g->preLit ? double_colour(g->preLit[j]) : e->lit ? 0xff000000 : 0xffffffff;
-        memcpy(out + colour_at, &base, 4);
+        memcpy(out + l.colour, &base, 4);
         if ((int)(base >> 24) < b->alpha[0]) b->alpha[0] = base >> 24;
         if ((int)(base >> 24) > b->alpha[1]) b->alpha[1] = base >> 24;
         if (e->lit) {
             const V3 *nv = &normals[j];
             float len = sqrtf(nv->x * nv->x + nv->y * nv->y + nv->z * nv->z), inv = len > 0 ? 1.0f / len : 0;
-            out[normal_at] = (unsigned char)normal_s8(nv->x * inv);
-            out[normal_at + 1] = (unsigned char)normal_s8(nv->y * inv);
-            out[normal_at + 2] = (unsigned char)normal_s8(nv->z * inv);
+            out[l.normal] = (unsigned char)normal_s8(nv->x * inv);
+            out[l.normal + 1] = (unsigned char)normal_s8(nv->y * inv);
+            out[l.normal + 2] = (unsigned char)normal_s8(nv->z * inv);
         }
-        memcpy(out + position_at, &verts[j], 12);
     }
-    sceKernelDcacheWritebackRange(v, bytes);
+    for (int t = 0; t + 2 < corners; t += 3) { /* b206: rigid triangles, every corner on one and the same bone */
+        int slot = -1, rigid = 1;
+        for (int c = 0; c < 3 && rigid; c++) {
+            const unsigned char *w = v + stride * b->idx[t + c];
+            int only = -1;
+            for (int k = 0; k < bones; k++)
+                if (w[k])
+                    only = only < 0 ? k : -2;
+            rigid = only >= 0 && (slot < 0 || only == slot);
+            slot = only;
+        }
+        b->rigid += rigid;
+    }
+    if (p4_skin_strip && corners >= 6) {
+        unsigned short *strip = malloc((6 * (corners / 3) + 6) * sizeof *strip);
+        unsigned t0 = sceKernelGetSystemTimeLow();
+        int n = strip ? skin_stripify(b->idx, corners, strip, 0) : 0;
+        strip_us += sceKernelGetSystemTimeLow() - t0;
+        static unsigned overlong_logged;
+        if (n > 5 * (corners / 3) + 4 && overlong_logged++ < 4) /* b229: what overran the old 5 n + 4 buffer */
+            p4_log("TRACE skin strip longer than 5n+4: %d indices for %d triangles (mesh %d)\n", n, corners / 3, mesh);
+        if (n && p4_strip_check) { /* b213: the linear search must give the very same strip */
+            unsigned short *ref = malloc((6 * (corners / 3) + 6) * sizeof *ref);
+            if (ref) {
+                int rn = skin_stripify(b->idx, corners, ref, 1);
+                strip_checks++;
+                strip_check_diffs += rn != n || memcmp(ref, strip, n * sizeof *ref);
+                free(ref);
+            }
+        }
+        if (n && n < corners) {
+            b->strip = strip, b->strip_count = n;
+            sceKernelDcacheWritebackRange(b->strip, n * sizeof *b->strip);
+            strip_batches++, strip_list_idx += corners, strip_idx += n;
+            bytes += n * sizeof *b->strip;
+        } else
+            free(strip);
+    }
+    sceKernelDcacheWritebackRange(v, bytes - b->strip_count * (int)sizeof *b->strip);
     e->bytes += bytes;
     skin_ge_bytes += bytes;
     return 1;
 }
 
+/* b199 PSP-shaped skin batches. p4_skin_sticky: a batch puts a bone the GE already holds (from the batch before)
+   back in the same slot, so draw_skinned_ge does not send its matrix again. p4_skin_regroup: an opaque mesh's
+   triangles are batched first-fit by bone set (b193 counts: battle body 152 -> 99 batches, dialogue 228 -> 157);
+   a mesh that may blend keeps the PS2 triangle order. 1: no texture or a texture with no translucent texel, opaque
+   vertex and material alpha when built; 2: every mesh (to compare). Both act when a geometry's cache is built. */
+int p4_skin_sticky = 1, p4_skin_regroup = 1;
+static unsigned skin_regrouped;
+static int raster_opaque(const Raster *r)
+{
+    if (!r || !r->originalPixels)
+        return 1;
+    const SwizzleHead *h = swizzle_head(r->originalPixels);
+    if (h)
+        return h->alpha_min >= 255;
+    unsigned char used[32];
+    unsigned max;
+    raster_used_entries(r, used);
+    return raster_alpha_min(r, used, &max) >= 255;
+}
+static int skin_mesh_regroup(const Mesh *mesh, const Geometry *g, const int *corner, int ntri)
+{
+    if (p4_skin_regroup >= 2)
+        return 1;
+    if (!p4_skin_regroup || ntri < 2 || mesh->material->colour >> 24 != 255)
+        return 0;
+    void **texture = mesh->material->texture;
+    if (!raster_opaque(texture ? (const Raster *)*texture : 0))
+        return 0;
+    for (int k = 0; k < ntri * 3 && g->preLit; k++)
+        if (double_colour(g->preLit[corner[k]]) >> 24 != 255)
+            return 0;
+    return 1;
+}
+
 /* the cached GE form of a skinned geometry, built on first use; 0: it cannot go to the GE */
+/* b193 p4_batch_stats: what other batchings would give, counted once per built geometry (regroup[]) and summed per
+   draw and pass (body / shadow) in p4_batch_stats_report. First-fit: a batch takes any later triangle of its group
+   whose bones still fit, not only the next one. Groups: each mesh; meshes sharing a texture (the shadow pass draws
+   one colour); all meshes. Alpha order and blend/depth state are not told apart, so these are lower bounds. */
+int p4_batch_stats = 1;
+enum { BS_DRAWS, BS_BATCHES, BS_MESHES, BS_FF_MESH, BS_FF_TEX, BS_FF_ALL, BS_PAL, BS_PAL_MESH, BS_PAL_TEX, BS_PAL_ALL, BS_SENT, BS_N };
+static unsigned *batch_stats; /* [2][BS_N], heap: .bss is full */
+
+static void first_fit(const unsigned char (*set)[13], const int *group, int n, unsigned char *done, unsigned short *batches, unsigned short *palettes)
+{
+    memset(done, 0, n);
+    *batches = *palettes = 0;
+    for (int start = 0; start < n; start++) {
+        if (done[start])
+            continue;
+        unsigned char palette[SKIN_PALETTE];
+        int np = 0;
+        for (int t = start; t < n; t++) {
+            if (done[t] || group[t] != group[start])
+                continue;
+            unsigned char extra[12];
+            int add = 0;
+            for (int k = 1; k <= set[t][0]; k++) {
+                int have = 0;
+                for (int s = 0; s < np && !have; s++)
+                    have = palette[s] == set[t][k];
+                if (!have)
+                    extra[add++] = set[t][k];
+            }
+            if (np + add > SKIN_PALETTE)
+                continue;
+            memcpy(palette + np, extra, add);
+            np += add;
+            done[t] = 1;
+        }
+        ++*batches;
+        *palettes += np;
+    }
+}
+
+static void batch_regroup(SkinGeometry *e, const Geometry *g, const Skin *skin, int nbones)
+{
+    MeshHeader *header = g->mesh;
+    Mesh *mesh = (Mesh *)((char *)header + sizeof(MeshHeader) + header->firstMeshOffset);
+    int strip = (header->flags & MESH_PRIM_MASK) == MESH_TRISTRIP, n = 0, meshes = 0;
+    for (int m = 0; m < header->numMeshes; m++)
+        n += strip ? (mesh[m].numIndices > 2 ? mesh[m].numIndices - 2 : 0) : mesh[m].numIndices / 3;
+    unsigned char (*set)[13] = malloc((n ? n : 1) * sizeof *set), *done = malloc(n ? n : 1);
+    int *group = malloc(3 * (n ? n : 1) * sizeof *group);
+    if (!set || !done || !group)
+        goto out;
+    n = 0;
+    for (int m = 0; m < header->numMeshes; m++) {
+        const unsigned short *idx = mesh[m].indices;
+        int triangles = strip ? mesh[m].numIndices - 2 : mesh[m].numIndices / 3, used = 0;
+        for (int t = 0; t < triangles; t++) {
+            int c[3] = { strip ? idx[t] : idx[t * 3], strip ? idx[t + 1] : idx[t * 3 + 1], strip ? idx[t + 2] : idx[t * 3 + 2] };
+            if (strip && (c[0] == c[1] || c[1] == c[2] || c[0] == c[2]))
+                continue;
+            set[n][0] = 0;
+            for (int k = 0; k < 3; k++) {
+                unsigned char bone[4];
+                float weight[4];
+                int nb = vertex_bones(skin, nbones, c[k], bone, weight);
+                for (int w = 0; w < nb; w++) {
+                    int have = 0;
+                    for (int s = 1; s <= set[n][0] && !have; s++)
+                        have = set[n][s] == bone[w];
+                    if (!have)
+                        set[n][++set[n][0]] = bone[w];
+                }
+            }
+            group[n++] = m;
+            used = 1;
+        }
+        meshes += used;
+    }
+    /* group ids per variant: mesh (group), first mesh with the same texture (by_tex), one group (all) */
+    int *by_tex = group + n, *all = group + 2 * n;
+    for (int t = 0; t < n; t++) {
+        int gm = group[t], tex = gm;
+        for (int o = 0; o < gm; o++)
+            if (mesh[o].material->texture == mesh[gm].material->texture) {
+                tex = o;
+                break;
+            }
+        by_tex[t] = tex;
+        all[t] = 0;
+    }
+    e->regroup[0] = meshes;
+    first_fit(set, group, n, done, &e->regroup[1], &e->regroup[5]);
+    first_fit(set, by_tex, n, done, &e->regroup[2], &e->regroup[6]);
+    first_fit(set, all, n, done, &e->regroup[3], &e->regroup[7]);
+    e->regroup[4] = 0;
+    for (int b = 0; b < e->batches; b++)
+        e->regroup[4] += e->batch[b].bones;
+out:
+    free(set), free(done), free(group);
+}
+
+static void batch_stats_add(const SkinGeometry *e, int shadow, unsigned sent)
+{
+    if (!batch_stats && !(batch_stats = calloc(2 * BS_N, sizeof *batch_stats)))
+        return;
+    unsigned *s = batch_stats + (shadow ? BS_N : 0);
+    s[BS_DRAWS]++;
+    s[BS_BATCHES] += e->batches;
+    s[BS_MESHES] += e->regroup[0];
+    s[BS_FF_MESH] += e->regroup[1];
+    s[BS_FF_TEX] += e->regroup[2];
+    s[BS_FF_ALL] += e->regroup[3];
+    s[BS_PAL] += e->regroup[4];
+    s[BS_PAL_MESH] += e->regroup[5];
+    s[BS_PAL_TEX] += e->regroup[6];
+    s[BS_PAL_ALL] += e->regroup[7];
+    s[BS_SENT] += sent;
+}
+
+void p4_batch_stats_report(void)
+{
+    p4_log("skin batches sticky %d regroup %d regrouped batches built %u\n", p4_skin_sticky, p4_skin_regroup, skin_regrouped);
+    skin_regrouped = 0;
+    if (!p4_batch_stats || !batch_stats)
+        return;
+    for (int p = 0; p < 2; p++) {
+        unsigned *s = batch_stats + p * BS_N;
+        p4_log("batch stats %s per 256 frames: draws %u batches %u meshes %u first-fit mesh %u texture %u all %u\n", p ? "shadow" : "body",
+               s[BS_DRAWS], s[BS_BATCHES], s[BS_MESHES], s[BS_FF_MESH], s[BS_FF_TEX], s[BS_FF_ALL]);
+        p4_log("batch stats %s palette bones now %u mesh %u texture %u all %u; bones sent %u\n", p ? "shadow" : "body", s[BS_PAL],
+               s[BS_PAL_MESH], s[BS_PAL_TEX], s[BS_PAL_ALL], s[BS_SENT]); /* one line ran past p4_log's buffer */
+    }
+    memset(batch_stats, 0, 2 * BS_N * sizeof *batch_stats);
+}
+
+/* b245 p4_skin_lod_depth D (clip w, 0 off), p4_skin_lod_keep K (percent of triangles): a skinned character whose root
+   was farther than D in the last frame is drawn from a second cache entry simplified to K% (meshkit, as
+   p4_skin_simplify, built once when it first goes far: 0.2-0.5 s for a party). It comes back to the full mesh below
+   0.9 D, so it does not flip at the edge. The user (2026-11-14): far characters and scenery may lose detail the PSP
+   screen does not show. In the dialogue the party stands at 650-1300; b211 found 60% visibly damaged up close. */
+static int skin_simplify_now; /* the percent this skin_geometry call builds and keys with */
 static SkinGeometry *skin_geometry(const Geometry *g, const Skin *skin, int nbones, int lit)
 {
     if (!skin_cache && !(skin_cache = calloc(SKIN_GEOMETRIES, sizeof *skin_cache)))
         return 0;
     const V3 *verts = g->morphTarget->verts;
     unsigned sample = hash_sample(2166136261u, verts, g->numVertices, sizeof *verts);
+    sample ^= (unsigned)(p4_skin_sticky | p4_skin_regroup << 1 | (p4_skin_pack != 0) << 3 | (unsigned)p4_skin_rigid << 4 | (unsigned)p4_skin_palette << 12 | (unsigned)p4_skin_strip << 16 | (unsigned)skin_simplify_now << 18 | (p4_mesh_override != 0) << 25) * 0x9e3779b1u; /* b199: a switch poke builds the new shape */
     SkinGeometry *spare = 0;
     for (int i = 0; i < SKIN_GEOMETRIES; i++) {
         SkinGeometry *e = &skin_cache[i];
@@ -5978,6 +9223,11 @@ static SkinGeometry *skin_geometry(const Geometry *g, const Skin *skin, int nbon
     }
     if (!spare || g->numVertices > MAX_GUARDED || !mesh_scratch(g->numVertices))
         return 0;
+    /* b241: with the pipeline the GE may still be drawing the previous frame, which read this entry's buffers */
+    if (p4_skin_free_wait && spare->g && cache_frame - spare->frame <= 1) {
+        pipe_texture_wait();
+        skin_free_waits++;
+    }
     skin_free(spare);
     SkinGeometry *e = spare;
     e->g = g;
@@ -5987,6 +9237,26 @@ static SkinGeometry *skin_geometry(const Geometry *g, const Skin *skin, int nbon
     e->sample = sample;
     e->frame = cache_frame;
     skin_ge_builds++;
+    unsigned build_t0 = sceKernelGetSystemTimeLow(); /* b212: what a build costs (a hitch when a character appears) */
+    if (p4_skin_pack && g->numVertices > 0) { /* the bind-pose box for s16 positions; not finite: floats */
+        float lo[3], hi[3];
+        memcpy(lo, &verts[0], 12), memcpy(hi, &verts[0], 12);
+        for (int j = 1; j < g->numVertices; j++) {
+            const float *p = &verts[j].x;
+            for (int c = 0; c < 3; c++) {
+                if (p[c] < lo[c]) lo[c] = p[c];
+                if (p[c] > hi[c]) hi[c] = p[c];
+            }
+        }
+        float half = 0;
+        for (int c = 0; c < 3; c++) {
+            e->pack[c] = (lo[c] + hi[c]) * 0.5f;
+            if ((hi[c] - lo[c]) * 0.5f > half)
+                half = (hi[c] - lo[c]) * 0.5f;
+        }
+        e->pack[3] = half > 0 ? half : 1;
+        e->packed = half < 1e6f && lo[0] > -1e6f && lo[1] > -1e6f && lo[2] > -1e6f;
+    }
     /* b151: vertices whose bones fall outside the hierarchy (index >= nbones) lose those weights in vertex_bones; with
        none left a GE batch gives the whole weight to palette slot 0 and the vertex flies to that bone (a battle: a long
        line from one party member, in some poses only). Logged once per geometry. */
@@ -6017,8 +9287,11 @@ static SkinGeometry *skin_geometry(const Geometry *g, const Skin *skin, int nbon
         float weight[4];
         int n = vertex_bones(skin, nbones, j, bone, weight);
         for (int w = 0; w < n; w++) {
+            e->used[bone[w] >> 5] |= 1u << (bone[w] & 31); /* b208 bone census */
             V3 local = transform(&verts[j], &skin->skinToBone[bone[w]]);
             float d = sqrtf(local.x * local.x + local.y * local.y + local.z * local.z);
+            if (!(d <= 1e30f))
+                d = INFINITY; /* b180: NaN was skipped by the compare below and left radius 0, which skips the guard test */
             if (d > e->radius[bone[w]])
                 e->radius[bone[w]] = d;
         }
@@ -6026,17 +9299,67 @@ static SkinGeometry *skin_geometry(const Geometry *g, const Skin *skin, int nbon
     MeshHeader *header = g->mesh;
     Mesh *mesh = (Mesh *)((char *)header + sizeof(MeshHeader) + header->firstMeshOffset);
     int strip = (header->flags & MESH_PRIM_MASK) == MESH_TRISTRIP, ok = 1;
+    /* b199: the GE bone slots as the batches built so far leave them (draw_skinned_ge keeps a slot whose bone is
+       already there); a new batch puts a bone it shares with them back in the same slot (p4_skin_sticky) */
+    unsigned char held[SKIN_PALETTE];
+    memset(held, 0xff, sizeof held);
+    int *weld = 0; /* b210: each vertex -> the first vertex at the same position */
+    if (p4_skin_strip && p4_strip_why && g->numVertices > 0 && g->numVertices <= 65535 && (weld = malloc(g->numVertices * sizeof *weld))) {
+        int *order = malloc(g->numVertices * sizeof *order);
+        if (order) {
+            for (int j = 0; j < g->numVertices; j++)
+                order[j] = j;
+            weld_verts = verts;
+            qsort(order, g->numVertices, sizeof *order, weld_cmp);
+            for (int j = 0; j < g->numVertices; j++)
+                weld[order[j]] = j && !memcmp(&verts[order[j]], &verts[order[j - 1]], sizeof *verts) ? weld[order[j - 1]] : order[j];
+            free(order);
+        } else
+            free(weld), weld = 0;
+    }
+    /* b211 meshkit: the geometry's key, dominant bones, an override file, a capture */
+    unsigned mk_key_g = hash_sample(2166136261u, verts, g->numVertices, sizeof *verts) ^ (unsigned)g->numVertices * 0x9e3779b1u ^ (unsigned)header->numMeshes;
+    int reshape = (skin_simplify_now > 0 || p4_mesh_override || p4_mesh_capture) && g->numVertices > 0 && g->numVertices <= 65535;
+    unsigned char *mk_group = reshape ? malloc(g->numVertices) : 0, *mk_over = 0, *mk_next = 0;
+    int mk_over_size = 0;
+    MkBuf mk_cap = { 0, 0, 0 };
+    if (mk_group) {
+        for (int j = 0; j < g->numVertices; j++) {
+            unsigned char bone[4];
+            float weight[4];
+            int n = vertex_bones(skin, nbones, j, bone, weight), best = 0;
+            for (int w = 1; w < n; w++)
+                if (weight[w] > weight[best])
+                    best = w;
+            mk_group[j] = n ? bone[best] : 0xff;
+        }
+        if (p4_mesh_override && (mk_over = mk_read_override(mk_key_g, header->numMeshes, &mk_over_size)))
+            mk_next = mk_over + 16, mk_override_hits++;
+        if (p4_mesh_capture) {
+            unsigned head[5] = { 0x4b4d3450u, 1, mk_key_g, (unsigned)g->numVertices, (unsigned)header->numMeshes }; /* 'P4MK' */
+            mk_put(&mk_cap, head, sizeof head);
+            mk_put(&mk_cap, verts, g->numVertices * sizeof *verts);
+            mk_put(&mk_cap, mk_group, g->numVertices);
+        }
+    } else
+        reshape = 0;
     for (int m = 0; m < header->numMeshes && ok; m++) {
         const unsigned short *idx = mesh[m].indices;
         int triangles = strip ? mesh[m].numIndices - 2 : mesh[m].numIndices / 3;
-        int *tri = malloc((triangles > 0 ? triangles : 1) * 3 * sizeof *tri), corners = 0, bones = 0;
+        if (triangles < 0)
+            triangles = 0;
+        int cap = triangles > 0 ? triangles : 1, corners = 0, bones = 0, ntri = 0;
+        int *tri = malloc(cap * 3 * sizeof *tri), *corner = malloc(cap * 3 * sizeof *corner);
+        unsigned char (*set)[13] = malloc(cap * sizeof *set), *done = malloc(cap);
         unsigned char palette[SKIN_PALETTE];
-        if (!tri) {
+        if (!tri || !corner || !set || !done) {
+            free(tri), free(corner), free(set), free(done);
             ok = 0;
             break;
         }
-        for (int t = 0; t < triangles && ok; t++) {
-            int c[3];
+        /* the mesh's triangles (strips unrolled, degenerate ones left out) and the bones of each */
+        for (int t = 0; t < triangles; t++) {
+            int *c = corner + ntri * 3;
             if (strip) { /* odd strip triangles are wound the other way */
                 c[0] = idx[t + (t & 1)]; c[1] = idx[t + 1 - (t & 1)]; c[2] = idx[t + 2];
                 if (c[0] == c[1] || c[1] == c[2] || c[0] == c[2])
@@ -6044,70 +9367,382 @@ static SkinGeometry *skin_geometry(const Geometry *g, const Skin *skin, int nbon
             } else {
                 c[0] = idx[t * 3]; c[1] = idx[t * 3 + 1]; c[2] = idx[t * 3 + 2];
             }
-            unsigned char need[12];
-            int needed = 0;
+            set[ntri][0] = 0;
             for (int k = 0; k < 3; k++) {
                 unsigned char bone[4];
                 float weight[4];
                 int n = vertex_bones(skin, nbones, c[k], bone, weight);
                 for (int w = 0; w < n; w++) {
                     int have = 0;
-                    for (int s = 0; s < bones && !have; s++)
-                        have = palette[s] == bone[w];
-                    for (int s = 0; s < needed && !have; s++)
-                        have = need[s] == bone[w];
+                    for (int s = 1; s <= set[ntri][0] && !have; s++)
+                        have = set[ntri][s] == bone[w];
                     if (!have)
-                        need[needed++] = bone[w];
+                        set[ntri][++set[ntri][0]] = bone[w];
                 }
             }
-            if (bones + needed > SKIN_PALETTE) { /* this batch is full: draw it, start the next */
-                if (corners && !skin_batch(e, m, palette, bones, tri, corners, g, skin, nbones))
-                    ok = 0;
-                corners = bones = 0;
-                needed = 0;
-                for (int k = 0; k < 3; k++) {
-                    unsigned char bone[4];
-                    float weight[4];
-                    int n = vertex_bones(skin, nbones, c[k], bone, weight);
-                    for (int w = 0; w < n; w++) {
-                        int have = 0;
-                        for (int s = 0; s < needed && !have; s++)
-                            have = need[s] == bone[w];
-                        if (!have)
-                            need[needed++] = bone[w];
-                    }
-                }
-                if (needed > SKIN_PALETTE) /* one triangle with more bones than the GE has: the CPU keeps it */
-                    ok = 0;
-            }
-            for (int s = 0; s < needed && ok; s++)
-                palette[bones++] = need[s];
-            tri[corners++] = c[0];
-            tri[corners++] = c[1];
-            tri[corners++] = c[2];
+            if (set[ntri][0] > SKIN_PALETTE) /* one triangle with more bones than the GE has: the CPU keeps it */
+                ok = 0;
+            ntri++;
         }
-        if (ok && corners && !skin_batch(e, m, palette, bones > 0 ? bones : 1, tri, corners, g, skin, nbones))
-            ok = 0;
-        free(tri);
+        if (reshape && ok) { /* b211: capture, then the override's or the simplified triangles */
+            unsigned short *list = malloc((ntri ? ntri : 1) * 3 * sizeof *list);
+            int n = ntri;
+            for (int k = 0; list && k < ntri * 3; k++)
+                list[k] = corner[k];
+            if (list && mk_cap.cap >= 0 && p4_mesh_capture) {
+                unsigned count = ntri;
+                mk_put(&mk_cap, &count, 4);
+                mk_put(&mk_cap, list, ntri * 3 * sizeof *list);
+            }
+            if (list && mk_next) {
+                unsigned count = 0, fits;
+                if (mk_next + 4 <= mk_over + mk_over_size)
+                    memcpy(&count, mk_next, 4);
+                fits = count <= (unsigned)ntri && mk_next + 4 + count * 6 <= mk_over + mk_over_size;
+                for (unsigned k = 0; fits && k < count * 3; k++) {
+                    unsigned short x;
+                    memcpy(&x, mk_next + 4 + k * 2, 2);
+                    fits = x < g->numVertices;
+                }
+                if (fits) {
+                    memcpy(list, mk_next + 4, count * 6);
+                    n = count, mk_override_meshes++;
+                    mk_next += 4 + count * 6;
+                } else
+                    mk_next = 0; /* not this geometry's file after all: the rest of it is ignored */
+            } else if (list && skin_simplify_now > 0 && skin_simplify_now < 100 && ntri >= 8) {
+                unsigned t0 = sceKernelGetSystemTimeLow();
+                n = mk_simplify((const float (*)[3])verts, g->numVertices, 0, mk_group, list, ntri, ntri * skin_simplify_now / 100, INFINITY, 1 << 30, 0);
+                mk_us += sceKernelGetSystemTimeLow() - t0;
+                mk_meshes++, mk_tri_in += ntri, mk_tri_out += n;
+            }
+            if (list && n != ntri) {
+                for (int k = 0; k < n * 3; k++)
+                    corner[k] = list[k];
+                ntri = n;
+                for (int t = 0; t < ntri; t++) {
+                    mk_tri_bones(skin, nbones, corner + t * 3, set[t]);
+                    if (set[t][0] > SKIN_PALETTE)
+                        ok = 0;
+                }
+            }
+            free(list);
+        }
+        int regroup = ok && skin_mesh_regroup(&mesh[m], g, corner, ntri);
+        if (ok && p4_skin_strip && p4_strip_why && ntri >= 2 && weld) { /* b210 strip diagnosis (b213: on request) */
+            unsigned short *list = malloc(ntri * 3 * sizeof *list), *out = malloc((6 * ntri + 6) * sizeof *out);
+            if (list && out) {
+                if (strip)
+                    sd_src_idx += mesh[m].numIndices, sd_src_tri += ntri;
+                for (int k = 0; k < ntri * 3; k++)
+                    list[k] = corner[k];
+                sd_whole_idx += skin_stripify(list, ntri * 3, out, 0);
+                for (int k = 0; k < ntri * 3; k++)
+                    list[k] = weld[corner[k]];
+                sd_weld_idx += skin_stripify(list, ntri * 3, out, 0);
+                sd_tri += ntri;
+            }
+            free(list), free(out);
+        }
+        memset(done, 0, cap);
+        if (regroup && p4_skin_rigid > 0) { /* b207: one-bone batches first */
+            unsigned short count[256] = { 0 };
+            for (int t = 0; t < ntri; t++)
+                if (set[t][0] == 1)
+                    count[set[t][1]]++;
+            for (int t = 0; t < ntri && ok; t++) {
+                if (done[t] || set[t][0] != 1 || count[set[t][1]] < p4_skin_rigid)
+                    continue;
+                int bone = set[t][1];
+                count[bone] = 0;
+                corners = 0;
+                for (int u = t; u < ntri; u++)
+                    if (!done[u] && set[u][0] == 1 && set[u][1] == bone) {
+                        done[u] = 1;
+                        memcpy(tri + corners, corner + u * 3, 3 * sizeof *tri);
+                        corners += 3;
+                    }
+                palette[0] = bone;
+                if (!skin_batch(e, m, palette, 1, tri, corners, g, skin, nbones))
+                    ok = 0;
+                held[0] = bone;
+                skin_rigid_batches++, skin_rigid_tris += corners / 3;
+            }
+        }
+        /* a batch takes the triangles in order while their bones fit; with regroup (first-fit) it also takes any later
+           triangle of the mesh whose bones still fit, so the triangle order changes (opaque meshes only) */
+        for (int first = 0; first < ntri && ok; first++) {
+            if (done[first])
+                continue;
+            bones = corners = 0;
+            for (int t = first; t < ntri; t++) {
+                if (done[t])
+                    continue;
+                unsigned char extra[12];
+                int add = 0;
+                for (int k = 1; k <= set[t][0]; k++) {
+                    int have = 0;
+                    for (int s = 0; s < bones && !have; s++)
+                        have = palette[s] == set[t][k];
+                    for (int s = 0; s < add && !have; s++)
+                        have = extra[s] == set[t][k];
+                    if (!have)
+                        extra[add++] = set[t][k];
+                }
+                if (bones + add > SKIN_PALETTE || (bones > 0 && bones + add > p4_skin_palette)) {
+                    if (regroup)
+                        continue;
+                    break;
+                }
+                memcpy(palette + bones, extra, add);
+                bones += add;
+                done[t] = 1;
+                memcpy(tri + corners, corner + t * 3, 3 * sizeof *tri);
+                corners += 3;
+            }
+            if (p4_skin_sticky && bones > 1) { /* bones already held in a slot below the batch's count keep it */
+                unsigned char sorted[SKIN_PALETTE], taken[SKIN_PALETTE] = { 0 }, placed[SKIN_PALETTE] = { 0 };
+                for (int k = 0; k < bones; k++)
+                    for (int s = 0; s < bones; s++)
+                        if (held[s] == palette[k] && !taken[s]) {
+                            sorted[s] = palette[k];
+                            taken[s] = placed[k] = 1;
+                            break;
+                        }
+                for (int k = 0, s = 0; k < bones; k++) {
+                    if (placed[k])
+                        continue;
+                    while (taken[s])
+                        s++;
+                    sorted[s] = palette[k];
+                    taken[s] = 1;
+                }
+                memcpy(palette, sorted, bones);
+            }
+            if (corners && !skin_batch(e, m, palette, bones > 0 ? bones : 1, tri, corners, g, skin, nbones))
+                ok = 0;
+            memcpy(held, palette, bones);
+            skin_regrouped += regroup;
+        }
+        free(tri), free(corner), free(set), free(done);
     }
-    if (!ok)
+    free(weld);
+    if (mk_cap.data && p4_mesh_capture) {
+        mk_write_file("capture", mk_key_g, &mk_cap);
+        mk_captured++;
+    }
+    free(mk_cap.data), free(mk_over), free(mk_group);
+    if (!ok) /* packed stays 0: no batches */
         skin_free(e), e->g = g, e->verts = verts, e->vertices = g->numVertices, e->lit = lit, e->sample = sample, e->frame = cache_frame;
+    else if (p4_batch_stats)
+        batch_regroup(e, g, skin, nbones);
+    unsigned build_us = sceKernelGetSystemTimeLow() - build_t0;
+    skin_build_us += build_us;
+    if (build_us > skin_build_max_us)
+        skin_build_max_us = build_us, skin_build_max_v = g->numVertices;
     return e->batches ? e : 0; /* a failed build stays as an empty entry: the CPU path, without retrying every frame */
 }
 
+/* One batch skinned on the CPU from its own GE vertices (u8 weights / 128 over the palette, bind pose), into the
+   frame pool in the space the GE batches use, then cut against the guard band like a static mesh. Unlit: the
+   material colour goes into the vertices, as on the CPU path; lit: the GE lights it (draw_mesh_vertices). The batch's
+   alpha bounds (draw_skin_alpha) still hold: skinning moves vertices, not colours. */
+static unsigned char bone_parked[MAX_BONES]; /* b180: this frame's bones with an insane matrix (draw_skinned_ge) */
+static int bones_parked;
+static void skin_batch_cpu(const SkinBatch *b, int lit, const float *pack, const Material *material, int modulate, const SceneLight *light, const Matrix *space, float near)
+{
+    SkinLayout l = skin_layout(b->bones, lit, pack != 0);
+    int stride = l.stride, n = b->vertices, out_stride = lit ? sizeof(Vertex3DN) : sizeof(Vertex3D);
+    int units = (n * out_stride + sizeof(Vertex3D) - 1) / sizeof(Vertex3D);
+    if (n > MAX_GUARDED || vertex_used + units > MAX_VERTICES) {
+        p4_log("TRACE vertex pool full\n");
+        return;
+    }
+    char *out = (char *)(vertex_pool + vertex_used);
+    vertex_used += units;
+    unsigned c = modulate ? material->colour : 0xffffffff;
+    for (int j = 0; j < n; j++) {
+        const unsigned char *in = b->v + stride * j;
+        V3 bind, normal = { 0, 0, 0 }, p = { 0, 0, 0 }, q = { 0, 0, 0 };
+        float uv[2];
+        unsigned colour;
+        skin_vertex_read(in, &l, pack, b->uvs, &bind, uv);
+        memcpy(&colour, in + l.colour, 4);
+        if (lit)
+            normal = (V3){ (signed char)in[l.normal], (signed char)in[l.normal + 1], (signed char)in[l.normal + 2] };
+        for (int s = 0; s < b->bones; s++) {
+            if (!in[s])
+                continue;
+            float w = in[s] * (1.0f / 128);
+            const Matrix *m = &bones[b->palette[s]];
+            V3 t = transform(&bind, m);
+            p.x += t.x * w, p.y += t.y * w, p.z += t.z * w;
+            if (lit) {
+                V3 r = rotate(&normal, m);
+                q.x += r.x * w, q.y += r.y * w, q.z += r.z * w;
+            }
+        }
+        if (lit) {
+            float len = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z), inv = len > 0 ? 1.0f / len : 0;
+            ((Vertex3DN *)out)[j] = (Vertex3DN){ uv[0], uv[1], colour, normal_s8(q.x * inv), normal_s8(q.y * inv), normal_s8(q.z * inv), 0, p.x, p.y, p.z };
+        } else {
+            ((Vertex3D *)out)[j] = (Vertex3D){ uv[0], uv[1], modulate_colour(colour, c), p.x, p.y, p.z };
+        }
+    }
+    sceKernelDcacheWritebackRange(out, n * out_stride);
+    if (!lit)
+        st_enable(GU_LIGHTING, 0); /* the GE batches before left it on */
+    skin_cpu_batches++;
+    const unsigned short *idx = b->idx;
+    int indices = b->indices;
+    if (bones_parked) { /* leave out the triangles with a corner on a parked bone */
+        int parked = 0;
+        for (int s = 0; s < b->bones; s++)
+            parked |= bone_parked[b->palette[s]];
+        if (parked && index_used + b->indices <= MAX_INDICES) {
+            unsigned short *kept = index_pool + index_used; /* the GE reads it after this returns: the frame's pool */
+            int k = 0;
+            for (int t = 0; t + 2 < b->indices; t += 3) {
+                int drop = 0;
+                for (int c = 0; c < 3 && !drop; c++) {
+                    const unsigned char *in = b->v + stride * b->idx[t + c];
+                    for (int s = 0; s < b->bones; s++)
+                        drop |= in[s] && bone_parked[b->palette[s]];
+                }
+                if (!drop)
+                    kept[k] = b->idx[t], kept[k + 1] = b->idx[t + 1], kept[k + 2] = b->idx[t + 2], k += 3;
+            }
+            index_used += k;
+            sceKernelDcacheWritebackRange(kept, k * 2);
+            idx = kept, indices = k;
+        }
+    }
+    if (!indices)
+        return;
+    draw_guarded_compact(GU_TRIANGLES, idx, indices, out, n, lit ? VT_3D | GU_NORMAL_8BIT : VT_3D, space, near, material, modulate, light, 0, 0, 0, 0);
+}
+
 /* 1: drawn on the GE; 0: the caller skins on the CPU */
+/* b178: a battle shows a large flat triangle from Chie's hand with GE skinning (also with p4_skin_split 2, the batch
+   data skinned on the CPU), none with p4_ge_skin 0. Every 32 frames each batch vertex is skinned from its u8 weights
+   and palette and compared with the CPU path's sum over the RenderWare weights; differences over 4 units logged. */
+int p4_skin_diff = 0; /* 1: compare GE batch vertices with the CPU sum every 128 frames (b179 diagnostic) */
+static unsigned skin_diff_logged, skin_diff_count, skin_diff_checked;
+static void skin_diff(const Geometry *g, const Skin *skin, const SkinGeometry *e, int nbones)
+{
+    const V3 *verts = g->morphTarget->verts;
+    for (int bi = 0; bi < e->batches; bi++) {
+        const SkinBatch *b = &e->batch[bi];
+        if (!b->src)
+            continue;
+        SkinLayout l = skin_layout(b->bones, e->lit, e->packed);
+        float step = e->packed ? e->pack[3] * (1.0f / 32768) : 0, moved = 3 * step * step + 1e-6f; /* s16 rounding */
+        for (int vi = 0; vi < b->vertices; vi++) {
+            const unsigned char *in = b->v + l.stride * vi;
+            int j = b->src[vi];
+            V3 bind;
+            float uv[2];
+            skin_vertex_read(in, &l, e->packed ? e->pack : 0, b->uvs, &bind, uv);
+            V3 ge = { 0, 0, 0 }, ref = { 0, 0, 0 };
+            for (int s = 0; s < b->bones; s++) {
+                if (!in[s])
+                    continue;
+                V3 p = transform(&bind, &bones[b->palette[s]]);
+                float w = in[s] / 128.0f;
+                ge.x += p.x * w, ge.y += p.y * w, ge.z += p.z * w;
+            }
+            if (skin->maxWeights == 1)
+                ref = transform(&verts[j], &bones[skin->indices[j][0]]);
+            else
+                for (int w = 0; w < skin->maxWeights && w < 4 && skin->weights[j][w] > 0; w++) {
+                    V3 p = transform(&verts[j], &bones[skin->indices[j][w]]);
+                    float k = skin->weights[j][w];
+                    ref.x += p.x * k, ref.y += p.y * k, ref.z += p.z * k;
+                }
+            skin_diff_checked++;
+            float dx = ge.x - ref.x, dy = ge.y - ref.y, dz = ge.z - ref.z, bx = bind.x - verts[j].x, by = bind.y - verts[j].y, bz = bind.z - verts[j].z;
+            float d2 = dx * dx + dy * dy + dz * dz, b2 = bx * bx + by * by + bz * bz;
+            if (!(d2 <= 16) || !(b2 <= moved)) {
+                skin_diff_count++;
+                if (skin_diff_logged < 40) {
+                    skin_diff_logged++;
+                    const unsigned char *ix = skin->indices[j];
+                    const float *wt = skin->weights[j];
+                    p4_log("TRACE skin diff geometry %p v%d j %d batch %d bones %d idx %d w %d u8 %d %d ge %d %d %d ref %d %d %d bind_moved %d locked %x\n", g, g->numVertices, j, bi, b->bones, skin->indices[j][0], (int)(skin->weights[j][0] * 1000), in[0], b->bones > 1 ? in[1] : 0, (int)ge.x, (int)ge.y, (int)ge.z, (int)ref.x, (int)ref.y, (int)ref.z, !(b2 <= moved), g->locked);
+                }
+            }
+        }
+    }
+}
+/* b180: in a battle bone 38 of Chie's 1829-vertex model (vertices 583-716, weight 1) skinned to coordinates past 2^31
+   on the CPU and the GE alike (p4_skin_diff: both INT_MAX) - by its look the game parks a hidden part of the model
+   there. The CPU path's guard clipper drops those triangles; the GE drew them as large flat triangles from her hand
+   and head. A bone whose matrix is not finite or is beyond 1e7 sends its batches through skin_batch_cpu. */
+int p4_skin_finite = 1; /* 0: as b179 */
+static int matrix_sane(const Matrix *m)
+{
+    const float *f = &m->right.x;
+    for (int k = 0; k < 15; k++) {
+        if ((k & 3) == 3)
+            continue;
+        if (!(f[k] < 1e7f && f[k] > -1e7f))
+            return 0;
+    }
+    return 1;
+}
+static int skin_call_key(const SkinBatch *b, const Material *m, int modulate, const SceneLight *light, unsigned h[2])
+{
+    unsigned w[48];
+    int n = p4_skin_call ? call_inputs(w, m, modulate, light) : -1;
+    if (n < 0)
+        return 0;
+    w[n++] = (unsigned)b, w[n++] = (unsigned)b->v, w[n++] = (unsigned)b->idx, w[n++] = b->vtype, w[n++] = b->indices;
+    /* b241: a recorded draw holds the strip's address and count. Without them in the key, a geometry rebuilt at the
+       same batch, vertex and list addresses (free then malloc of the same sizes, as when a battle loads) replayed
+       the old record with the address of a strip that had been freed. */
+    w[n++] = (unsigned)b->strip, w[n++] = b->strip_count;
+    call_key(w, n, h);
+    return 1;
+}
+
 static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy *hierarchy, const Matrix *model, int lit, int modulate)
 {
     prof_begin(PROF_SBONES);
     bone_check_geometry = g;
     int nbones = skin_bones(skin, hierarchy);
+    skin_simplify_now = p4_skin_simplify;
+    if (p4_skin_lod_depth > 0 && p4_skin_lod_keep > 0 && p4_skin_lod_keep < 100) {
+        AnimState *as = anim_find(hierarchy); /* its depth is the last frame's (anim_seen_at, below) */
+        if (as) {
+            as->lod = as->depth > p4_skin_lod_depth || (as->lod && as->depth > p4_skin_lod_depth * 0.9f);
+            if (as->lod)
+                skin_simplify_now = p4_skin_lod_keep;
+            skin_lod_draws += as->lod, skin_full_draws += !as->lod;
+        }
+    }
     SkinGeometry *e = nbones > 0 ? skin_geometry(g, skin, nbones, lit) : 0;
     prof_end(PROF_SBONES);
     if (!e || e->nradius < nbones)
         return 0;
+    if (p4_bone_census)
+        bone_census_note(hierarchy, e->used);
     /* A skinned vertex is a weighted mean of points within radius[i] of joint i; the guard band is convex, so it is
        inside when every joint's sphere is (one sphere round the whole skeleton crossed the near plane: b76 r 520). */
-    const Matrix *space = (hierarchy->flags & HIERARCHY_LOCAL_SPACE) ? model : 0;
+    const Matrix *space = (hierarchy->flags & HIERARCHY_LOCAL_SPACE) ? model : shadow_shear_m; /* world bones; b186 shadow: sheared */
+    { /* b177 probe: the battle's character shadows (ATEST 0x7F06B) flatten the clump's frame before the hierarchy update */
+        static unsigned shown;
+        unsigned t = sky_state[3] & 0xfffff;
+        if ((t == 0x7f06b || t == 0x717fb) && shown < 48 && !(cache_frame & 31)) {
+            shown++;
+            const Matrix *h0 = &hierarchy->matrices[0];
+            p4_log("TRACE %s h %p flags %x bone0 up %d %d %d pos %d %d %d space %p up %d %d %d colour %08x\n", t == 0x7f06b ? "shadowpass" : "mainpass", hierarchy,
+                   hierarchy->flags, (int)(h0->up.x * 1000), (int)(h0->up.y * 1000), (int)(h0->up.z * 1000), (int)h0->pos.x,
+                   (int)h0->pos.y, (int)h0->pos.z, space, space ? (int)(space->up.x * 1000) : 0, space ? (int)(space->up.y * 1000) : 0,
+                   space ? (int)(space->up.z * 1000) : 0, ((const Material *)0) ? 0 : 0);
+        }
+    }
+    if (p4_skin_diff && !(cache_frame & 127))
+        skin_diff(g, skin, e, nbones);
     float near = *(float *)((char *)current_camera + CAMERA_NEAR) * 1.01f;
     Mat4 m;
     prof_begin(PROF_SGUARD);
@@ -6119,7 +9754,20 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
     float planes[5][4], plane_len[5];
     if (p4_skin_guard_fast)
         guard_sphere_planes(m, near, planes, plane_len);
+    static unsigned char bone_out[MAX_BONES];
+    int any_out = 0;
+    bones_parked = 0;
     for (int i = 0; i < nbones; i++) {
+        bone_out[i] = 0;
+        bone_parked[i] = 0;
+        if (p4_skin_finite && !matrix_sane(&bones[i])) {
+            bone_parked[i] = 1;
+            bones_parked = 1;
+            bone_out[i] = 1; /* its vertices reach no sane place: the CPU batch path drops them, as the PS2's clipper did */
+            any_out = 1;
+            skin_nonfinite_bones++;
+            continue;
+        }
         if (e->radius[i] <= 0)
             continue;
         const Matrix *pose = &hierarchy->matrices[i];
@@ -6130,12 +9778,15 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
             skin_guard_checks++;
             skin_guard_diffs += inside != guard_sphere_inside(m, sphere, near);
         }
-        if (!inside) {
+        if (!inside && !p4_skin_split) {
             skin_ge_fallbacks++;
             prof_end(PROF_SGUARD);
             return 0;
         }
+        bone_out[i] = !inside || p4_skin_split == 2; /* 2: every batch through skin_batch_cpu, to check it against the GE */
+        any_out |= bone_out[i];
     }
+    skin_ge_fallbacks += any_out;
     prof_end(PROF_SGUARD);
     prof_begin(PROF_SDRAW);
     begin_frame();
@@ -6145,18 +9796,34 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
     int slot_bone[SKIN_PALETTE]; /* bones[] index in each GE bone slot; bones[] is this character's */
     for (int k = 0; k < SKIN_PALETTE; k++)
         slot_bone[k] = -1;
+    unsigned sent_before = bones_sent;
     for (int b = 0; b < e->batches; b++) {
-        const SkinBatch *batch = &e->batch[b];
+        SkinBatch *batch = &e->batch[b];
         const Material *material = mesh[batch->mesh].material;
+        int cpu = 0;
+        for (int k = 0; k < batch->bones && any_out; k++)
+            cpu |= bone_out[batch->palette[k]];
         prof_begin(PROF_SMAT);
-        for (int k = 0; k < batch->bones; k++) {
+        for (int k = 0; k < batch->bones && !cpu; k++) {
             const Matrix *bm = &bones[batch->palette[k]];
+            if (p4_bone_direct && slot_bone[k] == batch->palette[k])
+                continue;
+            Matrix folded;
+            if (e->packed) { /* p = centre + s q / 32768 (skin_layout): rotation x s, translation + rotation . centre */
+                const float *c = e->pack, s = e->pack[3];
+                folded = *bm;
+                folded.right = (V3){ bm->right.x * s, bm->right.y * s, bm->right.z * s };
+                folded.up = (V3){ bm->up.x * s, bm->up.y * s, bm->up.z * s };
+                folded.at = (V3){ bm->at.x * s, bm->at.y * s, bm->at.z * s };
+                folded.pos = (V3){ bm->pos.x + c[0] * bm->right.x + c[1] * bm->up.x + c[2] * bm->at.x,
+                                   bm->pos.y + c[0] * bm->right.y + c[1] * bm->up.y + c[2] * bm->at.y,
+                                   bm->pos.z + c[0] * bm->right.z + c[1] * bm->up.z + c[2] * bm->at.z };
+                bm = &folded;
+            }
             if (p4_bone_direct) {
                 /* BONE_MATRIX_NUMBER then 12 x BONE_MATRIX_DATA (float >> 8), as sceGuBoneMatrix sends them; b123
                    Heaven: sceGuBoneMatrix cost ~1450 cycles a matrix, 1.78 Mcycles a frame. A slot that already holds
                    this bone (same character, earlier batch) keeps it. */
-                if (slot_bone[k] == batch->palette[k])
-                    continue;
                 slot_bone[k] = batch->palette[k];
                 const AliasWord *f = (const AliasWord *)bm;
                 unsigned *c = gu_list->current;
@@ -6176,12 +9843,6 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
             bones_sent++;
         }
         prof_end(PROF_SMAT);
-        void **texture = material->texture;
-        prof_begin(PROF_SBIND);
-        bind_mask(material->colour >> 24);
-        bind_raster(texture ? *texture : 0, GU_REPEAT);
-        bind_ge_light(material, modulate, &light);
-        prof_end(PROF_SBIND);
         /* lighting is on for every batch: the lit alpha is the vertex alpha x the material's (bind_ge_light's ambient).
            Bounded like a mesh's, draw_tested skips the second TEST_1 pass when every pixel passes (b128 Heaven: all
            153 batches a frame drew twice). */
@@ -6195,15 +9856,51 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
         } else {
             draw_alpha_known = 0; /* the batch's colours are not scanned */
         }
-        if (!census3d_skip(material, batch->vtype, batch->indices, modulate)) {
-            prof_begin(PROF_STEST);
-            draw_tested(GU_TRIANGLES, batch->vtype, batch->indices, batch->idx, batch->v);
-            prof_end(PROF_STEST);
+        if (census3d_skip(material, batch->vtype, batch->indices, modulate)) {
+            draw_skin_alpha = 0;
+            continue;
         }
+        prof_begin(PROF_SBIND);
+        unsigned key[2];
+        if (ge_work_on && !cpu)
+            work_batches++, work_wreal += batch->wreal, work_wslotv += batch->bones * batch->vertices, work_rigid += batch->rigid, work_tris += batch->indices / 3;
+        GeCall *slot = 0, *call = !cpu && skin_call_key(batch, material, modulate, &light, key) ? call_find(batch->call, key, &slot) : 0;
+        if (call && call_replay(call, 0)) {
+            prof_end(PROF_SBIND);
+            draw_skin_alpha = 0;
+            continue;
+        }
+        if (call) /* found but overwritten or no room to refresh: record it again */
+            slot = call;
+        else if (slot)
+            call_misses[0]++;
+        const unsigned *from = gu_list->current;
+        void **texture = material->texture;
+        bind_mask(material->colour >> 24);
+        bind_raster(texture ? *texture : 0, GU_REPEAT);
+        if (!cpu)
+            bind_ge_light(material, modulate, &light);
+        bind_texscale(e->packed && !cpu ? batch->uvs : 0); /* the CPU path draws float UVs */
+        prof_end(PROF_SBIND);
+        prof_begin(PROF_STEST);
+        if (cpu)
+            skin_batch_cpu(batch, e->lit, e->packed ? e->pack : 0, material, modulate, &light, space, near);
+        else if (batch->strip)
+            draw_tested(GU_TRIANGLE_STRIP, batch->vtype, batch->strip_count, batch->strip, batch->v);
+        else
+            draw_tested(GU_TRIANGLES, batch->vtype, batch->indices, batch->idx, batch->v);
+        if (p4_skin_dummy && !cpu)
+            *gu_list->current++ = 0xff000000u, skin_dummies++;
+        if (slot)
+            call_record(slot, key, from, 0);
+        prof_end(PROF_STEST);
         draw_skin_alpha = 0;
     }
+    bind_texscale(0); /* draws outside mesh mode take (1, 1, 0, 0) for granted */
     st_enable(GU_LIGHTING, 0);
     prof_end(PROF_SDRAW);
+    if (p4_batch_stats) /* the shadow pass: sheared (b186/b192) or the battle shadow's ATEST */
+        batch_stats_add(e, shadow_shear_m || (sky_state[3] & 0xfffff) == 0x7f06b, bones_sent - sent_before);
     skin_ge_draws++;
     skin_ge_batches += e->batches;
     return 1;
@@ -6427,8 +10124,8 @@ static void draw_ptank_body(void *atomic, char *tank, Geometry *g, void *frame)
 
 /* Experiment: which atomics cover the most screen. cover = the bounding sphere's projected disc as a fraction of
    the view (1 = all of it); weighted by the draws the atomic issued, it ranks fill. Top 8 logged every 256 frames. */
-typedef struct { const void *g; float cover; unsigned calls, vertices, frames, flags, nverts, meshes, ge_us, blend, test, tex; char texture_name[32]; } CoverEntry;
-static CoverEntry cover_table[256];
+typedef struct { const void *g; float cover; unsigned calls, vertices, frames, flags, nverts, meshes, ge_us, blend, test, tex, work[8]; char texture_name[32]; } CoverEntry;
+static CoverEntry *cover_table; /* heap on first use (b206: 30 KB of .bss for a diagnostic) */
 int p4_cover_stats = 0; /* 1: rank atomics by screen cover ("cover top"); p4_exp_ge_time and p4_probe_census turn it on too */
 static float cover_total, cover_weighted;
 /* Distance cull (experiment, 0 = off): atomics of at least p4_cull_min_vertices whose bounding sphere lies wholly
@@ -6448,6 +10145,8 @@ static int atomic_far(const Geometry *g, const Matrix *model)
     return z - s[3] * scale > p4_cull_far;
 }
 
+int p4_cull_cover = 0; /* Keep visible characters and scenery at all screen sizes. */
+static unsigned cull_cover_atomics;
 static float atomic_cover(const Geometry *g, const Matrix *model)
 {
     const float *s = g->morphTarget->sphere;
@@ -6465,8 +10164,10 @@ static float atomic_cover(const Geometry *g, const Matrix *model)
     float c = 3.14159f * q * q;
     return c > 1 ? 1 : c;
 }
-static void cover_note(const Geometry *g, float cover, unsigned calls, unsigned vertices, unsigned ge_us)
+static void cover_note(const Geometry *g, float cover, unsigned calls, unsigned vertices, unsigned ge_us, const unsigned *work)
 {
+    if (!cover_table && !(cover_table = calloc(256, sizeof *cover_table)))
+        return;
     cover_total += cover;
     cover_weighted += cover * calls;
     unsigned bucket = ((unsigned)g >> 4) * 2654435761u >> 24;
@@ -6495,12 +10196,17 @@ static void cover_note(const Geometry *g, float cover, unsigned calls, unsigned 
     }
     e->blend = sky_state[2], e->test = sky_state[3];
     e->cover += cover, e->calls += calls, e->vertices += vertices, e->frames++, e->ge_us += ge_us;
+    for (int k = 0; k < 8; k++)
+        e->work[k] += work[k];
 }
 static void cover_report(unsigned frames)
 {
+    static CoverEntry none[1];
+    CoverEntry *table = cover_table ? cover_table : none;
+    int entries = cover_table ? 256 : 1;
     if (p4_probe_census) {
-        for (int i = 0; i < 256; i++) {
-            const CoverEntry *e = &cover_table[i];
+        for (int i = 0; i < entries; i++) {
+            const CoverEntry *e = &table[i];
             if (e->g && e->frames)
                 p4_log("census geometry %x v%u flags %x meshes %u calls %u vertices %u tex %s %ux%ux%u\n",
                        (unsigned)e->g, e->nverts, e->flags, e->meshes, e->frames / frames, e->vertices / frames,
@@ -6509,33 +10215,46 @@ static void cover_report(unsigned frames)
         p4_probe_census = 0;
     }
     p4_log("cull far %d min_vertices %d: %u atomics per frame\n", p4_cull_far, p4_cull_min_vertices, cull_far_atomics / frames);
+    p4_log("cull cover %d: %u atomics per frame\n", p4_cull_cover, cull_cover_atomics / frames);
+    cull_cover_atomics = 0;
     cull_far_atomics = 0;
     p4_log("cover per frame: atomics' sphere cover %d%% draw-weighted %d%% mesh draws %u vertices %u exp_scissor %d\n",
            (int)(cover_total * 100 / frames), (int)(cover_weighted * 100 / frames), mesh_draw_calls / frames, mesh_draw_vertices / frames, p4_exp_scissor);
     for (int k = 0; k < 8; k++) {
         CoverEntry *best = 0;
-        for (int i = 0; i < 256; i++)
-            if (cover_table[i].g && cover_table[i].frames && (!best || (p4_exp_ge_time ? cover_table[i].ge_us > best->ge_us :
-                cover_table[i].cover * cover_table[i].calls / cover_table[i].frames > best->cover * best->calls / best->frames)))
-                best = &cover_table[i];
+        for (int i = 0; i < entries; i++)
+            if (table[i].g && table[i].frames && (!best || (p4_exp_ge_time ? table[i].ge_us > best->ge_us :
+                table[i].cover * table[i].calls / table[i].frames > best->cover * best->calls / best->frames)))
+                best = &table[i];
         if (!best)
             break;
         p4_log("cover top %d: geometry %x v%u f%x m%u drawn %u/%u frames cover %d%% draws %u vertices %u ge_us %u per frame tex %ux%ux%u blend %x test %x\n", k, (unsigned)best->g, best->nverts, best->flags,
                best->meshes, best->frames, frames, (int)(best->cover * 100 / best->frames), best->calls / best->frames, best->vertices / best->frames,
                best->ge_us / (ge_time_frames ? ge_time_frames : frames), best->tex >> 20, best->tex >> 8 & 0xfff, best->tex & 0xff, best->blend, best->test);
+        const unsigned *w = best->work, n = best->frames;
+        p4_log("cover top %d work per draw of it: idx %u uniq %u wslots %u; skin batches %u weights used %u of %u blended, rigid triangles %u of %u\n", k,
+               w[0] / n, w[1] / n, w[2] / n, w[3] / n, w[4] / n, w[5] / n, w[6] / n, w[7] / n);
         best->frames = 0;
     }
     if (ge_time_frames)
         p4_log("ge time per frame us: atomics %u 2d %u ptank %u clear %u (%u frames)\n", ge_time_us[GT_ATOMIC] / ge_time_frames, ge_time_us[GT_2D] / ge_time_frames,
                ge_time_us[GT_PTANK] / ge_time_frames, ge_time_us[GT_CLEAR] / ge_time_frames, ge_time_frames);
+    if (ge_time_frames && ge_empty_n)
+        p4_log("ge time empty piece %u us, %u pieces per frame: ~%u us a frame is the timer\n", ge_empty_us / ge_empty_n,
+               ge_pieces / ge_time_frames, ge_empty_us / ge_empty_n * (ge_pieces / ge_time_frames));
+    ge_empty_us = ge_empty_n = ge_pieces = 0;
     if (ge_timeouts)
         p4_log("ge time TIMEOUTS %u last state %x marker %x\n", ge_timeouts, ge_last_state, ge_marker & 0xffffff);
     memset(ge_time_us, 0, sizeof ge_time_us);
     ge_time_frames = 0;
-    memset(cover_table, 0, sizeof cover_table);
+    if (cover_table)
+        memset(cover_table, 0, 256 * sizeof *cover_table);
     cover_total = cover_weighted = 0;
     mesh_draw_calls = mesh_draw_vertices = 0;
 }
+
+/* Independent proxy pass, after the geometry/skin helpers it shares. */
+#include "shadow_capsules.h"
 
 /* AtomicDefaultRenderCallBack */
 static void *atomic_render_body(void *atomic);
@@ -6564,6 +10283,8 @@ static void *atomic_render_body(void *atomic)
         atomics_skipped++;
         return atomic;
     }
+    if (p4_shadow_capsule && shadow_shear_m && capsule_shadow(atomic, g, frame))
+        return atomic;
     if ((p4_probe_flags & 1) || (unsigned)g == p4_probe_geometry || (unsigned)g == p4_probe_geometry2 ||
         (unsigned)g == p4_probe_geometry3 || (unsigned)g == p4_probe_geometry4) {
         if (probe_select_frame != cache_frame || probe_last_geometry != p4_probe_geometry) {
@@ -6614,9 +10335,22 @@ static void *atomic_render_body(void *atomic)
         normals = 0;
     prof_begin(PROF_ALTM);
     const Matrix *model = p4r_003e9700(frame); /* RwFrameGetLTM: the matrix in the frame is out of date after a move */
+    static Matrix sheared __attribute__((aligned(16)));
+    if (shadow_shear_m) { /* b186: a shadow drawn from the body's frame */
+        multiply(&sheared, model, shadow_shear_m);
+        model = &sheared;
+    }
     prof_end(PROF_ALTM);
     if (p4_cull_far > 0 && g->numVertices >= p4_cull_min_vertices && atomic_far(g, model)) {
         cull_far_atomics++;
+        return atomic;
+    }
+    /* b246 p4_cull_cover N (0 off): an atomic of at least p4_cull_min_vertices whose bounding sphere covers less than
+       N / 100000 of the view is not drawn. By size on the screen, not by depth, so far backdrops that are large stay.
+       b245 Heaven: dropping 16 far atomics by depth (three statues a few pixels tall behind the gate among them)
+       took the frame from 66.7 to 50.0 ms. */
+    if (p4_cull_cover > 0 && g->numVertices >= p4_cull_min_vertices && atomic_cover(g, model) * 100000.0f < (float)p4_cull_cover) {
+        cull_cover_atomics++;
         return atomic;
     }
     /* the cover ranking is a diagnostic (b121 Heaven: 0.42 Mcycles a frame): only for the experiments that print it */
@@ -6625,12 +10359,17 @@ static void *atomic_render_body(void *atomic)
     float cover = cover_on ? atomic_cover(g, model) : 0;
     prof_end(PROF_ACOVER);
     unsigned calls_before = mesh_draw_calls, verts_before = mesh_draw_vertices;
+    unsigned work_before[8] = { work_idx, work_uniq, work_wslots, work_batches, work_wreal, work_wslotv, work_rigid, work_tris };
+    ge_work_on = cover_on;
     int timed = ge_time_begin();
     void *r = atomic_draw(atomic, g, frame, model, normals);
     unsigned ge_us = ge_time_end(timed, GT_ATOMIC);
+    ge_work_on = 0;
     prof_begin(PROF_ACOVER);
+    unsigned work[8] = { work_idx - work_before[0], work_uniq - work_before[1], work_wslots - work_before[2], work_batches - work_before[3],
+                         work_wreal - work_before[4], work_wslotv - work_before[5], work_rigid - work_before[6], work_tris - work_before[7] };
     if (cover_on)
-        cover_note(g, cover, mesh_draw_calls - calls_before, mesh_draw_vertices - verts_before, ge_us);
+        cover_note(g, cover, mesh_draw_calls - calls_before, mesh_draw_vertices - verts_before, ge_us, work);
     prof_end(PROF_ACOVER);
     return r;
 }
@@ -6638,6 +10377,7 @@ static void *atomic_render_body(void *atomic)
 static void *atomic_draw(void *atomic, Geometry *g, char *frame, const Matrix *model, const V3 *normals)
 {
     const V3 *positions = g->morphTarget->verts;
+    churn_atomic_g = g, churn_atomic_locked = g->locked, churn_atomic_skinned = 0;
     const Skin *skin = SKIN_OF_GEOMETRY(g);
     const Hierarchy *hierarchy = HIERARCHY_OF_ATOMIC(atomic);
     if (skin && skin->skinToBone && hierarchy && hierarchy->matrices && !(hierarchy->flags & HIERARCHY_NO_MATRICES)) {
@@ -6653,10 +10393,11 @@ static void *atomic_draw(void *atomic, Geometry *g, char *frame, const Matrix *m
         const V3 *skinned = skin_vertices(g, skin, hierarchy, 0);
         if (skinned) {
             positions = skinned;
+            churn_atomic_skinned = 1;
             if (normals) normals = skin_vertices(g, skin, hierarchy, 1);
             skinned_drawn++;
             if (!(hierarchy->flags & HIERARCHY_LOCAL_SPACE))
-                model = 0; /* the bones already stand in the world */
+                model = shadow_shear_m; /* the bones already stand in the world (b186: a shadow shears them) */
         }
     }
     /* the morph target's sphere is in the geometry's space; skinned vertices are not */
@@ -6664,6 +10405,7 @@ static void *atomic_draw(void *atomic, Geometry *g, char *frame, const Matrix *m
     draw_meshes(g->mesh, positions, g->numTexCoordSets ? g->texCoords[0] : 0, g->preLit, g->numVertices, model, g->flags & 0x40, normals,
                 positions == g->morphTarget->verts && p4_guard_sphere ? g->morphTarget->sphere : 0);
     draw_geometry = 0;
+    churn_atomic_g = 0, churn_atomic_skinned = 0;
     return atomic;
 }
 
@@ -6862,9 +10604,11 @@ int p4_video_renderer_begin(void)
     }
     gate_poll();
     sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
+    guard_result_clear();
     unsigned released = cache_bytes + skin_ge_bytes;
     for (int i = 0; i < CACHE_SLOTS; i++) free(mesh_cache[i].v);
     memset(mesh_cache, 0, sizeof mesh_cache);
+    memset(mesh_split_bits, 0, sizeof mesh_split_bits);
     cache_bytes = 0;
     if (skin_cache)
         for (int i = 0; i < SKIN_GEOMETRIES; i++) skin_free(&skin_cache[i]);

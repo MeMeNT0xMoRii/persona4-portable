@@ -31,7 +31,7 @@ def main():
     d = Debugger()
     read = lambda a, n: base64.b64decode(d.ask("memory.read", address=a, size=n)["base64"])
     d.ask("memory.write_u32", address=probe, value=1)
-    time.sleep(1.0)  # inside one 256-frame report window
+    time.sleep(2.0)  # inside one 256-frame report window
     raw = read(census, size)
     d.ask("memory.write_u32", address=probe, value=0)
     rows = []

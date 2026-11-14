@@ -30,7 +30,7 @@ typedef struct {
     volatile int state;
     unsigned id, pending_id, source_block, produced, consumed, source_samples, data_offset;
     volatile unsigned played;
-    unsigned fraction, pitch, fade_total, fade_left;
+    unsigned fraction, pitch, fade_total, fade_left, resume_block;
     Header header;
     int fd, pending;
     unsigned char ring[2][RING_BYTES] __attribute__((aligned(64)));
@@ -67,11 +67,15 @@ static Command commands[QUEUE];
 static volatile unsigned queue_in, queue_out;
 static volatile int running, paused, pause_ack;
 static int initialized, output_reserved;
+static int codec_module, sas_module, suspended; /* module ownership: 1 ours, 2 borrowed */
 static SceUID audio_thread=-1, loader_thread=-1;
 /* Exposed to PSPLink. Times are cumulative microseconds of CPU execution. */
 volatile unsigned p4_audio_cpu_us, p4_audio_loader_us, p4_audio_commands;
 volatile unsigned p4_audio_underruns, p4_audio_errors, p4_audio_dropped;
 volatile unsigned p4_audio_blocks, p4_audio_started, p4_audio_finished;
+/* 1 SAS mix, 2 Output2, 3 pause commit, 4 output drain, 5 paused, 6 resume. */
+volatile unsigned p4_audio_step;
+volatile int p4_audio_last_error;
 
 static unsigned word(const unsigned char *p) { unsigned v; memcpy(&v,p,4); return v; }
 static unsigned half(const unsigned char *p) { return p[0] | (p[1]<<8); }
@@ -286,18 +290,22 @@ static int open_stream(Stream *s)
     Header *h=&s->header;
     if(memcmp(h->magic,"P4A1",4)||h->version!=1||h->channels<1||h->channels>2||h->rate<8000||h->rate>48000||
        !h->samples||!h->blocks||h->blocks!=(h->samples+27)/28||(h->loop!=0xffffffffu&&h->loop>=h->blocks))return -1;
-    s->source_block=s->produced=s->consumed=s->played=s->fraction=0;
+    unsigned block=s->resume_block<h->blocks?s->resume_block:0;
+    s->source_block=block;s->source_samples=block*28;s->resume_block=0;
+    s->produced=s->consumed=s->played=s->fraction=0;
+    if(block&&sceIoLseek(s->fd,s->data_offset+32+(long long)block*16*h->channels,PSP_SEEK_SET)<0)return -1;
     s->pitch=(h->rate*4096u+22050)/44100;
     return 0;
 }
 static int loader_main(SceSize size,void *arg)
 {
     (void)size;(void)arg;
-    load_banks();
+    if(!banks_loaded)load_banks();
     unsigned long long start=runtime();
+    unsigned cpu_base=p4_audio_loader_us;
     unsigned cursor=0,bank_cursor=0;
     while(running){
-        if(paused){p4_audio_loader_us=(unsigned)(runtime()-start);sceKernelDelayThread(20000);continue;}
+        if(paused){p4_audio_loader_us=cpu_base+(unsigned)(runtime()-start);sceKernelDelayThread(20000);continue;}
         int did_work=0;
         for(int n=0;n<STREAMS;++n){
             int i=(cursor+n)%STREAMS;
@@ -319,7 +327,7 @@ static int loader_main(SceSize size,void *arg)
             }
         }
         if(!did_work)for(int n=0;n<6;++n){int i=(bank_cursor+n)%6;if(bank_requests[i].state==2){bank_copy_step(i);bank_cursor=(i+1)%6;break;}}
-        p4_audio_loader_us=(unsigned)(runtime()-start);
+        p4_audio_loader_us=cpu_base+(unsigned)(runtime()-start);
         sceKernelDelayThread(10000);
     }
     for(int i=0;i<STREAMS;++i)if(streams[i].fd>=0)sceIoClose(streams[i].fd);
@@ -466,7 +474,7 @@ static void process_commands(void)
                 s->header.channels==1||c==0?4096:0,s->header.channels==1||c==1?4096:0,0,0);
             continue;
         }
-        s->pending_id=row->id;s->pending=1;requested[cmd.channel]=1;
+        s->pending_id=row->id;s->pending=1;s->resume_block=0;requested[cmd.channel]=1;
         stop_voices(cmd.channel*2,2);
         if(s->state!=EMPTY&&s->state!=FAILED)s->state=CLOSE;
     }
@@ -496,7 +504,7 @@ static void stream_step(int channel)
     if(s->state!=PLAY)return;
     unsigned advance=(s->fraction+GRAIN*s->pitch)>>12;
     if(s->produced*28u<s->played+advance){++p4_audio_underruns;stop_voices(first,2);s->state=CLOSE;requested[channel]=0;return;}
-    if(s->header.loop==0xffffffffu&&s->played>=s->header.samples){
+    if(s->header.loop==0xffffffffu&&s->played+s->source_samples>=s->header.samples){
         stop_voices(first,2);s->state=CLOSE;requested[channel]=0;++p4_audio_finished;return;
     }
     if(s->fade_left){
@@ -508,31 +516,75 @@ static void stream_step(int channel)
     s->played+=advance;s->fraction=(s->fraction+GRAIN*s->pitch)&4095;
     BARRIER();s->consumed=s->played/28;
 }
+static int audio_failure(const char *operation,int result)
+{
+    ++p4_audio_errors;p4_audio_last_error=result;
+    p4_log("audio %s failed %08x step %u\n",operation,result,p4_audio_step);
+    return result;
+}
+static int release_output(void)
+{
+    if(!output_reserved)return 0;
+    p4_audio_step=4;
+    unsigned start=sceKernelGetSystemTimeLow();
+    int rest;
+    while((rest=sceAudioOutput2GetRestSample())>0){
+        if(sceKernelGetSystemTimeLow()-start>=500000)
+            return audio_failure("Output2 drain timeout",-1);
+        sceKernelDelayThread(1000);
+    }
+    if(rest<0)return audio_failure("Output2 rest",rest);
+    int r=sceAudioOutput2Release();
+    if(r<0)return audio_failure("Output2 release",r);
+    output_reserved=0;return 0;
+}
 static int audio_main(SceSize size,void *arg)
 {
     (void)size;(void)arg;
     unsigned long long start=runtime();unsigned counter=0,pause_mask=0;
+    unsigned cpu_base=p4_audio_cpu_us;
     while(running){
         if(paused){
-            if(!pause_ack){pause_mask=__sceSasGetPauseFlag(&sas);__sceSasSetPause(&sas,0xffffffffu,1);
-                if(output_reserved){while(sceAudioOutput2GetRestSample()>0)sceKernelDelayThread(1000);sceAudioOutput2Release();output_reserved=0;}
-                pause_ack=1;}
+            if(!pause_ack){
+                pause_mask=(unsigned)__sceSasGetPauseFlag(&sas);
+                int r=__sceSasSetPause(&sas,0xffffffffu,1);
+                if(r<0){audio_failure("SAS pause",r);break;}
+                /* SetPause updates the context. Submit one silent grain before
+                 * acknowledging so the last SAS operation has completed before AVC. */
+                p4_audio_step=3;
+                r=__sceSasCore(&sas,output[counter&1]);
+                if(r<0){audio_failure("SAS pause commit",r);break;}
+                if(release_output()<0)break;
+                p4_audio_step=5;BARRIER();pause_ack=1;
+            }
             sceKernelDelayThread(1000);continue;
         }
-        if(!output_reserved){if(sceAudioOutput2Reserve(GRAIN)<0){++p4_audio_errors;break;}output_reserved=1;}
-        if(pause_ack){__sceSasSetPause(&sas,~pause_mask,0);pause_ack=0;}
+        if(!output_reserved){int r=sceAudioOutput2Reserve(GRAIN);if(r<0){audio_failure("Output2 reserve",r);break;}output_reserved=1;}
+        if(pause_ack){
+            p4_audio_step=6;
+            int r=__sceSasSetPause(&sas,~pause_mask,0);
+            if(r<0){audio_failure("SAS resume",r);break;}
+            BARRIER();pause_ack=0;
+        }
         process_commands();
         for(int i=0;i<STREAMS;++i)stream_step(i);
         for(int i=0;i<16;++i)sequence_step(i);
-        if(__sceSasCore(&sas,output[counter&1])<0||sceAudioOutput2OutputBlocking(PSP_AUDIO_VOLUME_MAX,output[counter&1])<0){++p4_audio_errors;break;}
+        p4_audio_step=1;
+        int r=__sceSasCore(&sas,output[counter&1]);
+        if(r<0){audio_failure("SAS core",r);break;}
+        p4_audio_step=2;
+        r=sceAudioOutput2OutputBlocking(PSP_AUDIO_VOLUME_MAX,output[counter&1]);
+        if(r<0){audio_failure("Output2 output",r);break;}
         ++counter;++p4_audio_blocks;
-        if(!(counter&63))p4_audio_cpu_us=(unsigned)(runtime()-start);
+        if(!(counter&63))p4_audio_cpu_us=cpu_base+(unsigned)(runtime()-start);
     }
-    if(output_reserved){while(sceAudioOutput2GetRestSample()>0)sceKernelDelayThread(1000);sceAudioOutput2Release();output_reserved=0;}
-    running=0;
+    running=0;BARRIER();
+    release_output();
     for(int i=0;i<STREAMS;++i)requested[i]=0;
-    pause_ack=1;return 0;
+    return 0;
 }
+static int audio_modules_start(void);
+static int audio_workers_start(void);
 int p4_audio_init(void)
 {
     if(initialized)return 0;
@@ -556,37 +608,128 @@ int p4_audio_init(void)
     if(!signature_index){p4_audio_shutdown();return -1;}
     for(unsigned i=0;i<index_count;++i)signature_index[i]=i;
     qsort(signature_index,index_count,sizeof(unsigned),compare_signatures);
-    int result=sceUtilityLoadModule(PSP_MODULE_AV_AVCODEC);
-    if(result<0&&result!=(int)0x80111102u)goto error;
-    result=sceUtilityLoadModule(PSP_MODULE_AV_SASCORE);
-    if(result<0&&result!=(int)0x80111102u)goto error;
-    if((result=__sceSasInit(&sas,GRAIN,32,PSP_SAS_OUTPUTMODE_STEREO,44100))<0)goto error;
-    __sceSasRevType(&sas,PSP_SAS_EFFECT_TYPE_OFF);__sceSasSetPause(&sas,0xffffffffu,1);
+    int result=audio_modules_start();
+    if(result<0)goto error;
     for(int i=0;i<STREAMS;++i)streams[i].fd=-1;
-    running=1;initialized=1;
-    loader_thread=sceKernelCreateThread("p4_audio_loader",loader_main,0x1c,32*1024,PSP_THREAD_ATTR_USER,NULL);
-    audio_thread=sceKernelCreateThread("p4_audio",audio_main,0x18,32*1024,PSP_THREAD_ATTR_USER,NULL);
-    if(loader_thread<0||audio_thread<0)goto error;
-    if(sceKernelStartThread(loader_thread,0,NULL)<0||sceKernelStartThread(audio_thread,0,NULL)<0)goto error;
+    initialized=1;
+    result=audio_workers_start();if(result<0)goto error;
     p4_log("audio SAS ready: %u streams indexed, grain %d, Output2\n",index_count,GRAIN);return 0;
 error:p4_log("audio init error %08x\n",result);p4_audio_shutdown();return -1;
 }
-int p4_audio_state(void) { return initialized ? (running ? 1 : 2) | (pause_ack ? 4 : 0) : 0; }
-void p4_audio_pause(int pause)
+static int audio_modules_start(void)
 {
-    if(!initialized)return;
-    paused=pause;
-    if(pause){unsigned start=sceKernelGetSystemTimeLow();while(!pause_ack&&sceKernelGetSystemTimeLow()-start<500000)sceKernelDelayThread(1000);}
+    int result;
+    if(!codec_module){
+        result=sceUtilityLoadModule(PSP_MODULE_AV_AVCODEC);
+        if(result<0&&result!=(int)0x80111102u)return result;
+        codec_module=result<0?2:1;
+    }
+    if(!sas_module){
+        result=sceUtilityLoadModule(PSP_MODULE_AV_SASCORE);
+        if(result<0&&result!=(int)0x80111102u)return result;
+        sas_module=result<0?2:1;
+    }
+    memset(&sas,0,sizeof sas);
+    if((result=__sceSasInit(&sas,GRAIN,32,PSP_SAS_OUTPUTMODE_STEREO,44100))<0)return result;
+    __sceSasRevType(&sas,PSP_SAS_EFFECT_TYPE_OFF);__sceSasSetPause(&sas,0xffffffffu,1);
+    return 0;
 }
-void p4_audio_shutdown(void)
+static int audio_workers_start(void)
 {
-    running=0;
+    paused=pause_ack=0;running=1;BARRIER();
+    loader_thread=sceKernelCreateThread("p4_audio_loader",loader_main,0x1c,32*1024,PSP_THREAD_ATTR_USER,NULL);
+    audio_thread=sceKernelCreateThread("p4_audio",audio_main,0x18,32*1024,PSP_THREAD_ATTR_USER,NULL);
+    if(loader_thread<0||audio_thread<0){running=0;return -1;}
+    int result=sceKernelStartThread(loader_thread,0,NULL);
+    if(result<0){running=0;return result;}
+    result=sceKernelStartThread(audio_thread,0,NULL);
+    if(result<0){running=0;return result;}
+    return 0;
+}
+static void audio_workers_stop(void)
+{
+    running=0;BARRIER();
     SceUID ids[2]={audio_thread,loader_thread};
     for(int i=0;i<2;++i)if(ids[i]>=0){sceKernelWaitThreadEnd(ids[i],NULL);sceKernelDeleteThread(ids[i]);}
     audio_thread=loader_thread=-1;
+}
+static int audio_modules_stop(void)
+{
+    if(sas_module==1){
+        int r=sceUtilityUnloadModule(PSP_MODULE_AV_SASCORE);
+        p4_log("audio unload SASCORE %08x\n",r);if(r<0)return r;
+    }
+    sas_module=0;
+    if(codec_module==1){
+        int r=sceUtilityUnloadModule(PSP_MODULE_AV_AVCODEC);
+        p4_log("audio unload AVCODEC %08x\n",r);if(r<0)return r;
+    }
+    codec_module=0;return 0;
+}
+int p4_audio_state(void) { return initialized ? (running ? 1 : 2) | (pause_ack ? 4 : 0) : 0; }
+int p4_audio_pause(int pause)
+{
+    if(!initialized)return 0;
+    paused=!!pause;BARRIER();
+    unsigned start=sceKernelGetSystemTimeLow();
+    while(running){
+        if(pause_ack==paused){BARRIER();return 0;}
+        if(sceKernelGetSystemTimeLow()-start>=500000)break;
+        sceKernelDelayThread(1000);
+    }
+    p4_log("audio %s not acknowledged: running %d ack %d step %u last_error %08x blocks %u\n",
+        pause?"pause":"resume",running,pause_ack,p4_audio_step,p4_audio_last_error,p4_audio_blocks);
+    return -1;
+}
+int p4_audio_suspend_for_video(void)
+{
+    if(!initialized)return 0;
+    if(suspended)return 1;
+    if(p4_audio_pause(1)<0)return -1;
+    unsigned ids[STREAMS],blocks[STREAMS];
+    for(int i=0;i<STREAMS;++i){
+        Stream *s=&streams[i];ids[i]=blocks[i]=0;
+        if(s->pending)ids[i]=s->pending_id;
+        else if(s->state==LOAD||s->state==PREFILL||s->state==READY||s->state==PLAY){
+            ids[i]=s->id;
+            if(s->state==PLAY){
+                unsigned block=(s->source_samples+s->played)/28;
+                if(block>=s->header.blocks){
+                    if(s->header.loop==0xffffffffu){ids[i]=0;continue;}
+                    block=s->header.loop+(block-s->header.blocks)%(s->header.blocks-s->header.loop);
+                }
+                blocks[i]=block;
+            }
+        }
+    }
+    audio_workers_stop();
+    /* Keep banks, queued requests and stream positions; only firmware is recycled. */
+    for(int i=0;i<STREAMS;++i){
+        Stream *s=&streams[i];s->fd=-1;s->state=EMPTY;
+        s->pending_id=ids[i];s->pending=!!ids[i];s->resume_block=blocks[i];requested[i]=!!ids[i];
+    }
+    memset(voices,0,sizeof voices);memset(sequences,0,sizeof sequences);
+    paused=pause_ack=0;suspended=1;
+    if(audio_modules_stop()<0)return -1;
+    p4_log("audio suspended: workers stopped, firmware released\n");return 1;
+}
+int p4_audio_resume_after_video(void)
+{
+    if(!suspended)return 0;
+    int r=audio_modules_start();
+    if(r>=0)r=audio_workers_start();
+    if(r<0){audio_failure("restart after video",r);return r;}
+    suspended=0;p4_log("audio resumed: firmware and workers restarted\n");return 0;
+}
+void p4_audio_shutdown(void)
+{
+    audio_workers_stop();
+    audio_modules_stop();
     for(int i=0;i<6;++i){free_bank(&banks[i]);free_bank(&bank_requests[i].next);memset(&bank_requests[i],0,sizeof bank_requests[i]);}
     for(int i=0;i<2;++i){free(default_banks[i].hd);free(default_banks[i].bd);free(default_banks[i].sq);memset(&default_banks[i],0,sizeof default_banks[i]);}
     banks_loaded=0;
     free(index_rows);free(index_storage);free(signature_index);
     index_rows=NULL;index_storage=selectors=NULL;signature_index=NULL;index_count=selector_bytes=0;initialized=0;
+    paused=pause_ack=suspended=0;queue_in=queue_out=0;
+    memset(streams,0,sizeof streams);memset(voices,0,sizeof voices);memset(sequences,0,sizeof sequences);
 }
