@@ -35,6 +35,7 @@ static char data_path[P4_PATH_MAX], strings_path[P4_PATH_MAX], log_path[P4_PATH_
 __asm__(".section .p4image,\"aw\",@nobits\n.globl p4_image\np4_image:\n.space " P4_STR(P4_IMAGE_SIZE) "\n.text\n");
 
 int kwlnBoot(void);
+extern int p4_fps_overlay;
 
 int p4_quiet; /* the game owns the screen once the GE is up */
 
@@ -409,7 +410,11 @@ int main(int argc, char **argv)
         stop();
         return 1;
     }
-    p4_log("Persona4 PORTABLE b249-xmb-home8: HOME exit callback ready\n");
+    char fps_marker[P4_PATH_MAX];
+    SceIoStat fps_stat;
+    snprintf(fps_marker, sizeof fps_marker, "%sFPS", p4_game_dir);
+    p4_fps_overlay = sceIoGetstat(fps_marker, &fps_stat) >= 0;
+    p4_log("Persona4 PORTABLE b249-xmb-home9: HOME exit callback ready\n");
     p4_log("game directory %s\n", p4_game_dir);
 #ifdef P4_HW_PROFILE
     extern char p4_image[];

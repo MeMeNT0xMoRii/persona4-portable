@@ -17,17 +17,16 @@ replay and the 04/17 evening save for ongoing play.
 
 ## Current build and verification
 
-Use `b249-xmb-home8` on `playthrough/b176-xmb-home`. The
-[build record](build_b249_xmb_home8.md#development-reference) gives the exact
-tested source SHA, [platform test matrix](build_b249_xmb_home8.md#test-matrix)
-and [next checks](build_b249_xmb_home8.md#next-checks).
+Use [b249-xmb-home9](build_b249_xmb_home9.md) on `playthrough/b249-home9` for
+the next playthrough. The build notes record the replay results, FPS marker
+and rollback procedure. The PSP Go captures are from home8.
 
-| Platform | Current status |
+| Platform | Next check |
 | --- | --- |
-| Host | Build and address checks passed. See the build record for the remaining host harness failures. |
-| PPSSPP | Slots 4, 7 and 8 loaded. Slot 9 was saved, reloaded, and opened with standalone b176-home8. TV entry, school-route umbrellas, All-Out portraits and natural level-up were replayed. |
-| PSP-3000 | Combined XMB release awaiting hardware replay. |
-| PSP Go (PSP-N1000) | Combined XMB release awaiting hardware replay. |
+| Host | Use the address audit, regression suite and matching PBP/data/string hashes in the build record. |
+| PPSSPP | Replay slot 8 for System, Item and Persona. Use the home8 record for the earlier TV, umbrella, All-Out, level-up and slot 9 tests. |
+| PSP Go (PSP-N1000) | Start a new game at 333 MHz with sound enabled. Also replay slot 8 to compare the menus and test save/load and HOME with the FPS marker present and absent. |
+| PSP-3000 | Verify XMB boot, branding, save/load and HOME on the 64 MB setup, then replay the same menus. |
 
 ## Earlier hardware reports
 

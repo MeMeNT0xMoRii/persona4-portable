@@ -1,7 +1,7 @@
 """Regression checks for retail address casts in the PSP source mirror."""
 import unittest
 
-from psp_census import shim, trap_ee_asm, void_quad_setters
+from psp_census import narrow_parameters, shim, trap_ee_asm, void_quad_setters
 from psp_make_data import K
 
 
@@ -9,6 +9,17 @@ class AddressCasts(unittest.TestCase):
     def test_script_integer_result_matches_canonical_header(self):
         self.assertEqual(shim('extern s64 scrGetParamInt();'), 'extern s32 scrGetParamInt();')
         self.assertEqual(shim('s64 actual_wide_result(void);'), 's64 actual_wide_result(void);')
+
+    def test_menu_positions_keep_both_coordinates(self):
+        for function in ("radarDrawSpritePair", "shdPersonaDrawNamePlate", "shdPersonaDrawFramePair",
+                         "shdPersonaDrawExpRow", "shdPersonaDrawArcanaBadge", "shdPersonaDrawLevelDigits",
+                         "shdPersonaDrawPanelSprites"):
+            with self.subTest(function=function):
+                prototype = f"void {function}(s64, f32);"
+                definition = f"void {function}(s64 position, f32 depth) {{}}"
+                self.assertEqual(narrow_parameters(prototype), prototype)
+                self.assertEqual(narrow_parameters(definition), definition)
+        self.assertEqual(narrow_parameters("void other(s64 position);"), "void other(s32 position);")
 
     def test_quad_callback_aliases_do_not_add_hidden_result_pointer(self):
         for quad in ('s128', 'u128', 'u_long128'):

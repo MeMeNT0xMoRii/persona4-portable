@@ -575,6 +575,31 @@ static void flip_wait(unsigned bits, SceUInt timeout_us)
    - list N+1 is built behind a gate: its stall address stays at its start (libpspgu skips stall updates while
      gu_object_stack_depth is set) until shown_seq reaches N, then the GE catches up while the CPU builds on.
    b72's pipeline drew N+1 into the buffer still on screen: the HUD flickered. */
+int p4_fps_overlay;
+static unsigned fps_started, fps_frames, fps_window_valid;
+static volatile unsigned fps_tenths;
+static void fps_draw(void);
+
+static void fps_presented(void)
+{
+    if (!p4_fps_overlay)
+        return;
+    unsigned now = sceKernelGetSystemTimeLow();
+    if (!fps_window_valid) {
+        fps_started = now;
+        fps_frames = 0;
+        fps_window_valid = 1;
+        return;
+    }
+    unsigned elapsed = now - fps_started;
+    ++fps_frames;
+    if (elapsed >= 1000000) {
+        fps_tenths = (unsigned)((fps_frames * 10000000ULL + elapsed / 2) / elapsed);
+        fps_started = now;
+        fps_frames = 0;
+    }
+}
+
 static volatile unsigned flip_seq, shown_seq;
 static void *volatile flip_fb;
 static int flip_thread = -1;
@@ -589,7 +614,9 @@ static int flip_main(SceSize size, void *arg)
         if (seq != shown_seq && (int)(ge_finished - seq) >= 0) {
             void *fb = flip_fb;
             sceDisplayWaitVblankStart();
-            sceDisplaySetFrameBuf((void *)(0x04000000 + (unsigned)fb), 512, PSP_DISPLAY_PIXEL_FORMAT_8888, PSP_DISPLAY_SETBUF_IMMEDIATE);
+            if (sceDisplaySetFrameBuf((void *)(0x04000000 + (unsigned)fb), STRIDE,
+                                     PSP_DISPLAY_PIXEL_FORMAT_8888, PSP_DISPLAY_SETBUF_IMMEDIATE) >= 0)
+                fps_presented();
             shown_seq = seq;
             flip_signal(FLIP_SHOWN);
         } else {
@@ -1403,6 +1430,9 @@ int func_003f79b0(void *raster, void *device, int flags)
     watch_device_table(frames);
     if (p4_exp_ge_time)
         ge_time_frames++;
+    int present_new_frame = in_frame;
+    if (present_new_frame && p4_fps_overlay && !rtt_target)
+        fps_draw();
     prof_begin(PROF_SYNC);
     int pipe = p4_pipeline && flip_thread >= 0;
     if (vertex_used > pipe_peak_v) pipe_peak_v = vertex_used;
@@ -1493,7 +1523,9 @@ int func_003f79b0(void *raster, void *device, int flags)
         vertex_cap = POOL_VERTICES / 2;
         index_cap = POOL_INDICES / 2;
     } else {
-        sceDisplaySetFrameBuf((void *)(0x04000000 + (unsigned)draw_buffer), STRIDE, PSP_DISPLAY_PIXEL_FORMAT_8888, PSP_DISPLAY_SETBUF_IMMEDIATE);
+        if (sceDisplaySetFrameBuf((void *)(0x04000000 + (unsigned)draw_buffer), STRIDE,
+                                 PSP_DISPLAY_PIXEL_FORMAT_8888, PSP_DISPLAY_SETBUF_IMMEDIATE) >= 0 && present_new_frame)
+            fps_presented();
         draw_buffer = other;
         flip_seq = shown_seq = ge_queued;
         pipe_set = 0;
@@ -2597,6 +2629,48 @@ static unsigned byte_colour(float c)
     return c <= 0 ? 0 : c >= 255 ? 255 : (unsigned)c;
 }
 
+/* A 3x5 bitmap, drawn as untextured sprites at the end of the screen list. */
+static void fps_draw(void)
+{
+    static const unsigned short glyphs[] = {
+        0x7b6f, 0x2492, 0x73e7, 0x73cf, 0x5bc9, 0x79cf, 0x79ef, 0x7249, 0x7bef, 0x7bcf,
+        0x0002, 0x79e4,
+    };
+    enum { FIRST_X = 4, FIRST_Y = SCREEN_H - 14 };
+    unsigned value = fps_tenths;
+    if (value > 999) value = 999;
+    unsigned glyph[5] = {11, value / 100, value / 10 % 10, 10, value % 10};
+    typedef struct { unsigned colour; short x, y, z, pad; } FpsVertex;
+    const int format = GU_COLOR_8888 | GU_VERTEX_16BIT | GU_TRANSFORM_2D;
+    FpsVertex *vertices = sceGuGetMemory((1 + 5 * 15) * 2 * sizeof *vertices);
+    vertices[0] = (FpsVertex){0xff202020, FIRST_X, FIRST_Y, 0, 0};
+    vertices[1] = (FpsVertex){0xff202020, FIRST_X + 44, FIRST_Y + 12, 0, 0};
+    unsigned count = 2;
+    for (unsigned i = 0; i < 5; i++) {
+        if (i == 1 && !glyph[i]) continue;
+        unsigned bits = glyphs[glyph[i]];
+        for (int row = 0; row < 5; row++)
+            for (int col = 0; col < 3; col++) {
+                if (!(bits & (1u << (14 - row * 3 - col)))) continue;
+                int x = FIRST_X + 2 + i * 8 + col * 2;
+                int y = FIRST_Y + 1 + row * 2;
+                vertices[count++] = (FpsVertex){0xffffffff, x, y, 0, 0};
+                vertices[count++] = (FpsVertex){0xffffffff, x + 2, y + 2, 0, 0};
+            }
+    }
+    sceGuDisable(GU_TEXTURE_2D);
+    sceGuDisable(GU_DEPTH_TEST);
+    sceGuDisable(GU_STENCIL_TEST);
+    sceGuDisable(GU_ALPHA_TEST);
+    sceGuDisable(GU_BLEND);
+    sceGuDisable(GU_FOG);
+    sceGuDisable(GU_CLIP_PLANES);
+    sceGuDepthMask(GU_TRUE);
+    sceGuPixelMask(0xff000000);
+    sceGuScissor(0, 0, SCREEN_W, SCREEN_H);
+    sceGuDrawArray(GU_SPRITES, format, count, 0, vertices);
+}
+
 static void put_vertex(GuVertex *out, const Vertex2D *in)
 {
     out->u = in->u * texture_w;
@@ -2716,6 +2790,12 @@ static unsigned gs_alpha_splits;
 unsigned p4_gs_alpha_splits(void) { unsigned n = gs_alpha_splits; gs_alpha_splits = 0; return n; }
 
 static int calendar_depth_pass, calendar_selected_date;
+static int system_cursor_mask;
+
+void p4_system_cursor_mask(int phase)
+{
+    system_cursor_mask = phase;
+}
 int p4_tv_ring = 1;
 int p4_texture_tint = 1;
 
@@ -2975,6 +3055,28 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
         st_depth_func(GU_GREATER);
     }
     int alpha_writer = pixel_mask == 0x00ffffff && render_state[1] && (Raster *)render_state[1] != &display_raster;
+    if (system_cursor_mask && !rtt_target) {
+        /* The System menu clears destination alpha, then marks its slider.
+           The retail label pass tests that bit to recolour the selected text. */
+        st_enable(GU_DEPTH_TEST, 0);
+        st_depth_mask(GU_TRUE);
+        bind_mask(system_cursor_mask == 2 ? 255 : 0);
+        bind_texture();
+        sceGuDisable(GU_CLIP_PLANES);
+        sceGuDisable(GU_BLEND);
+        if (system_cursor_mask == 2) {
+            sceGuEnable(GU_ALPHA_TEST);
+            sceGuAlphaFunc(GU_GREATER, 0x40, 0xff);
+        } else {
+            sceGuDisable(GU_ALPHA_TEST);
+        }
+        GuVertex *mask = sceGuGetMemory(count * sizeof *mask);
+        for (int i = 0; i < count; i++)
+            put_vertex(&mask[i], &vertices[indices ? indices[i] : i]);
+        sceGuDrawArray(gu_prim[prim], GU_2D_FORMAT, count, 0, mask);
+        sceGuDisable(GU_ALPHA_TEST);
+        return 1;
+    }
     int effect_mask = p4_effect_mask && !rtt_target && alpha_writer && sky_state[3] == 0x31001;
     /* mcDrawSlotDial clears destination alpha through the digit textures using its own alpha tests. */
     int slot_cutout = alpha_writer && (sky_state[3] == 0x50009 || sky_state[3] == 0x50805);
@@ -10618,6 +10720,7 @@ int p4_video_renderer_begin(void)
 
 void p4_video_renderer_end(void)
 {
+    fps_window_valid = fps_frames = fps_tenths = 0;
     skip_frame = skip_run = 0;
     skip_debt_us = 0;
     skip_last_us = sceKernelGetSystemTimeLow();

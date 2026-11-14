@@ -109,6 +109,18 @@ FIXES = {
         ("\n}\n#pragma pop\n\n#pragma push\n#pragma optimization_level 2\n// Queues a day-strip draw task",
          "\n    p4_calendar_depth_pass(0);\n}\n#pragma pop\n\n#pragma push\n#pragma optimization_level 2\n// Queues a day-strip draw task"),
     ],
+    "src/unplaced/unplaced_inferred_0035fc40.c": [
+        ("        mdlEffectEmitMaskedTagPair();\n        D_00887300[0](1, 0);\n        colorBytes[3] = 0;",
+         "        extern void p4_system_cursor_mask(int);\n"
+         "        mdlEffectEmitMaskedTagPair();\n        p4_system_cursor_mask(1);\n"
+         "        D_00887300[0](1, 0);\n        colorBytes[3] = 0;"),
+        ("        effMiscDrawScreenColor(colorBytes, 0);\n        sdkSpriteDrawAt(cursorSprite,",
+         "        effMiscDrawScreenColor(colorBytes, 0);\n        p4_system_cursor_mask(2);\n"
+         "        sdkSpriteDrawAt(cursorSprite,"),
+        ("0xFF);\n        mdlEffectEmitTagPair();\n        RpSkyRenderStateSet(3, (void *)0x2D801);",
+         "0xFF);\n        p4_system_cursor_mask(0);\n"
+         "        mdlEffectEmitTagPair();\n        RpSkyRenderStateSet(3, (void *)0x2D801);"),
+    ],
     "src/shdPersona.c": [
         ("middleX = 256.0f + x;", "middleX = 192.0f + x;"),
         ("rightX = 256.0f + middleX;", "rightX = 192.0f + middleX;"),
@@ -515,7 +527,11 @@ REALLY_64_BIT = {"gsPackGifTag", "mdlEffectEmitValuePacket", "dpsub", "RunningSt
                  # b165: an s64 that carries two floats (x low, y high; callers pass *(s64 *)&vec2). Narrowed, y was
                  # lost: the minimap's player arrow drew at y ~0, above the map.
                  "mapSymbolMarkerDraw", "taskRecordSetPosition", "H_Dbprt_FmtAt", "sflDataDrawPersonaPanel",
-                 "sflDataDrawByteValuePanel", "sflDataDrawNumberValue", "sflDataDrawTitledIcon", "sflDataDrawLevelBadge"}
+                 "sflDataDrawByteValuePanel", "sflDataDrawNumberValue", "sflDataDrawTitledIcon", "sflDataDrawLevelBadge",
+                 # Item cursor and Persona layout pass packed screen coordinates by value.
+                 "radarDrawSpritePair", "shdPersonaDrawNamePlate", "shdPersonaDrawFramePair",
+                 "shdPersonaDrawExpRow", "shdPersonaDrawArcanaBadge", "shdPersonaDrawLevelDigits",
+                 "shdPersonaDrawPanelSprites"}
 
 
 def narrow_parameters(text):
