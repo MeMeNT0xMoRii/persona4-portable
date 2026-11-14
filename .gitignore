@@ -55,3 +55,4 @@ audio.idx
 .env.*
 .vscode/
 .idea/
+*.p2s

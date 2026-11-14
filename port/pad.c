@@ -96,16 +96,32 @@ static void route_apply(SceCtrlData *pad)
     }
 }
 
-int scePadRead(int port, int slot, unsigned char *out)
+static void pad_start(void)
 {
     static int started;
-    SceCtrlData pad;
     if (!started) {
         started = 1;
         sceCtrlSetSamplingCycle(0);
         sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
         load_route();
     }
+}
+
+/* the route's buttons now, for the movie player (it reads the pad itself): a recorded START that skipped a movie
+   skips it again when replayed */
+unsigned p4_route_buttons(void)
+{
+    SceCtrlData pad = { 0 };
+    pad_start();
+    if (route_count)
+        route_apply(&pad);
+    return pad.Buttons;
+}
+
+int scePadRead(int port, int slot, unsigned char *out)
+{
+    SceCtrlData pad;
+    pad_start();
     memset(out, 0, 32);
     if (port != 0)
         return 0;

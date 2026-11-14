@@ -26,6 +26,18 @@ static __inline__ void p4_load(P4Reg *r, const void *from, unsigned size)
     __builtin_memcpy(r, from, size > 16 ? 16 : size);
 }
 
+/* The VU has no Inf or NaN: overflow clamps to +-max float, and a NaN (Inf * 0, Inf - Inf) reads as 0. */
+static __inline__ float p4_vu_finite(float f)
+{
+    unsigned u;
+    __builtin_memcpy(&u, &f, 4);
+    if ((u & 0x7F800000u) == 0x7F800000u) {
+        u = (u & 0x007FFFFFu) ? 0 : (u & 0x80000000u) | 0x7F7FFFFFu;
+        __builtin_memcpy(&f, &u, 4);
+    }
+    return f;
+}
+
 /* kind: 0 add, 1 sub, 2 mul, 3 ACC + s * t, 4 ACC - s * t. lane: -1 per lane, 0-3 broadcast, -2 the Q register. */
 static __inline__ void p4_vop(int kind, int mask, P4Reg *d, const P4Reg *s, const P4Reg *t, int lane)
 {
@@ -37,7 +49,7 @@ static __inline__ void p4_vop(int kind, int mask, P4Reg *d, const P4Reg *s, cons
     }
     for (i = 0; i < 4; i++)
         if (mask >> i & 1)
-            d->f[i] = out[i];
+            d->f[i] = p4_vu_finite(out[i]);
 }
 
 static __inline__ void p4_vmove(int mask, P4Reg *d, const P4Reg *s)
@@ -86,9 +98,9 @@ static __inline__ void p4_vopmsub(P4Reg *d, const P4Reg *s, const P4Reg *t)
     float x = p4vu.acc.f[0] - s->f[1] * t->f[2];
     float y = p4vu.acc.f[1] - s->f[2] * t->f[0];
     float z = p4vu.acc.f[2] - s->f[0] * t->f[1];
-    d->f[0] = x;
-    d->f[1] = y;
-    d->f[2] = z;
+    d->f[0] = p4_vu_finite(x);
+    d->f[1] = p4_vu_finite(y);
+    d->f[2] = p4_vu_finite(z);
 }
 
 /* A VU divide by zero gives the largest float, never a NaN or a trap. */

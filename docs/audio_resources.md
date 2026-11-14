@@ -61,6 +61,17 @@ one payload. Original COMSE/BSE/TEST HD/BD/SQ files are also copied to SOUND.
 - Movie playback pauses SAS and releases Output2 before AVC playback, then
   resumes it. AVCODEC firmware can be shared without treating already-loaded
   as an error or unloading another subsystem's reference.
+- b247 requires an acknowledged pause before calling AVC. The audio worker
+  submits one grain with all voices paused, drains/releases Output2, and only
+  then acknowledges. Resume also waits for acknowledgement, preventing a stale
+  pause acknowledgement from being reused by an immediate second movie.
+  A timeout or a stopped worker skips the movie and logs the audio step/error.
+  This hardens the handoff; it does not establish the cause of the historical
+  long-session Media Engine hang. See [audio_video_hang.md](audio_video_hang.md).
+- b249 also stops the workers and releases owned SASCORE/AVCODEC around movies,
+  preserving loaded banks/queued commands and restoring music at its current
+  ADPCM block. The full-game 10+ minute title-return test passed on b249; b247's
+  acknowledged pause and b248's full MPEG teardown alone both failed it.
 
 Effect timbres preserve original VAG samples, pitch, volume, pan and ADSR data.
 SQ note-on/off timing is interpreted by the audio worker. Parameter automation
@@ -108,7 +119,7 @@ Final b164 release deployment and validation artifacts belong under
 - b164 EBOOT.PBP, p4data.bin and p4str.bin were installed and card-readback
   verified. The EBOOT's embedded PRX matches the separately tested release PRX.
 - All 17,375 streams are converted and packed. Complete authoritative package:
-  `C:/temp/p3f-audio-packed/SOUND` (12 files including manifest;
+  `build/audio_pack/SOUND` (12 files including manifest;
   AUDIO.0 is exactly 929,387,008 bytes; audio.idx is 556,520 bytes).
 - The earlier on-card test pack had only 173 music/environment streams and
   no voices. The full pack copy through PSPLink was reset at ~208 MiB at the

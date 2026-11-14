@@ -46,7 +46,7 @@ def main():
         list(pool.map(lambda path: shutil.copyfile(path, stage / path.name), inputs))
     print(f"Staged {len(inputs)} inputs; compiling diagnostic entry and renderer", flush=True)
     gp = find_gp(load()[0]) + K
-    flags = ["-O2", "-g", "-G0", "-D_PSP_FW_VERSION=600",
+    flags = [os.environ.get("P4_PORT_OPT", "-O2"), "-g", "-G0", "-D_PSP_FW_VERSION=600",  # P4_PORT_OPT=-Os: b241 instruction-cache experiment
              f"-DP4_GP={gp:#x}u", f"-DP4_K={K:#x}u", f"-DP4_IMAGE={PSP_IMAGE:#x}u",
              f"-I{sdk / 'include'}", f"-I{ROOT / 'port'}"]
     if not args.release:
@@ -112,7 +112,8 @@ def main():
         shutil.copyfile(out / name, destination / name)
     for path in (ROOT / "port").glob("*.h"):
         source_hashes[str(path.relative_to(ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()
-    manifest = {"build": build_number, "release": args.release, "source_sha256": source_hashes, "artifact_sha256": {
+    manifest = {"build": build_number, "release": args.release, "source_sha256": source_hashes,
+                "object_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in original_objects}, "artifact_sha256": {
         name: hashlib.sha256((destination / name).read_bytes()).hexdigest()
         for name in ("p4.elf", "p4.prx", "EBOOT.PBP", data_name, "p4str.bin")}}
     (destination / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")

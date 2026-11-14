@@ -1,6 +1,6 @@
 # Building Persona 4 for PSP
 
-These instructions target the current **b164** working-tree sources. Run commands from the root of this port repository in **PowerShell**. Build on a local disk, such as `C:/src/p4-psp`. Linker response files now quote object paths. Network shares are much slower and have additional path/ownership complications. The [source-build preparation utility](prepare_game.md) automates this pipeline with an isolated local cache.
+These instructions target the current **b249** working-tree sources. Run commands from the root of this port repository in **PowerShell**. Build on a local disk, in a dedicated project folder. Linker response files now quote object paths. Network shares are much slower and have additional path/ownership complications. The [source-build preparation utility](prepare_game.md) automates this pipeline with an isolated local cache.
 
 The aim is to rebuild the port and recreate the installation from your own disc. Bit-for-bit equality with the maintainer's previous b164 binary is not yet guaranteed: compiler, libraries, upstream revision and compiled inputs affect the output. Record the versions and hashes from your own build.
 
@@ -45,7 +45,7 @@ The last command should print nothing. Do not substitute the latest upstream rev
 Set `PSPDEV` explicitly; historical fallback paths in individual scripts belong to other machines.
 
 ```powershell
-$env:PSPDEV = 'C:/pspdev'
+$env:PSPDEV = (Resolve-Path './toolchain/pspdev').Path
 $env:PATH = "$env:PSPDEV/bin;$env:PATH"
 & "$env:PSPDEV/bin/psp-gcc.exe" --version
 & "$env:PSPDEV/bin/psp-ld.exe" --version
@@ -55,7 +55,7 @@ python -m venv .venv
 python -m pip install -r tools/requirements-video.txt
 
 New-Item -ItemType Directory -Force build | Out-Null
-python tools/extract_elf.py 'D:/Games/Persona 4 (USA).iso'
+python tools/extract_elf.py './Shin Megami Tensei - Persona 4 (USA).iso'
 Get-FileHash build/SLUS_217.82 -Algorithm SHA1
 ```
 
@@ -74,7 +74,7 @@ Get-Content build/census/failed_compile.txt
 
 python tools/psp_ptr_proof.py
 python tools/psp_link.py
-python tools/psp_hw_debug.py --release --out build/release_b164
+python tools/psp_hw_debug.py --release --out build/release_b249
 ```
 
 `failed_compile.txt` must contain no failed filenames before linking. The census script now returns a failing exit code when compilation fails; it also keeps the detailed reports. Do not continue with missing or stale objects.
@@ -89,7 +89,7 @@ What these commands do:
 The final code output is:
 
 ```text
-build/release_b164/
+build/release_b249/
   EBOOT.PBP
   p4.prx
   p4.elf
@@ -113,13 +113,13 @@ Place a copy there (it is ignored by Git), or use a local filesystem link if app
 ```powershell
 python tools/psp_disc.py DATA BTL ENV BGM ZZZZZ
 python tools/psp_video.py --all
-python tools/psp_audio.py --all --vgmstream 'C:/tools/vgmstream/vgmstream-cli.exe' --pack build/audio_pack/SOUND
+python tools/psp_audio.py --all --vgmstream './helpers/vgmstream/vgmstream-cli.exe' --pack build/audio_pack/SOUND
 python tools/psp_release.py --no-build
 ```
 
-The release packager uses `BUILD` from `port/main.c` (currently 164). It checks source/artifact hashes, all 23 complete movie conversions and the complete audio catalogue. If you change a source after step 3, rebuild before packaging. Partial `--seconds` movie probes do not qualify for release packaging.
+The release packager uses `BUILD` from `port/main.c` (currently 249). It checks source/artifact hashes, all 23 complete movie conversions and the complete audio catalogue. If you change a source after step 3, rebuild before packaging. Partial `--seconds` movie probes do not qualify for release packaging.
 
-The complete installation is in **`build/psp_dist/PSP/GAME/P4`**. `build/release_b164/UPDATE/PSP/GAME/P4` contains only an update and requires the archives/index from an existing installation. For a first install, copy the complete installation folder.
+The complete installation is in **`build/psp_dist/PSP/GAME/P4`**. `build/release_b249/UPDATE/PSP/GAME/P4` contains only an update and requires the archives/index from an existing installation. For a first install, copy the complete installation folder.
 
 ## 5. Install on PSP
 

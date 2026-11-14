@@ -9,10 +9,42 @@ typedef struct { Row right, up, at, pos; } Matrix; /* 64 bytes, rows like RwMatr
     (out).z = (m).x * (in)->right.z + (m).y * (in)->up.z + (m).z * (in)->at.z; \
 } while (0)
 
+/* b230 p4_rwmul_vfpu: out = a x b on the VFPU (as rwsky.c's multiply_vfpu: b's rows in M400, a's rows with w 0, 0, 0, 1
+   in M600, each row through E400), all loads before the stores so out may be a or b. The w words (flags and pads) are
+   put back as the FPU forms leave them. 0 when a matrix is not 16-byte aligned. The game's look-at pose
+   (mdlUpdateHierarchyPose, ~2.4k cycles a node on the PSP, b229) and frame updates multiply through here. */
+int p4_rwmul_vfpu = 0; /* b230 on the PSP (dialogue, on/off/on/off): no difference (apose 2.5 ms either way); off keeps the FPU results */
+unsigned p4_rwmul_vfpu_calls, p4_rwmul_fpu_calls;
+static int mul_vfpu(Matrix *out, const Matrix *a, const Matrix *b)
+{
+    if (!p4_rwmul_vfpu || (((unsigned)out | (unsigned)a | (unsigned)b) & 15))
+        return 0;
+    unsigned f0 = out->right.flags, f1 = out->up.flags, f2 = out->at.flags, f3 = out->pos.flags;
+    __asm__ volatile(
+        "lv.q    C400, 0(%[b])\n lv.q C410, 16(%[b])\n lv.q C420, 32(%[b])\n lv.q C430, 48(%[b])\n"
+        "lv.q    C600, 0(%[a])\n lv.q C610, 16(%[a])\n lv.q C620, 32(%[a])\n lv.q C630, 48(%[a])\n"
+        "vzero.s S603\n vzero.s S613\n vzero.s S623\n vone.s S633\n"
+        "vtfm4.q C700, E400, C600\n"
+        "vtfm4.q C710, E400, C610\n"
+        "vtfm4.q C720, E400, C620\n"
+        "vtfm4.q C730, E400, C630\n"
+        "sv.q    C700, 0(%[o])\n sv.q C710, 16(%[o])\n sv.q C720, 32(%[o])\n sv.q C730, 48(%[o])\n"
+        : : [o] "r"(out), [a] "r"(a), [b] "r"(b) : "memory");
+    out->right.flags = f0, out->up.flags = f1, out->at.flags = f2, out->pos.flags = f3;
+    p4_rwmul_vfpu_calls++;
+    return 1;
+}
+
 /* out = a * b. RenderWare keeps two words of flags: the result has lost identity and may have lost orthonormality. */
 unsigned char *RwMatrixMultiply(unsigned char *out_, unsigned char *a_, unsigned char *b_)
 {
     Matrix *out = (Matrix *)out_, *a = (Matrix *)a_, *b = (Matrix *)b_;
+    unsigned flags = a->right.flags & b->right.flags;
+    if (mul_vfpu(out, a, b)) {
+        out->right.flags = flags;
+        return out_;
+    }
+    p4_rwmul_fpu_calls++;
     ROTATE(out->right, a->right, b);
     ROTATE(out->up, a->up, b);
     ROTATE(out->at, a->at, b);
@@ -29,6 +61,9 @@ void matrixASMMult(unsigned char *out_, unsigned char *a_, unsigned char *b_)
 {
     Matrix *out = (Matrix *)out_, *a = (Matrix *)a_, *b = (Matrix *)b_;
     unsigned flags = out->right.flags;
+    if (mul_vfpu(out, a, b)) /* keeps out's flags, as below */
+        return;
+    p4_rwmul_fpu_calls++;
     Matrix r;
     ROTATE(r.right, a->right, b);
     ROTATE(r.up, a->up, b);
@@ -93,6 +128,22 @@ float func_004494b8(float y, float x)
     if (fabsf(y) <= fabsf(x) * 1e-6f)
         y = 0.0f;
     return atan2f(y + 0.0f, x);
+}
+/* b215 acosf (the EE libm's, func_00448d10, reached through func_0044b920). The EE's FPU rounds toward zero, so a
+   normalised vector never has a component above 1; the PSP rounds to nearest and gives 1.0000001 now and then, and
+   acosf answers NaN ((x - x) / (x - x); on the EE that is the largest float, and the look-at's angle loops would never
+   end, so the EE never gets there). The head look-at (mdlUpdateHierarchyPose) took acos of such a component: the
+   head's rotation went NaN and stayed, a headless party member in battle (b155-b214). Inputs are clamped to [-1, 1];
+   inside the range the retail body runs as before. */
+unsigned p4_acos_clamped;
+float p4r_00448d10(float x);
+float func_00448d10(float x)
+{
+    if (x > 1.0f)
+        x = 1.0f, p4_acos_clamped++;
+    else if (x < -1.0f)
+        x = -1.0f, p4_acos_clamped++;
+    return p4r_00448d10(x);
 }
 /* RwV3dTransformVectors' VU0 body: rotate count packed vectors by the matrix's right/up/at rows, no translation. */
 float *func_00402570(float *out, const float *in, int count, const float *m)

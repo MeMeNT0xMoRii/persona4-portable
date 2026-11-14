@@ -12,7 +12,13 @@ void p4_audio_effect_stop(int stream);
 int p4_audio_bank_file(int slot, int file);
 int p4_audio_bank_memory(int slot, const void *hd, unsigned hs, const void *bd, unsigned bs, const void *sq, unsigned ss);
 int p4_audio_bank_ready(int slot);
-void p4_audio_pause(int pause);
+/* Returns 0 only after the worker acknowledges the requested state.
+ * A failed/timed-out pause must not be followed by a Media Engine video call. */
+int p4_audio_pause(int pause);
+/* Suspend workers and release owned firmware for a fresh video codec session.
+ * Returns 1 if suspended, 0 if audio was disabled, -1 on failure. */
+int p4_audio_suspend_for_video(void);
+int p4_audio_resume_after_video(void);
 void p4_audio_shutdown(void);
 unsigned p4_audio_hash(const char *path);
 

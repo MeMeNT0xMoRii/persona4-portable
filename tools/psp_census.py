@@ -123,6 +123,8 @@ FIXES["src/Kosaka/k_clump/k_clump_inferred.c"] = [
 ]
 # Profiler (b139): mdlAdvanceModel is ~1 ms a character in Heaven (mdlQueueModelForDraw 3.0 of draw scene's 3.1 Mcycles);
 # time its steps: 0 frame matrix, 1 attached matrices, 2 animation layers, 3 anim control, 4 effect transforms, 5 motion.
+# mdlEffectResolveChildOffset loads values[] as a full quadword: the fourth word was a stray stack slot.
+FIXES["src/Graphics/Model/mdlEffect_inferred_00486780.c"] = [("u32 values[3];", "u32 values[4] = {0};")]
 FIXES["src/Graphics/Model/mdlManager.c"] = [
     # b154: log the per-node scale the hierarchy scale hook applies (Margaret's head drawn as a line)
     ('        *(f32*)D_00922BB4_abs = hierarchyScale->aspect;\n',
@@ -138,13 +140,145 @@ FIXES["src/Graphics/Model/mdlManager.c"] = [
     ('        mdlSetAttachedModelMatrices((Model*)model, &matrix);\n',
      '        { extern void p4_sec(int, int); p4_sec(1, 1); }\n        mdlSetAttachedModelMatrices((Model*)model, &matrix);\n        { extern void p4_sec(int, int); p4_sec(1, 0); }\n'),
     ('                previousLayer = mdlAdvanceLayer(model + animationLayer * 0xA4 + 0xEC,\n                                             previousLayer, tick);\n',
-     '                { extern void p4_sec(int, int); p4_sec(2, 1); }\n                previousLayer = mdlAdvanceLayer(model + animationLayer * 0xA4 + 0xEC,\n                                             previousLayer, tick);\n                { extern void p4_sec(int, int); p4_sec(2, 0); }\n'),
+     '                { extern void p4_sec(int, int); p4_sec(2, 1); }\n'
+     '                { MdlLayerState *p4l = (MdlLayerState *)(model + animationLayer * 0xA4 + 0xEC); extern void p4_anim_lazy_scope(void *, void *);\n'
+     '                  p4_anim_lazy_scope(p4l->hierarchy ? (void *)((RpHAnimHierarchy *)p4l->hierarchy)->currentAnim : 0, (void *)p4l->rebaseInput); }\n'
+     '                previousLayer = mdlAdvanceLayer(model + animationLayer * 0xA4 + 0xEC,\n                                             previousLayer, tick);\n'
+     '                { extern void p4_anim_lazy_scope(void *, void *); p4_anim_lazy_scope(0, 0); }\n'
+     '                { extern void p4_sec(int, int); p4_sec(2, 0); }\n'),
     ('        mdlAdvanceAnimControl(model + 0x23C, model + 0xEC);\n',
-     '        { extern void p4_sec(int, int); p4_sec(3, 1); }\n        mdlAdvanceAnimControl(model + 0x23C, model + 0xEC);\n        { extern void p4_sec(int, int); p4_sec(3, 0); }\n'),
+     '        { extern void p4_sec(int, int); p4_sec(3, 1); }\n        { extern void p4_anim_lazy_materials(int); p4_anim_lazy_materials(1); }\n'
+     '        mdlAdvanceAnimControl(model + 0x23C, model + 0xEC);\n'
+     '        { extern void p4_anim_lazy_materials(int); p4_anim_lazy_materials(0); }\n        { extern void p4_sec(int, int); p4_sec(3, 0); }\n'),
     ('                mdlEffectListBuildTransforms(*(u8** *)&((Model *)model)->effects, model);\n',
      '                { extern void p4_sec(int, int); p4_sec(4, 1); }\n                mdlEffectListBuildTransforms(*(u8** *)&((Model *)model)->effects, model);\n                { extern void p4_sec(int, int); p4_sec(4, 0); }\n'),
     ('        mdlTickMotionState(model + 0x2D0);\n',
      '        { extern void p4_sec(int, int); p4_sec(5, 1); }\n        mdlTickMotionState(model + 0x2D0);\n        { extern void p4_sec(int, int); p4_sec(5, 0); }\n'),
+]
+# Profiler (b182): mdlUpdateDrawState is the character shadow pass (OT node 28, ~4 Mcycles a frame of its own in a
+# battle): time its parts, and check whether the flattened pose is the normal one times the shear (port/rwsky.c
+# p4_shadow_check), which would let the GE draw the shadow from the body's bones. b183 (p4_shadow_skip): in a frame
+# frameskip leaves undrawn, take the game's own no-shadow path (alpha 0: one pose update, no shadow pose, draw or
+# restore), then the effect transforms and attachment delays as every frame; b182 battle: 1.45 Mcycles of skipped frames.
+# b186 (p4_shadow_shear): without look-at, pose once for the body and draw the shadow sheared from it. b187: blend
+# tracks too (b186 excluded them, and every battle character has one; b185 matched with the track between the poses).
+# b192 (p4_shadow_lookat): look-at models too. The game's look-at pose blends a stored rotation toward its target on
+# every call and ran twice a tick (shadow, body); the one body call now takes blend' = 1 - (1 - blend)^2, two steps.
+FIXES["src/Graphics/Model/mdlManager.c"] += [
+    ('void mdlUpdateDrawState(MdlDrawState* owner)\n{\n',
+     'extern void p4_sec(int, int); extern void p4_shadow_check(void *, const void *, int); static void p4_mdlUpdateDrawState(MdlDrawState* owner); void mdlUpdateDrawState(MdlDrawState* owner) { p4_sec(9, 1); p4_mdlUpdateDrawState(owner); p4_sec(9, 0); } static void p4_mdlUpdateDrawState(MdlDrawState* owner)\n{ extern int p4_shadow_skip(void); extern int p4_shadow_shear_on(void); extern int p4_shadow_lookat_on(void); extern void p4_shadow_shear_set(const void *); extern void p4_shadow_shear_set_color(const void *, unsigned); int p4skip = p4_shadow_skip(), p4shear = 0;\n'),
+    ('    if (color.alpha == 0) {\n', '    if (color.alpha == 0 || p4skip) { p4_shadow_check(owner->hierarchy, 0, 3);\n'),
+    # b183: ... then the effect transforms and attachment delays, which tick every frame, and returns
+    ('            j++;\n        }\n        }\n        return;\n    }\n', '            j++;\n        }\n        }\n        if (p4skip) goto p4_fx; return;\n    }\n'),
+    ('    RwMatrixMultiply(&matrix0, &owner->identityMatrix, owner);\n    RwMatrixMultiply(&matrix1, &matrix0, &identity);\n    func_003e9cb0(frame, &matrix1, 0);\n',
+     '    p4_sec(15, 1); p4shear = (!(owner->flags140 & 0x4000) || p4_shadow_lookat_on()) && p4_shadow_shear_on(); if (!p4shear) { RwMatrixMultiply(&matrix0, &owner->identityMatrix, owner);\n    RwMatrixMultiply(&matrix1, &matrix0, &identity);\n    func_003e9cb0(frame, &matrix1, 0); } p4_sec(15, 0);\n'),
+    ('    if ((owner->flags140 & 0x4000) != 0) {\n        mdlUpdateHierarchyPose(owner->hierarchy,\n                      (u8*)&owner->animFlags, (u8*)&owner->flags140,\n                      &identity);\n    } else {\n        func_00397c40(owner->hierarchy);\n    }\n',
+     '    p4_shadow_check(owner->hierarchy, &identity, 0); p4_sec(10, 1); if (p4shear) { f32 *p4blend = &((MdlLookState *)&owner->flags140)->blend, p4keep = *p4blend; if ((owner->flags140 & 0x4000) && p4keep > 0.0f && p4keep < 1.0f) *p4blend = 1.0f - (1.0f - p4keep) * (1.0f - p4keep); mdlUpdateModelMatrix((Model*)owner); if ((owner->animFlags & 0x10) != 0) mdlInstallHierarchyScaleHook(owner->hierarchy, (u8*)&owner->animFlags); else if ((owner->flags140 & 0x81E0) != 0) mdlUpdateHierarchyPose(owner->hierarchy, (u8*)&owner->animFlags, (u8*)&owner->flags140, 0); else func_00397c40(owner->hierarchy); *p4blend = p4keep; } else if ((owner->flags140 & 0x4000) != 0) {\n        mdlUpdateHierarchyPose(owner->hierarchy,\n                      (u8*)&owner->animFlags, (u8*)&owner->flags140,\n                      &identity);\n    } else {\n        func_00397c40(owner->hierarchy);\n    } p4_sec(10, 0); p4_shadow_check(owner->hierarchy, &identity, (owner->flags140 & 0x4000) ? 11 : 1);\n'),
+    ('    mdlClumpApplyMatColorScale(owner->clump, (u32*)&color,\n                        (u16)(s64)((owner->flags & 8) != 0));\n',
+     '    p4_sec(12, 1); mdlClumpApplyMatColorScale(owner->clump, (u32*)&color,\n                        (u16)(s64)((owner->flags & 8) != 0)); p4_sec(12, 0);\n'),
+    ('    mdlDrawVisibleAtomics(owner->clump);\n    mdlUpdateModelMatrix((Model*)owner);\n',
+     '    p4_sec(13, 1); if (p4shear) p4_shadow_shear_set_color(&identity, color.alpha); mdlDrawVisibleAtomics(owner->clump); p4_shadow_shear_set(0); p4_sec(13, 0);\n    p4_sec(11, 1); if (!p4shear) { mdlUpdateModelMatrix((Model*)owner);\n'),
+    ('    {\n    u8* effect;\n    effect = owner->effect2CC;\n',
+     '    } p4_sec(11, 0); p4_shadow_check(owner->hierarchy, &identity, 2); p4_fx: p4_sec(14, 1); {\n    u8* effect;\n    effect = owner->effect2CC;\n'),
+    ('    {\n    struct { u16 index; u8* slot; MdlDrawState* model; } attached;\n',
+     '    p4_sec(14, 0); if (p4skip) return; {\n    struct { u16 index; u8* slot; MdlDrawState* model; } attached;\n'),
+]
+# b198: the three material-group passes have an existing record==NULL no-draw path.
+# Use it only in undrawn ticks. The OT start/end callbacks, including blend-track and
+# optional model callbacks, still run. Tint is reconstructed from per3modelMatColor on
+# every drawn tick, not accumulated from the previous material colour.
+FIXES["src/Kosaka/k_clump/k_clump_inferred_00461560.c"] = [
+    ('    record = (u8 *)((OtPrimitiveNode *)bucket)->primitive;\n',
+     '    record = (u8 *)((OtPrimitiveNode *)bucket)->primitive;\n    { extern int p4_skip_visual_prep(int); if (p4_skip_visual_prep(1)) record = NULL; }\n'),
+]
+FIXES["src/Graphics/Model/mdlManager.c"] += [
+    ('    RpClumpForAllAtomics(clump, mdlMatColorScaleCallback, &colorScaleContext);\n',
+     '    { extern int p4_skip_visual_prep(int); if (!p4_skip_visual_prep(2))\n        RpClumpForAllAtomics(clump, mdlMatColorScaleCallback, &colorScaleContext); }\n'),
+]
+# b218 p4_head_trace: probes inside the head look-at (node 0x1389) of mdlUpdateHierarchyPose; rwsky.c prints them when
+# the call leaves the look rotation non-finite (b215: one call turns a finite rotation into NaN, inputs finite).
+FIXES["src/Graphics/Model/mdlManager.c"] += [
+    ('                 RwMatrixRotate((struct RwMatrixTag*)rotationMatrix, (const RwV3d*)((u8 *)&axisMatrix), yaw + baseYaw, rwCOMBINEPOSTCONCAT);\n',
+     '                 { extern void p4_look_probe(int, const float *, int); float p4v[10] = { pitch, basePitch, yaw, baseYaw, look[0], look[1], look[2], workingVector.x, workingVector.y, workingVector.z }; p4_look_probe(0, p4v, 10); }\n'
+     '                 RwMatrixRotate((struct RwMatrixTag*)rotationMatrix, (const RwV3d*)((u8 *)&axisMatrix), yaw + baseYaw, rwCOMBINEPOSTCONCAT);\n'),
+    ('              RtQuatConvertFromMatrix((struct RtQuat *)(&rotation.value[0]),(const RwMatrix *)(outputMatrix));\n            } else {\n              if ((controllerFlags & 0x80) != 0) {\n',
+     '              RtQuatConvertFromMatrix((struct RtQuat *)(&rotation.value[0]),(const RwMatrix *)(outputMatrix));\n'
+     '              { extern void p4_look_probe(int, const float *, int); p4_look_probe(1, rotation.value, 4); p4_look_probe(2, outputMatrix, 12); }\n'
+     '            } else {\n              if ((controllerFlags & 0x80) != 0) {\n'),
+    ('            /* Snapshot the complete starting controller quaternion. */\n',
+     '            { extern void p4_look_probe(int, const float *, int); p4_look_probe(3, rotation.value, 4); }\n            /* Snapshot the complete starting controller quaternion. */\n'),
+    ('            func_003dcc70((struct RtQuat *)(&startRotation.value[0]),(struct RtQuat *)(&rotation.value[0]),(struct RtQuatSlerpCache *)(&interpolation.from[0]));\n',
+     '            func_003dcc70((struct RtQuat *)(&startRotation.value[0]),(struct RtQuat *)(&rotation.value[0]),(struct RtQuatSlerpCache *)(&interpolation.from[0]));\n'
+     '            { extern void p4_look_probe(int, const float *, int); p4_look_probe(4, interpolation.from, 10); }\n'),
+    ('            if (((*controller & 0x2000) != 0) && (limitRotation != 0)) {\n',
+     '            { extern void p4_look_probe(int, const float *, int); float p4v[5] = { blendedRotation.value[0], blendedRotation.value[1], blendedRotation.value[2], blendedRotation.value[3], (float)limitRotation }; p4_look_probe(5, p4v, 5); }\n'
+     '            if (((*controller & 0x2000) != 0) && (limitRotation != 0)) {\n'),
+    ('              if (angleOrTime * 2.0f <= fGpffff8068 * ((MdlLookState *)controller)->yawLimit) {\n',
+     '              { extern void p4_look_probe(int, const float *, int); float p4v[5] = { angleOrTime, fallbackRotation.value[0], fallbackRotation.value[1], fallbackRotation.value[2], fallbackRotation.value[3] }; p4_look_probe(6, p4v, 5);\n'
+     '                p4_look_probe(7, &localMatrix.right.x, 12); }\n'
+     '              if (angleOrTime * 2.0f <= fGpffff8068 * ((MdlLookState *)controller)->yawLimit) {\n'),
+]
+# b219: the headless party members (b155-b218). effMiscQuatAngle called __sqrt(x, 0.0f) with no declaration: gnu89 made
+# it int __sqrt(double, double), so the length went out as a double in a0-a3 and came back from v0 through cvt.s.w,
+# whatever v0 held. Divided by that, the head look-at's dot was NaN whenever v0 was 0, its acos NaN, and the look
+# rotation NaN for good (mdlUpdateHierarchyPose keeps it). The port's __sqrt is float __sqrt(float), the EE's sqrt.s.
+FIXES["src/Graphics/Effect/effMisc_inferred_004bd4a0.c"] = [
+    ('    firstLength = __sqrt(firstLength, 0.0f);\n',
+     '    { extern float __sqrt(float); firstLength = __sqrt(firstLength); }\n'),
+    ('    secondLength = __sqrt(secondLength, 0.0f);\n',
+     '    { extern float __sqrt(float); secondLength = __sqrt(secondLength); }\n'),
+]
+# b225: the battle panel frame (btlPanelDrawFrame FUN_0020B1A0, btlPanelDrawBackdropGrid FUN_0020B3A0). Once the panel
+# has grown (scaleFrame >= 11, or <= 0) neither sets its scale: retail passes whatever its caller left in $f20. On the
+# PSP that was NaN: the frame outline, its fill and the backdrop disc went to the GE with NaN corners and drew as long
+# stripes across the attack target select. PCSX2 (ss_aim.p2s, Margaret's target select) shows no frame there; on the
+# PSP any scale above 0 draws a rounded box over the target ring. p4_panel_scale (0) holds the value.
+FIXES["src/Battle/btlEffect_inferred_00202c60.c"] = [
+    ('    f32 progress;\n    f32 scale;\n',
+     '    f32 progress;\n    extern float p4_panel_scale; f32 scale = p4_panel_scale;\n'),
+    ('    s16 growthFrame;\n    f32 scale;\n\n    glyphs',
+     '    s16 growthFrame;\n    extern float p4_panel_scale; f32 scale = p4_panel_scale;\n\n    glyphs'),
+]
+# b202 p4_anim_lazy (rwsky.c): the readers of an interpolator's frames. The layer blend and the rebase may be recorded
+# instead of run (the port replays them through the p4_ bodies); look-at materialises and runs its own RtAnim calls
+# without deferral.
+FIXES["src/Graphics/Model/mdlManager.c"] += [
+    ('u32 mdlBlendAnimInterpolators(RtAnimInterpolator* destination, RtAnimInterpolator* first,\n                  RtAnimInterpolator* second, f32 blend)\n{\n',
+     'u32 p4_mdlBlendAnimInterpolators(RtAnimInterpolator* destination, RtAnimInterpolator* first, RtAnimInterpolator* second, f32 blend);\n'
+     'u32 mdlBlendAnimInterpolators(RtAnimInterpolator* destination, RtAnimInterpolator* first, RtAnimInterpolator* second, f32 blend)\n'
+     '{ extern int p4_anim_lazy_blend(void *, void *, void *, f32); if (p4_anim_lazy_blend(destination, first, second, blend)) return 1;\n'
+     '  return p4_mdlBlendAnimInterpolators(destination, first, second, blend); }\n'
+     'u32 p4_mdlBlendAnimInterpolators(RtAnimInterpolator* destination, RtAnimInterpolator* first,\n                  RtAnimInterpolator* second, f32 blend)\n{\n'),
+    ('void mdlRebaseLayerPose(u8 *layer)\n{\n',
+     'void p4_mdlRebaseLayerPose(u8 *layer);\n'
+     'void mdlRebaseLayerPose(u8 *layer)\n'
+     '{ extern int p4_anim_lazy_rebase(void *, void *, void *, void *, int, f32); MdlLayerState *p4l = (MdlLayerState *)layer;\n'
+     '  if (p4_anim_lazy_rebase(layer, p4l->hierarchy ? (void *)((RpHAnimHierarchy *)p4l->hierarchy)->currentAnim : 0, (void *)p4l->rebaseInput,\n'
+     '                          (void *)p4l->rebaseRotation, p4l->rebaseInput != 0 && (*(u16 *)layer & 0x80) != 0, iGpffff8040)) return;\n'
+     '  p4_mdlRebaseLayerPose(layer); }\n'
+     'void p4_mdlRebaseLayerPose(u8 *layer)\n{\n'),
+    ('s32 mdlUpdateHierarchyPose(u8 *hierarchyData, u8 *layerState, u8 *controllerState, void *parentTransform)\n\n{\n    RwMatrix *parentMatrix;\n',
+     'static s32 p4_mdlUpdateHierarchyPose(u8 *hierarchyData, u8 *layerState, u8 *controllerState, void *parentTransform);\n'
+     's32 mdlUpdateHierarchyPose(u8 *hierarchyData, u8 *layerState, u8 *controllerState, void *parentTransform)\n'
+     '{ extern void p4_anim_lazy_pause(void *, int); s32 p4r; void *p4cur = ((RpHAnimHierarchy *)hierarchyData)->currentAnim;\n'
+     '  extern void p4_look_check(void *, void *, void *, int);\n'
+     '  p4_anim_lazy_pause(p4cur, 1); p4_look_check(hierarchyData, controllerState, parentTransform, 0);\n'
+     '  p4r = p4_mdlUpdateHierarchyPose(hierarchyData, layerState, controllerState, parentTransform);\n'
+     '  p4_look_check(hierarchyData, controllerState, parentTransform, 1); p4_anim_lazy_pause(p4cur, 0); return p4r; }\n'
+     'static s32 p4_mdlUpdateHierarchyPose(u8 *hierarchyData, u8 *layerState, u8 *controllerState, void *parentTransform)\n\n{\n    RwMatrix *parentMatrix;\n'),
+]
+# b237: consume ordinary-node runs in a small native loop. The original head case and
+# directional-blend tail still run exactly once, with the same parent-stack pointers.
+FIXES["src/Graphics/Model/mdlManager.c"] += [
+    ('    for (nodeIndex = 0; nodeIndex < hierarchy->numNodes; nodeIndex = nodeIndex + 1) {\n      if (func_003954b0 == applyKeyFrame) {\n',
+     '    for (nodeIndex = 0; nodeIndex < hierarchy->numNodes; nodeIndex = nodeIndex + 1) {\n'
+     '      { extern int p4_pose_runs; extern int p4_pose_run(void *, int, void *, void *, void *, void *, void *, void *, void (*)(void *, void *));\n'
+     '        if (p4_pose_runs) {\n'
+     '          int p4n = p4_pose_run(hierarchy, nodeIndex, (void *)keyFrameAddress, outputMatrix, (void *)nodeInfoAddress, &nodeParentMatrix, &parentStackTop, &baseMatrix, applyKeyFrame);\n'
+     '          nodeIndex += p4n; keyFrameAddress += p4n * frameOrStride; outputMatrix += p4n * 16; nodeInfoAddress += p4n * 16;\n'
+     '          if (nodeIndex == hierarchy->numNodes) break;\n'
+     '        } }\n'
+     '      if (func_003954b0 == applyKeyFrame) {\n'),
 ]
 RETAIL_LITERAL = re.compile(r"(\*\)\s*(?:\([^()\n]*\)\s*\)\s*)?\(?)(0x0{0,2}[5-9][0-9A-Fa-f]{5})\b")  # data and callback pointer casts move with the image
 TIMER_CONTROL = re.compile(r"\*\s*\(\s*(?:volatile\s+)?u32\s*\*\s*\)\s*0x100000[123]0")
@@ -291,6 +425,44 @@ ASM_FIXES = {
         ('"sw          $3, 0x40($sp)       \\n"', '"sw          $3, 0(%3)           \\n"'),
         (': "r"(baseColor), "r"((u32)value), "f"(scale)\n        : "$2", "$3", "memory");',
          ': "r"(baseColor), "r"((u32)value), "f"(scale), "r"(colourStack)\n        : "$2", "$3", "memory");'),
+        # RingUpdateLineSegment (0x00499a30): the same pack with colourStack at sp + 0x50.
+        ("sw %1, 0x54($sp)", "sw %1, 4(%3)"),
+        ("addiu $2, $sp, 0x54", "addiu $2, %3, 4"),
+        ("sw $3, 0x50($sp)", "sw $3, 0(%3)"),
+        ('"r"(baseColor), "r"(sampledColor), "f"(scale)', '"r"(baseColor), "r"(sampledColor), "f"(scale), "r"(colourStack)'),
+    ],
+    # mdlEffectResolveChildOffset (0x00486840): $f0 only carries a zero or the Q bits; the Q length goes to values[],
+    # retail's sp + 64. The .word is vsqrt Q, vf2x.
+    "src/Graphics/Model/mdlEffect_inferred_00486780.c": [
+        ("mtc1 $zero, $f0", "nop"),
+        ("mfc1 %0, $f0", "or %0, $zero, $zero"),
+        ("mfc1 $2, $f0", "or $2, $zero, $zero"),
+        (".word 0x4a0203bd", "vsqrt $Q, $vf2x"),
+        ("mtc1 $2, $f0", "nop"),
+        ("sw $2, 64($sp)", "sw $2, 0(%0)"),
+        ("sw $2, 68($sp)", "sw $2, 4(%0)"),
+        ("sw $2, 72($sp)", "sw $2, 8(%0)"),
+        ('            :\n            : "$2", "$f0", "$vf2", "$vf10", "Q", "memory");',
+         '            : "r"(values)\n            : "$2", "$f0", "$vf2", "$vf10", "Q", "memory");'),
+    ],
+    # mdlEffectMultiplyPaletteColorVU (0x004ae2f0): the 1/255 scale is the small-data float at gp - 0x7e0c.
+    "src/Graphics/Model/mdlEffect_inferred_004ae2f0.c": [
+        ("lwc1 $f0, -0x7e0c($gp)", "nop"),
+        ("mfc1 $2, $f0", "lw $2, fGpffff81f4"),
+        ("mfc1 $3, $f0", "lw $3, fGpffff81f4"),
+        ("lw $3, -0x7e0c($gp)", "lw $3, fGpffff81f4"),
+    ],
+    # mdlEffectCatmullRomVU: work[] is the frame at sp (tangents at 0x50/0x60), points arrives in a0.
+    # enclosing_arguments cannot name `u8 (*points)[16]`, so both become operands.
+    "src/Graphics/Model/mdlEffect.c": [
+        ('0x0($a1)            \\n"\n      ".set reorder"\n      :\n      :',
+         '0x0($a1)            \\n"\n      ".set reorder"\n      :\n      : "r"(work), "r"(points)'),
+        ('$vf12        \\n"\n      ".set reorder"\n      :\n      :',
+         '$vf12        \\n"\n      ".set reorder"\n      :\n      : "r"(work), "r"(points)'),
+        ("0x0($a2)", "0x60(%0)"),
+        ("0x0($a1)", "0x50(%0)"),
+        ("($a0)", "(%1)"),
+        ("$sp", "%0"),
     ],
 }
 

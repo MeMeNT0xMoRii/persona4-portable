@@ -126,7 +126,10 @@ static void *vol_ddr, *vol_output, *vol_packet, *vol_work, *vol_params;
    waiting in sceMpeg), with the buffers in the heap and in the volatile block alike; back-to-back movies never did.
    p4_video_keep: the SceMpeg made for the first movie (and the volatile block it lives in) stays for the session;
    later movies reuse it, so Create runs once. A movie that fails drops it. */
-int p4_video_keep = 1;
+/* A decoder kept across gameplay is not a clean AVC session after SAS use.
+ * Keep the old reuse experiment available for diagnosis, but close the normal
+ * session completely while SAS is still paused. */
+int p4_video_keep = 0;
 static int vol_held, kept;
 static SceMpeg kept_mpeg;
 static unsigned last_movie_end;
@@ -343,6 +346,7 @@ done:
     if (volatile_locked && !kept) { sceKernelVolatileMemUnlock(0); vol_held = 0; }
     last_movie_end = sceKernelGetSystemTimeLow();
     if (fd >= 0) sceIoClose(fd);
+    if (!p4_video_keep) p4_video_shutdown();
     log_line("probe finished result %d", result);
     return result;
 }

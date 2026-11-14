@@ -1,5 +1,8 @@
 # Hardware test plan, build 97 (written 2026-11-06)
 
+> **Historical record.** This plan was carried out in the b97-b112 sessions; its results are in
+> [next_steps_b112.md](next_steps_b112.md). The current plan is [perf_status.md](perf_status.md).
+
 For the agent that runs the next PSPLink session on the real PSP. Goal: numbers that decide the next
 optimisation. Nothing in this plan changes code. Report every result with its build number.
 

@@ -8,19 +8,19 @@ You must supply your own legally obtained USA disc image. Game executables, arch
 
 Use the **source-build** preparation package: extract the entire archive, run `Prepare P4.exe`, select your original USA ISO and an output folder, then copy the resulting `P4` folder to `PSP/GAME/` on your memory card. The utility downloads the PSP compiler on the first build; no separate Python or PSPDEV setup is needed. See [the preparation guide](docs/prepare_game.md) for building the package and using it.
 
-Download **P4-PSP-b176-windows-x64.zip** from the [b176 pre-release](https://github.com/dreikk91/persona4-psp/releases/tag/b176). The utility compiles EBOOT and matching data locally from your ISO and pinned upstream sources. It needs Internet access for the first upstream download, or a verified offline source ZIP. The older prebuilt-EBOOT b164 download was withdrawn.
+Download **P4-PSP-b249-windows-x64.zip** from the [b249 pre-release](https://github.com/dreikk91/persona4-psp/releases/tag/b249). The utility compiles EBOOT and matching data locally from your ISO and pinned upstream sources. It needs Internet access for the first upstream download, or a verified offline source ZIP. The older prebuilt-EBOOT b164 download was withdrawn.
 
 ## Build and install
 
 - **Compile EBOOT.PBP from source:** follow [Building from source](docs/building.md), including the pinned decompilation revision and Windows PSP toolchain requirements.
 - **Prepare resources and install:** the same guide covers extraction, audio/movie conversion and copying the complete installation to `PSP/GAME/P4`.
-- **Windows preparation utility:** [Build and prepare](docs/prepare_game.md) describes the source-build GUI/CLI. Frozen source packages include the compiler and build EBOOT locally.
+- **Windows preparation utility:** [Build and prepare](docs/prepare_game.md) describes the source-build GUI/CLI. Frozen source packages download the compiler and build EBOOT locally.
 
-The b176 utility was checked by a clean `--build-only` build from the release package; the build tool reports when your EBOOT matches that host build. b176 profiling builds were tested on a PSP in selected scenes (see Status); the release EBOOT from the utility has not been run on a PSP yet.
+The b249 source package includes the audio/video handoff fix and rendering work through b249. The diagnostic b249 build passed the reported long-session title-return scenario on a PSP at 333 MHz; the generated XMB EBOOT needs separate hardware validation. See [the handoff results](docs/audio_video_hang.md) and [performance measurements](docs/perf_status.md).
 
-The [source-build utility validation](docs/source_build_validation_b164.md) also covers the frozen Windows runtime, build caching and hidden compiler processes.
+See [b249 publication checks](docs/build_validation_b249.md) for current validation and known test limitations. The [earlier source-build utility validation](docs/source_build_validation_b164.md) covers build caching and hidden compiler processes.
 
-The current working-tree build is **b176**. The source build currently targets Windows and a Windows PSPSDK toolchain. A PSP with 64 MB RAM and firmware capable of running homebrew is required; PSP-1000 support is not established.
+The current working-tree build is **b249**. The source build currently targets Windows and a Windows PSPSDK toolchain. A PSP with 64 MB RAM and firmware capable of running homebrew is required; PSP-1000 support is not established.
 
 ## Status
 
@@ -30,10 +30,10 @@ This is a work in progress, with hardware testing of selected scenes, saves, bat
 - Some scenes, including Dojima's room, have reached about 30 FPS on hardware at 333 MHz. Heavy scenes remain slower. Frameskip aims to keep the game clock near real time; this does not mean 30 displayed frames per second everywhere.
 - Audio uses PSP SAS and streamed resources converted from the disc. Some sequenced sound behavior still needs fidelity checks.
 - All 23 movies can be converted for hardware AVC playback, with separate PCM audio and movie skipping.
-- Known issue (b176): after about 10 minutes of play with sound, the next movie can hang inside `sceMpeg`. Creating an empty file `PSP/GAME/P4/NOSOUND` disables the SAS player and avoids the hang (movies decoded fine after 42 minutes). A fix is in progress.
-- b166-b176 performance work: about 50 ms a frame in Heaven and the classroom (was over 100 ms in profiling builds), cheaper skinning and guard checks, far-distance animation LOD for still characters, movie buffers in volatile memory.
+- b249 fixes the reported long-session title-return hang by stopping audio workers and recycling owned audio/video firmware modules before movie playback. One full-game 10+ minute sound session, all 3270 movie frames and resumed audio passed on PSP. Broader cutscene coverage remains open. Remove an old `NOSOUND` file to re-enable sound when testing this fix.
+- Rendering work through b246 includes cheaper animation/skinning, corrected triangle-strip cache keys and cached guard results. Experimental screen-size culling is enabled at `p4_cull_cover=300`: it improved Heaven from about 15 to 20 FPS at 333 MHz, but can make distant characters appear late. Far-skin triangle reduction and persistent mesh replay remain disabled by default. Earlier b170-b176 figures used 423 MHz and must not be compared directly with current 333 MHz measurements.
 
-Hardware measurements and remaining issues are recorded in [development notes](docs/next_steps_b112.md), [audio notes](docs/audio_resources.md) and [video notes](docs/video_resources.md). Historical build numbers in these notes describe particular experiments.
+The current performance status and plan are in [perf status](docs/perf_status.md). Earlier hardware measurements and issues are recorded in [development notes](docs/next_steps_b112.md), [audio notes](docs/audio_resources.md) and [video notes](docs/video_resources.md). Historical build numbers in these notes describe particular experiments.
 
 The [earlier development history](docs/development_history.md) preserves the milestones and subjects of 68 local commits preceding this public source snapshot.
 
