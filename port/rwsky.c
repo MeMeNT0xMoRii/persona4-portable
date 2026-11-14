@@ -2457,6 +2457,18 @@ int p4_gs_alpha_test = 1; /* 0: ATEST ignored in 2D, as before b165 */
 static unsigned gs_alpha_splits;
 unsigned p4_gs_alpha_splits(void) { unsigned n = gs_alpha_splits; gs_alpha_splits = 0; return n; }
 
+static int calendar_depth_pass, calendar_selected_date;
+
+void p4_calendar_depth_pass(int active)
+{
+    calendar_depth_pass = active;
+}
+
+void p4_calendar_selected_date(int active)
+{
+    calendar_selected_date = calendar_depth_pass && active;
+}
+
 static void draw_2d_tested(int prim, int count, const GuVertex *vertices, int alpha_writer)
 {
     unsigned at = sky_state[3];
@@ -2502,6 +2514,13 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
         return 1;
     begin_frame();
     bind_depth();
+    if (calendar_selected_date) {
+        st_enable(GU_DEPTH_TEST, 0);
+        st_depth_mask(GU_TRUE);
+    } else if (calendar_depth_pass && render_state[RS_ZTEST] && (sky_state[3] >> 16 & 7) == 7 &&
+               sky_state[3] != 0x7000d) {
+        st_depth_func(GU_GREATER);
+    }
     int alpha_writer = pixel_mask == 0x00ffffff && render_state[1] && (Raster *)render_state[1] != &display_raster;
     /* mcDrawSlotDial clears destination alpha through the digit textures using its own alpha tests. */
     int slot_cutout = alpha_writer && (sky_state[3] == 0x50009 || sky_state[3] == 0x50805);
@@ -2513,7 +2532,7 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     /* An alpha-only write (RGB masked) of a texture: the PS2 stores each pixel's alpha, the PSP's stencil takes one
        value per draw. Keep that value off the pixels the texture leaves transparent, so the title's light blobs
        (added by destination alpha) stay off the letterbox bars instead of covering the whole quad. */
-    int test_alpha_writer = p4_alpha_write_test && alpha_writer && !slot_cutout;
+    int test_alpha_writer = p4_alpha_write_test && alpha_writer && !slot_cutout && !calendar_depth_pass;
     if (test_alpha_writer) {
         sceGuEnable(GU_ALPHA_TEST);
         sceGuAlphaFunc(GU_GREATER, 0x40, 0xff);
@@ -2525,7 +2544,7 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     int dst_alpha_pass = (blend == 0x52 || blend == 0x54 || blend == 0x58) && (Raster *)render_state[1] == &display_raster;
     /* the alpha-only writes that feed them (RGB masked, a textured puff): the stencil takes one value per draw, which
        is the square; without the pass that reads it they only cost fill */
-    if (!p4_dst_alpha_passes && (dst_alpha_pass || (alpha_writer && !slot_cutout))) {
+    if (!p4_dst_alpha_passes && (dst_alpha_pass || (alpha_writer && !slot_cutout && !calendar_depth_pass))) {
         float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
         for (int i = 0; i < count; i++) {
             const Vertex2D *v = &vertices[indices ? indices[i] : i];
@@ -2542,6 +2561,10 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     GuVertex *out = sceGuGetMemory(count * sizeof *out);
     for (int i = 0; i < count; i++)
         put_vertex(&out[i], &vertices[indices ? indices[i] : i]);
+    if (calendar_selected_date) {
+        /* Match the highlighted column while the dates scroll underneath it. */
+        sceGuScissor(88 * target_sx, 0, 178 * target_sx, target_h);
+    }
     P4FeedbackRect rect;
     if (p4_feedback_sprites && (Raster *)render_state[1] == &display_raster &&
         gu_prim[prim] == GU_TRIANGLES && p4_feedback_rect(out, count, &rect)) {
@@ -2553,6 +2576,8 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     } else {
         draw_2d_tested(gu_prim[prim], count, out, test_alpha_writer);
     }
+    if (calendar_selected_date)
+        sceGuScissor(0, 0, target_w, target_h);
     return 1;
 }
 

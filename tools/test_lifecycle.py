@@ -53,7 +53,7 @@ static pthread_mutex_t events = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t changed = PTHREAD_COND_INITIALIZER;
 static int exit_requested, exit_waiting, rename_waiting, allow_rename, hold_rename;
 static atomic_int exited, save_syncs;
-static int installed_saves;
+static int installed_saves, ge_stalled, ge_reset;
 static const char *failure;
 
 static void wait_event(int *flag) {
@@ -121,8 +121,20 @@ int sceIoSync(const char *path, unsigned flags) {
     assert(installed_saves == (syncs + 1) / 2);
     return 0;
 }
+int sceGeDrawSync(int mode) {
+    assert(mode == 1 && pthread_equal(pthread_self(), cb_thread));
+    return ge_stalled ? 3 : 0;
+}
+int sceGeBreak(int mode, void *param) {
+    assert(mode == 1 && !param && ge_stalled);
+    assert(atomic_load(&save_syncs) == (hold_rename ? 4 : 0));
+    ge_reset++;
+    return 0;
+}
+void p4_log(const char *fmt, ...) { (void)fmt; }
 void sceKernelExitGame(void) {
     assert(atomic_load(&save_syncs) == (hold_rename ? 4 : 0));
+    assert(ge_reset == ge_stalled);
     atomic_store(&exited, 1);
     pthread_exit(0);
 }
@@ -161,17 +173,18 @@ static int result(void) {
 int main(int argc, char **argv) {
     assert(argc == 3);
     failure = argv[1];
-    if (strcmp(failure, "idle") && strcmp(failure, "saving")) {
+    if (strcmp(failure, "idle") && strcmp(failure, "stalled") && strcmp(failure, "saving")) {
         assert(p4_lifecycle_init() < 0);
         assert(!live_sems && !live_threads && !live_callbacks);
         assert(!p4_card_io_begin() && !atomic_load(&exited));
         return 0;
     }
     assert(p4_lifecycle_init() == 0);
+    ge_stalled = !fails("idle");
     assert(p4_card_io_begin());
     p4_card_io_end();
     assert(!atomic_load(&exited));
-    if (fails("idle")) {
+    if (!fails("saving")) {
         set_event(&exit_requested);
         assert(pthread_join(cb_thread, 0) == 0);
         assert(atomic_load(&exited) && !p4_card_io_begin());
@@ -226,6 +239,8 @@ class HomeLifecycle(unittest.TestCase):
             card = path / 'card'
             (path / 'pspkernel.h').write_text(HEADER)
             (path / 'pspiofilemgr.h').write_text('#include "pspkernel.h"\n')
+            (path / 'pspge.h').write_text('enum { PSP_GE_LIST_DONE };\n'
+                                         'int sceGeDrawSync(int);\nint sceGeBreak(int, void *);\n')
             (path / 'check.c').write_text(HARNESS)
             executable = path / 'check'
             subprocess.run([
@@ -236,7 +251,7 @@ class HomeLifecycle(unittest.TestCase):
                 str(path / 'check.c'), '-Wl,--wrap=rename', '-o', str(executable),
             ], check=True, capture_output=True)
             for scenario in ('card_sema', 'ready_sema', 'create_thread', 'start_thread',
-                             'create_callback', 'register_callback', 'idle', 'saving'):
+                             'create_callback', 'register_callback', 'idle', 'stalled', 'saving'):
                 with self.subTest(scenario=scenario):
                     subprocess.run([str(executable), scenario, str(card)],
                                    check=True, timeout=10, capture_output=True)

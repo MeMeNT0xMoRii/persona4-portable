@@ -68,6 +68,23 @@ FIXES = {
     "src/datCalendar_inferred_001228c0.c": [
         ("((SdkSpriteSample *)sprite)->signedScaleX = 0xFF6;", "((SdkSpriteSample *)sprite)->signedScaleX = 0xBF6;"),
     ],
+    "src/unplaced/unplaced_inferred_00260510.c": [
+        ("    struct CalendarColor { u8 r, g, b, a; } depthValue;",
+         "    extern void p4_calendar_selected_date(int);\n"
+         "    struct CalendarColor { u8 r, g, b, a; } depthValue;"),
+        ("    drawDepth = 1.0f + depth;\n",
+         "    drawDepth = 1.0f + depth;\n    p4_calendar_selected_date(enabled);\n"),
+        ("color, alpha, number, 2, 31, 0, calDrawDayNumberGlyph, (u8 *)&glyphContext);",
+         "color, alpha, number, 2, 31, 0, calDrawDayNumberGlyph, (u8 *)&glyphContext);\n"
+         "    p4_calendar_selected_date(0);"),
+        ("void calDrawDayStripCallback(s32 queue, u8 *task)\n{",
+         "void calDrawDayStripCallback(s32 queue, u8 *task)\n{\n    extern void p4_calendar_depth_pass(int);"),
+        ("    work = kwlnTaskGetWork((void*)(task));\n    state = ((CalendarDayChange *)(work))->state;\n    switch (state) {",
+         "    p4_calendar_depth_pass(1);\n    work = kwlnTaskGetWork((void*)(task));\n"
+         "    state = ((CalendarDayChange *)(work))->state;\n    switch (state) {"),
+        ("\n}\n#pragma pop\n\n#pragma push\n#pragma optimization_level 2\n// Queues a day-strip draw task",
+         "\n    p4_calendar_depth_pass(0);\n}\n#pragma pop\n\n#pragma push\n#pragma optimization_level 2\n// Queues a day-strip draw task"),
+    ],
     "src/shdPersona.c": [
         ("middleX = 256.0f + x;", "middleX = 192.0f + x;"),
         ("rightX = 256.0f + middleX;", "rightX = 192.0f + middleX;"),

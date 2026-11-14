@@ -7,6 +7,7 @@ int p4_lifecycle_init(void);
 #ifdef __psp__
 int p4_card_io_begin(void);
 void p4_card_io_end(void);
+void p4_lifecycle_report(void);
 #else
 static inline int p4_card_io_begin(void) { return 1; }
 static inline void p4_card_io_end(void) { }
