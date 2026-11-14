@@ -44,9 +44,10 @@ The b249 source package includes the audio/video handoff fix and rendering work 
 
 See [b249 publication checks](docs/build_validation_b249.md) for current validation and known test limitations. The [earlier source-build utility validation](docs/source_build_validation_b164.md) covers build caching and hidden compiler processes.
 
-This fork builds **b249-xmb-home8**. The Windows preparation utility linked
-above builds upstream b249. Build from this checkout to include the fork's
-changes. The PSP installation requires 64 MB RAM and firmware that runs homebrew.
+This fork builds **[b249-xmb-home8](docs/build_b249_xmb_home8.md)**. The Windows
+preparation utility linked above builds upstream b249. Build from this checkout
+to include the fork's changes. The PSP installation requires 64 MB RAM and
+firmware that runs homebrew.
 
 ## Status
 

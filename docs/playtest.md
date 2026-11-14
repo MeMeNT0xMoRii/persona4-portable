@@ -8,6 +8,8 @@ on home4. The [home7 test build](build_b176_xmb_home7.md) addresses the
 calendar strip, the Shadow notice sound and one possible cause of the
 HOME freeze. The [home8 update](build_b176_xmb_home8.md) adds corrections
 for the reported battle effects and portraits, TV entry and umbrella panels.
+The [b249 integration](build_b249_xmb_home8.md) repeats the save, TV entry,
+umbrella and All-Out tests on the merged release.
 
 Use the [replay saves by in-game date](replay_saves.md) to revisit the
 reported scenes. Keep the 04/17 Shopping District save for the castle
