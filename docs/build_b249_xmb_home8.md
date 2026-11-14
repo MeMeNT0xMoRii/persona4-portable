@@ -24,6 +24,13 @@ describes that binary. The first parent of the merge
 b176-xmb-home8 commit `54807166cd9d3607a8b1f31be1ce7687aadc4f99`.
 Its second parent is the upstream b249 commit listed above.
 
+The matching [build source on GitHub](https://github.com/MeMeNT0xMoRii/persona4-portable/commit/92543aa7b8d1b00d43f8aa7cc01c73e2d56742da)
+is `92543aa7b8d1b00d43f8aa7cc01c73e2d56742da` with the same source tree
+`8c6919b4708e70cb391db0e5e8ed9700a5a7187f`. The local bundle and GitHub use
+different commit IDs because GitHub recorded new commit metadata. The
+[development branch](https://github.com/MeMeNT0xMoRii/persona4-portable/commits/playthrough/b176-xmb-home)
+lists the current documentation revision.
+
 ## Merge decisions and regression risks
 
 - Renderer conflicts joined the fork's stencil and depth passes with b249's
