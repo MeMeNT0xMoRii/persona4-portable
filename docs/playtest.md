@@ -15,7 +15,21 @@ Use the [replay saves by in-game date](replay_saves.md) to revisit the
 reported scenes. Keep the 04/17 Shopping District save for the castle
 replay and the 04/17 evening save for ongoing play.
 
-## Tested build and progress
+## Current build and verification
+
+Use `b249-xmb-home8` on `playthrough/b176-xmb-home`. The
+[build record](build_b249_xmb_home8.md#development-reference) gives the exact
+tested source SHA, [platform test matrix](build_b249_xmb_home8.md#test-matrix)
+and [next checks](build_b249_xmb_home8.md#next-checks).
+
+| Platform | Current status |
+| --- | --- |
+| Host | Build and address checks passed. See the build record for the remaining host harness failures. |
+| PPSSPP | Slots 4, 7 and 8 loaded. Slot 9 was saved, reloaded, and opened with standalone b176-home8. TV entry, school-route umbrellas, All-Out portraits and natural level-up were replayed. |
+| PSP-3000 | Combined XMB release awaiting hardware replay. |
+| PSP Go (PSP-N1000) | Combined XMB release awaiting hardware replay. |
+
+## Earlier hardware reports
 
 - Hardware: PSP-3000 for the earlier reports, plus a PSP Go home3 exit test.
   Exact firmware and active plugins are not yet recorded.
