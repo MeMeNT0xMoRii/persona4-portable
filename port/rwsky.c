@@ -2454,10 +2454,14 @@ static const int gs_alpha_method[8] = { GU_NEVER, GU_ALWAYS, GU_LESS, GU_LEQUAL,
 static const int gs_alpha_inverse[8] = { GU_ALWAYS, GU_NEVER, GU_GEQUAL, GU_GREATER, GU_NOTEQUAL, GU_LESS, GU_LEQUAL, GU_EQUAL };
 
 int p4_gs_alpha_test = 1; /* 0: ATEST ignored in 2D, as before b165 */
+int p4_crossfade_capture = 1;
+int p4_effect_mask = 1;
 static unsigned gs_alpha_splits;
 unsigned p4_gs_alpha_splits(void) { unsigned n = gs_alpha_splits; gs_alpha_splits = 0; return n; }
 
 static int calendar_depth_pass, calendar_selected_date;
+int p4_tv_ring = 1;
+int p4_texture_tint = 1;
 
 void p4_calendar_depth_pass(int active)
 {
@@ -2505,6 +2509,170 @@ static void draw_2d_tested(int prim, int count, const GuVertex *vertices, int al
     sceGuDisable(GU_ALPHA_TEST);
 }
 
+static float contour_clip_distance(const GuVertex *vertex, int plane)
+{
+    switch (plane) {
+    case 0: return vertex->x;
+    case 1: return target_w - vertex->x;
+    case 2: return vertex->y;
+    default: return target_h - vertex->y;
+    }
+}
+
+enum { TV_RING_POINTS = 64, GU_2D_FORMAT = GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D };
+
+static void submit_tv_fan(int count, const GuVertex *vertices)
+{
+    /* Oversized final TV fans can extend past the GE's 2D coordinate range.
+       Clip each triangle before it becomes a mask or is drawn through it. */
+    int inside = 1;
+    for (int i = 0; i < count; i++)
+        inside &= vertices[i].x >= 0 && vertices[i].x <= target_w &&
+                  vertices[i].y >= 0 && vertices[i].y <= target_h;
+    if (inside) {
+        GuVertex *out = sceGuGetMemory(count * sizeof *out);
+        memcpy(out, vertices, count * sizeof *out);
+        sceGuDrawArray(GU_TRIANGLE_FAN, GU_2D_FORMAT, count, 0, out);
+        return;
+    }
+
+    GuVertex clipped[(TV_RING_POINTS - 2) * 15];
+    int total = 0;
+    for (int i = 1; i + 1 < count; i++) {
+        GuVertex polygon[2][8] = { { vertices[0], vertices[i], vertices[i + 1] } };
+        int length = 3;
+        for (int plane = 0; plane < 4 && length >= 3; plane++) {
+            const GuVertex *source = polygon[plane & 1];
+            GuVertex *target = polygon[(plane + 1) & 1];
+            int next = 0;
+            for (int j = 0; j < length; j++) {
+                const GuVertex *a = &source[j], *b = &source[j + 1 == length ? 0 : j + 1];
+                float d = contour_clip_distance(a, plane), e = contour_clip_distance(b, plane);
+                if (d >= 0)
+                    target[next++] = *a;
+                if ((d < 0 && e > 0) || (d > 0 && e < 0)) {
+                    float t = d / (d - e);
+                    target[next++] = (GuVertex){0, 0, a->colour, a->x + (b->x - a->x) * t,
+                                                a->y + (b->y - a->y) * t, a->z};
+                }
+            }
+            length = next;
+        }
+        for (int j = 1; j + 1 < length; j++) {
+            clipped[total++] = polygon[0][0];
+            clipped[total++] = polygon[0][j];
+            clipped[total++] = polygon[0][j + 1];
+        }
+    }
+    if (total) {
+        size_t bytes = total * sizeof *clipped;
+        GuVertex *out = sceGuGetMemory(bytes);
+        memcpy(out, clipped, bytes);
+        sceGuDrawArray(GU_TRIANGLES, GU_2D_FORMAT, total, 0, out);
+    }
+}
+
+static void tv_ring_points(GuVertex *out, const float (*points)[2], int count, float x, float y,
+                           float rotation, float sx, float sy, unsigned colour)
+{
+    float sine = sinf(rotation), cosine = cosf(rotation);
+    for (int i = 0; i < count; i++) {
+        float px = (points[i][0] - points[0][0]) * sx;
+        float py = (points[i][1] - points[0][1]) * sy;
+        out[i] = (GuVertex){0, 0, colour, (x + px * cosine + py * sine) * target_sx,
+                            (y - px * sine + py * cosine) * target_sy, 0};
+    }
+}
+
+/* Render the ring with the retail's two fans. The four colour layers share
+   one opening, while the outer edges keep their original colour offsets. */
+int p4_draw_tv_ring(const float (*outer)[2], int outer_count, const float (*inner)[2], int inner_count,
+                    float x, float y, int ox, int oy, float rotation, float sx, float sy, unsigned rgb, unsigned alpha)
+{
+    if (!p4_tv_ring || outer_count < 3 || inner_count < 3 || outer_count > TV_RING_POINTS || inner_count > TV_RING_POINTS)
+        return 0;
+    if (!alpha || SKIPPING || (p4_probe_flags & 2))
+        return 1;
+
+    prof_begin(PROF_2D);
+    if (gate_closed)
+        gate_poll();
+    int timed = ge_time_begin();
+    gu_dirty();
+    begin_frame();
+    sceGuDisable(GU_CLIP_PLANES);
+    sceGuDisable(GU_DEPTH_TEST);
+    sceGuDisable(GU_ALPHA_TEST);
+    sceGuDisable(GU_TEXTURE_2D);
+    sceGuDisable(GU_BLEND);
+    sceGuDepthMask(GU_TRUE);
+    sceGuEnable(GU_STENCIL_TEST);
+    sceGuPixelMask(0x7fffffff);
+    sceGuStencilOp(GU_KEEP, GU_KEEP, GU_REPLACE);
+    sceGuStencilFunc(GU_ALWAYS, 0, 0x80);
+    GuVertex *clear = sceGuGetMemory(2 * sizeof *clear);
+    clear[0] = (GuVertex){0, 0, 0, 0, 0, 0};
+    clear[1] = (GuVertex){0, 0, 0, target_w, target_h, 0};
+    sceGuDrawArray(GU_SPRITES, GU_2D_FORMAT, 2, 0, clear);
+
+    const float degrees = 0.0174532925199433f;
+    float fringe = rgb == 0x76bf48 ? 4.0f : rgb == 0x4883bf ? 2.0f : rgb == 0xbf4848 ? -2.0f : 0.0f;
+    GuVertex fan[TV_RING_POINTS];
+    tv_ring_points(fan, inner, inner_count, x + ox, y + oy, (rotation - fringe) * degrees, sx, sy, 0);
+    sceGuStencilFunc(GU_ALWAYS, 0x80, 0x80);
+    submit_tv_fan(inner_count, fan);
+
+    unsigned colour = (rgb & 255) << 16 | (rgb & 0xff00) | (rgb >> 16 & 255) | alpha << 24;
+    tv_ring_points(fan, outer, outer_count, x + ox, y + oy, rotation * degrees, sx, sy, colour);
+    sceGuPixelMask(0);
+    sceGuStencilFunc(GU_EQUAL, 0, 0x80);
+    sceGuStencilOp(GU_KEEP, GU_KEEP, GU_KEEP);
+    sceGuEnable(GU_BLEND);
+    set_blend(BLEND_NORMAL);
+    submit_tv_fan(outer_count, fan);
+    sceGuDisable(GU_STENCIL_TEST);
+    ge_time_end(timed, GT_2D);
+    prof_end(PROF_2D);
+    return 1;
+}
+
+static void bind_crossfade_capture(void)
+{
+    /* The capture pass samples the completed display buffer into a camera texture. */
+    unsigned displayed = (unsigned)draw_buffer ^ (STRIDE * SCREEN_H * 4);
+    sceGuEnable(GU_TEXTURE_2D);
+    sceGuTexMode(GU_PSM_8888, 0, 0, 0);
+    sceGuTexImage(0, 512, 512, STRIDE, (void *)(0x04000000 + displayed));
+    sceGuTexFunc(GU_TFX_REPLACE, GU_TCC_RGB);
+    sceGuTexFilter(GU_LINEAR, GU_LINEAR);
+    sceGuTexWrap(GU_CLAMP, GU_CLAMP);
+    sceGuTexFlush();
+    sceGuDisable(GU_BLEND);
+    sceGuDisable(GU_STENCIL_TEST);
+    sceGuPixelMask(0);
+    texture_w = SCREEN_W;
+    texture_h = SCREEN_H;
+}
+
+static void draw_effect_mask(int prim, int count, const GuVertex *vertices)
+{
+    /* Test coverage from the actual mask texture. Stencil replacement can
+       represent a few opacity bands for the following destination blend. */
+    sceGuEnable(GU_STENCIL_TEST);
+    sceGuEnable(GU_ALPHA_TEST);
+    sceGuStencilOp(GU_KEEP, GU_KEEP, GU_REPLACE);
+    sceGuDepthMask(GU_TRUE);
+    sceGuPixelMask(0x00ffffff);
+    for (int opacity = 0; opacity <= 255; opacity += 85) {
+        sceGuStencilFunc(GU_ALWAYS, opacity, 0xff);
+        sceGuAlphaFunc(GU_GEQUAL, opacity ? opacity - 42 : 0, 0xff);
+        sceGuDrawArray(prim, GU_2D_FORMAT, count, 0, vertices);
+    }
+    sceGuDisable(GU_ALPHA_TEST);
+    sceGuDisable(GU_STENCIL_TEST);
+    sceGuDepthMask(!render_state[RS_ZWRITE]);
+}
+
 static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *indices, int count)
 {
     if (p4_probe_2d && count > 0)
@@ -2522,17 +2690,24 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
         st_depth_func(GU_GREATER);
     }
     int alpha_writer = pixel_mask == 0x00ffffff && render_state[1] && (Raster *)render_state[1] != &display_raster;
+    int effect_mask = p4_effect_mask && !rtt_target && alpha_writer && sky_state[3] == 0x31001;
     /* mcDrawSlotDial clears destination alpha through the digit textures using its own alpha tests. */
     int slot_cutout = alpha_writer && (sky_state[3] == 0x50009 || sky_state[3] == 0x50805);
     bind_mask(slot_cutout ? 0 : byte_colour(vertices[indices ? indices[0] : 0].a));
     sceGuDisable(GU_CLIP_PLANES);
     sceGuDisable(GU_ALPHA_TEST);
-    bind_texture();
-    bind_blend();
+    int crossfade = p4_crossfade_capture && rtt_target && sky_state[2] == 0x2024 &&
+                    (Raster *)render_state[1] == &display_raster;
+    if (crossfade) {
+        bind_crossfade_capture();
+    } else {
+        bind_texture();
+        bind_blend();
+    }
     /* An alpha-only write (RGB masked) of a texture: the PS2 stores each pixel's alpha, the PSP's stencil takes one
        value per draw. Keep that value off the pixels the texture leaves transparent, so the title's light blobs
        (added by destination alpha) stay off the letterbox bars instead of covering the whole quad. */
-    int test_alpha_writer = p4_alpha_write_test && alpha_writer && !slot_cutout && !calendar_depth_pass;
+    int test_alpha_writer = p4_alpha_write_test && alpha_writer && !effect_mask && !slot_cutout && !calendar_depth_pass;
     if (test_alpha_writer) {
         sceGuEnable(GU_ALPHA_TEST);
         sceGuAlphaFunc(GU_GREATER, 0x40, 0xff);
@@ -2544,7 +2719,9 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     int dst_alpha_pass = (blend == 0x52 || blend == 0x54 || blend == 0x58) && (Raster *)render_state[1] == &display_raster;
     /* the alpha-only writes that feed them (RGB masked, a textured puff): the stencil takes one value per draw, which
        is the square; without the pass that reads it they only cost fill */
-    if (!p4_dst_alpha_passes && (dst_alpha_pass || (alpha_writer && !slot_cutout && !calendar_depth_pass))) {
+    int effect_overlay = p4_effect_mask && !rtt_target && dst_alpha_pass && sky_state[3] == 0x31001;
+    if (!p4_dst_alpha_passes && ((dst_alpha_pass && !effect_overlay) ||
+        (alpha_writer && !effect_mask && !slot_cutout && !calendar_depth_pass))) {
         float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
         for (int i = 0; i < count; i++) {
             const Vertex2D *v = &vertices[indices ? indices[i] : i];
@@ -2561,6 +2738,10 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     GuVertex *out = sceGuGetMemory(count * sizeof *out);
     for (int i = 0; i < count; i++)
         put_vertex(&out[i], &vertices[indices ? indices[i] : i]);
+    if (effect_mask) {
+        draw_effect_mask(gu_prim[prim], count, out);
+        return 1;
+    }
     if (calendar_selected_date) {
         /* Match the highlighted column while the dates scroll underneath it. */
         sceGuScissor(88 * target_sx, 0, 178 * target_sx, target_h);
@@ -2579,6 +2760,86 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     if (calendar_selected_date)
         sceGuScissor(0, 0, target_w, target_h);
     return 1;
+}
+
+static void tint_sprite(GuVertex *out, float x, float y, float w, float h, unsigned colour)
+{
+    out[0] = (GuVertex){0, 0, colour, x * target_sx, y * target_sy, 0};
+    out[1] = (GuVertex){texture_w, texture_h, colour, (x + w) * target_sx, (y + h) * target_sy, 0};
+}
+
+/* The GS stores the silhouette's texture alpha in the framebuffer before applying a flat tint.
+   Use that texture alpha directly on the GE, where framebuffer alpha is the stencil. */
+void p4_draw_texture_tint(unsigned rgba, float x, float y, float mask_x, float mask_y,
+                          float w, float h, Raster *raster, int cutout, int additive)
+{
+    render_state[7] = 2;
+    render_state[RS_ZTEST] = 0;
+    render_state[RS_ZWRITE] = 0;
+    render_state[14] = 0;
+    render_state[9] = 2;
+    render_state[12] = 1;
+    render_state[1] = 0;
+    pixel_mask = 0;
+    sky_state[2] = additive ? 0x58 : 0x54;
+    sky_state[3] = cutout ? 0x35801 : 0x31801;
+    unsigned a = rgba & 255;
+    if (!a || !raster || w <= 0 || h <= 0 || SKIPPING || (p4_probe_flags & 2))
+        return;
+
+    prof_begin(PROF_2D);
+    if (gate_closed)
+        gate_poll();
+    int timed = ge_time_begin();
+    gu_dirty();
+    begin_frame();
+    bind_depth();
+    sceGuDisable(GU_CLIP_PLANES);
+    sceGuDisable(GU_ALPHA_TEST);
+    sceGuDisable(GU_STENCIL_TEST);
+    sceGuPixelMask(0);
+
+    int format = GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D;
+    if (cutout) {
+        /* DATE selects pixels outside the opaque part of the displaced silhouette. */
+        sceGuDisable(GU_TEXTURE_2D);
+        sceGuDisable(GU_BLEND);
+        sceGuEnable(GU_STENCIL_TEST);
+        sceGuPixelMask(0x7fffffff);
+        sceGuStencilFunc(GU_ALWAYS, 0, 0x80);
+        sceGuStencilOp(GU_KEEP, GU_KEEP, GU_REPLACE);
+        GuVertex *mask = sceGuGetMemory(4 * sizeof *mask);
+        tint_sprite(mask, x, y, w, h, 0);
+        sceGuDrawArray(GU_SPRITES, format, 2, 0, mask);
+
+        bind_raster(raster, GU_CLAMP);
+        tint_sprite(mask + 2, mask_x, mask_y, w, h, 0xffffffff);
+        sceGuEnable(GU_ALPHA_TEST);
+        sceGuAlphaFunc(GU_EQUAL, 255, 0xff);
+        sceGuStencilFunc(GU_ALWAYS, 0x80, 0x80);
+        sceGuDrawArray(GU_SPRITES, format, 2, 0, mask + 2);
+
+        sceGuDisable(GU_ALPHA_TEST);
+        sceGuPixelMask(0);
+        sceGuStencilFunc(GU_EQUAL, 0, 0x80);
+        sceGuStencilOp(GU_KEEP, GU_KEEP, GU_KEEP);
+    } else {
+        bind_raster(raster, GU_CLAMP);
+    }
+
+    unsigned colour = rgba >> 24 | (rgba >> 8 & 0xff00) | (rgba << 8 & 0xff0000) | a << 24;
+    /* Equal vertex and environment RGB make the combiner constant across all texels. */
+    sceGuTexEnvColor(colour);
+    sceGuTexFunc(GU_TFX_BLEND, GU_TCC_RGBA);
+    sceGuEnable(GU_BLEND);
+    set_blend(additive ? BLEND_ADD : BLEND_NORMAL);
+    GuVertex *out = sceGuGetMemory(2 * sizeof *out);
+    tint_sprite(out, x, y, w, h, colour);
+    sceGuDrawArray(GU_SPRITES, format, 2, 0, out);
+    sceGuDisable(GU_STENCIL_TEST);
+    sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
+    ge_time_end(timed, GT_2D);
+    prof_end(PROF_2D);
 }
 
 static int im2d_line(Vertex2D *v, int n, int a, int b)
@@ -3011,6 +3272,7 @@ int p4_gs_test = 1; /* 0: fixed alpha test GREATER 8 for every 3D mesh, as b64 *
    the same colour: one pass without the test), or ZB_ONLY without depth writes (pass 2 writes nothing). */
 extern int p4_alpha_x2;
 int p4_gs_test_raw_prelit = 0; /* 1: raw reference for prelit arrays (experiment, b93 Heaven sky: no visible change) */
+int p4_glass_alpha_ref = 1;
 int p4_gs_test_skip = 1; /* 0: always two passes, as b76 */
 static const unsigned *draw_prelit; /* the mesh's source alpha for draw_tested; draw_alpha_known 0: not known */
 static int draw_count, draw_alpha_known;
@@ -3088,7 +3350,10 @@ static void draw_tested(int prim, int vtype, int count, const void *indices, con
     /* The GS's 0x80 is our 0xff in texels and in lit or white vertices. Prelit alpha reaches the GE as the GS got it
        (p4_alpha_x2 0), so there the reference stays: doubled, Heaven's clouds (alpha 0x7f-0xfd) failed, wrote no
        depth, and the night01 dome drawn after them painted them out. */
-    int raw = p4_gs_test_raw_prelit && draw_alpha_known && draw_prelit && !p4_alpha_x2;
+    /* KClump's translucent bucket supplies material alpha in GS units. A doubled
+       reference prevents the canopy from writing depth before later field draws. */
+    int raw = (p4_gs_test_raw_prelit && draw_alpha_known && draw_prelit && !p4_alpha_x2) ||
+              (p4_glass_alpha_ref && test == 0x735fb);
     int aref = (test >> 4 & 0xff) << !raw;
     if (aref > 255) aref = 255;
     st_enable(GU_ALPHA_TEST, 1);
@@ -3240,7 +3505,7 @@ static void draw_guarded_chunks(int prim, const unsigned short *idx, int nidx, c
         unsigned ca = guard_code[a], cb = guard_code[b], cc = guard_code[c], mask = GUARD_MASK;
         if (!((ca | cb | cc) & mask))
             goto keep_triangle;
-        if (ca & cb & cc) { /* wholly behind the near plane or beyond one side of the band */
+        if (ca & cb & cc & mask) { /* wholly behind the CPU clip plane or beyond one side of the band */
             guard_dropped++;
             continue;
         }
@@ -3468,7 +3733,11 @@ static void guard_boxes_classify(const float *box, int n, const float m[4][4], f
             bp[k][j] = m[j][0] * band[k][0] + m[j][1] * band[k][1] + m[j][2] * band[k][2] + m[j][3] * band[k][3];
             sp[k][j] = m[j][0] * screen[k][0] + m[j][1] * screen[k][1] + m[j][2] * screen[k][2] + m[j][3] * screen[k][3];
         }
-    bp[0][3] -= near, sp[0][3] -= near;
+    bp[0][3] -= near;
+    /* The 1% CPU clipping margin must not cull cut-ins that are just inside
+       the real near plane when near clipping is delegated to the GE. */
+    float camera_near = *(const float *)((const char *)current_camera + CAMERA_NEAR);
+    sp[0][3] -= p4_guard_gnear ? camera_near : near;
     int first_band = p4_guard_gnear ? 1 : 0;
     *partial = *culled = 0;
     if (p4_guard_box_vfpu) {
@@ -4828,28 +5097,92 @@ static inline int hanim_bad(const float *f, int n)
             return 1;
     return 0;
 }
+typedef struct { void *prev; float time; unsigned short q[4], t[3]; } CKey;
+typedef struct { void *k1, *k2; float q[4], t[3]; } IFrame;
+typedef struct { void *prev; float time, q[4], t[3]; } HAnimKey;
+
+static inline float rw_half(unsigned short h)
+{
+    union { unsigned u; float f; } v;
+    v.u = (h & 0x8000u) << 16;
+    if (h & 0x7fff)
+        v.u |= (((h & 0x7800u) << 12) + 0x38000000u) | ((h & 0x7ffu) << 12);
+    return v.f;
+}
+
+static void decode_hanim_key(float qt[7], const CKey *key, const float *custom)
+{
+    for (int i = 0; i < 4; i++)
+        qt[i] = rw_half(key->q[i]);
+    for (int i = 0; i < 3; i++)
+        qt[4 + i] = rw_half(key->t[i]) * custom[3 + i] + custom[i];
+}
+
+static int hanim_address_valid(const void *address)
+{
+    return !((unsigned)address & 3) && (unsigned)address - 0x08800000u < 0x03800000u;
+}
+
 static void hanim_sanitize(unsigned *h)
 {
     char *interp = (char *)h[8];
-    if (!interp || (unsigned)interp - 0x08800000u >= 0x03800000u)
+    if (!hanim_address_valid(interp))
         return;
     int n = (int)h[1], stride = *(int *)(interp + 36);
     if (n <= 0 || n > 256 || stride < 36 || stride > 256)
         return;
+    int key_size = *(int *)(interp + 40);
     char *frame = interp + 76;
     for (int i = 0; i < n; i++, frame += stride) {
         float *qt = (float *)(frame + 8); /* q x y z w, t x y z */
         if (!hanim_bad(qt, 7))
             continue;
-        const char *key1 = *(const char **)frame;
-        if (key1 && (unsigned)key1 - 0x08800000u < 0x03800000u && !((unsigned)key1 & 3) && !hanim_bad((const float *)(key1 + 8), 7)) {
-            memcpy(qt, key1 + 8, 7 * sizeof(float));
-        } else {
-            qt[0] = qt[1] = qt[2] = 0, qt[3] = 1; /* no usable key: no rotation, no offset */
+        const void *key = *(const void **)frame;
+        if (hanim_address_valid(key)) {
+            if (key_size == sizeof(HAnimKey)) {
+                const HAnimKey *plain = key;
+                memcpy(qt, plain->q, 7 * sizeof(float));
+            } else if (key_size == sizeof(CKey)) {
+                const char *animation = *(const char **)interp;
+                const float *custom = hanim_address_valid(animation) ? *(const float **)(animation + 20) : 0;
+                if (hanim_address_valid(custom))
+                    decode_hanim_key(qt, key, custom);
+            }
+        }
+        if (hanim_bad(qt, 7)) {
+            qt[0] = qt[1] = qt[2] = 0, qt[3] = 1; /* no usable key */
             qt[4] = qt[5] = qt[6] = 0;
         }
         hanim_nan_fixed++;
     }
+}
+
+int p4_head_check = 1;
+unsigned p4_head_recovered, p4_head_acos_clamped;
+
+void p4_hanim_prepare_pose(void *hierarchy)
+{
+    if (p4_head_check && p4_hanim_nan_fix)
+        hanim_sanitize(hierarchy);
+    if (p4_bone_check)
+        hanim_note(hierarchy);
+}
+
+int p4_head_quat_valid(const float *q)
+{
+    float norm = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+    if (norm > 1e-12f && norm < 1e12f)
+        return 1;
+    p4_head_recovered++;
+    return 0;
+}
+
+float p4_head_acos_input(float v)
+{
+    if (!p4_head_check || (v >= -1.0f && v <= 1.0f))
+        return v;
+    p4_head_acos_clamped++;
+    return v > 1.0f ? 1.0f : v < -1.0f ? -1.0f : 0.0f;
 }
 /* b171: bone-matrix updates by what the frame draws. A hierarchy whose skin is drawn (skin_bones) is "skinned"; its
    last drawn tick and clip w are kept. p4_anim_cull: a skinned hierarchy not drawn in the last 2 ticks is not updated;
@@ -4959,17 +5292,38 @@ typedef void (*KInterp)(void *out, void *in1, void *in2, float time, void *data)
 int p4_interp_fast = 0, p4_interp_check = 0;
 static unsigned interp_calls, interp_slerps, interp_checks, interp_diffs, interp_other;
 static float interp_max_diff;
-typedef struct { void *prev; float time; unsigned short q[4], t[3]; } CKey;
-typedef struct { void *k1, *k2; float q[4], t[3]; } IFrame;
+int p4_hanim_key_span = 1;
+unsigned p4_hanim_equal_keys[2];
+void p4r_003955a0(void *out, void *in1, void *in2, float time, void *data);
 void p4r_00415bc0(void *out, void *in1, void *in2, float time, void *data);
-static inline float rw_half(unsigned short h)
+/* At a zero-duration span, retain the first key before any consumer builds a
+   pose. The interpolated frame keeps the two key pointers maintained by RtAnim. */
+void func_003955a0(void *out, void *in1, void *in2, float time, void *data)
 {
-    union { unsigned u; float f; } v;
-    v.u = (h & 0x8000u) << 16;
-    if (h & 0x7fff)
-        v.u |= (((h & 0x7800u) << 12) + 0x38000000u) | ((h & 0x7ffu) << 12);
-    return v.f;
+    const HAnimKey *a = in1, *b = in2;
+    IFrame *frame = out;
+    if (p4_hanim_key_span && a->time == b->time) {
+        memcpy(frame->q, a->q, sizeof frame->q);
+        memcpy(frame->t, a->t, sizeof frame->t);
+        p4_hanim_equal_keys[0]++;
+        return;
+    }
+    p4r_003955a0(out, in1, in2, time, data);
 }
+
+void func_00415bc0(void *out, void *in1, void *in2, float time, void *data)
+{
+    const CKey *a = in1, *b = in2;
+    IFrame *frame = out;
+    const float *cd = data;
+    if (p4_hanim_key_span && a->time == b->time) {
+        decode_hanim_key((float *)((char *)frame + 8), a, cd);
+        p4_hanim_equal_keys[1]++;
+        return;
+    }
+    p4r_00415bc0(out, in1, in2, time, data);
+}
+
 static void interp_fast(void *out_, void *in1_, void *in2_, float time, void *data)
 {
     const CKey *a = in1_, *b = in2_;
@@ -5013,6 +5367,10 @@ static void interp_fast(void *out_, void *in1_, void *in2_, float time, void *da
 }
 static void interp_checked(void *out, void *in1, void *in2, float time, void *data)
 {
+    if (p4_hanim_key_span && ((const CKey *)in1)->time == ((const CKey *)in2)->time) {
+        func_00415bc0(out, in1, in2, time, data);
+        return;
+    }
     interp_fast(out, in1, in2, time, data);
     if (!p4_interp_check)
         return;
@@ -5032,7 +5390,7 @@ static void interp_checked(void *out, void *in1, void *in2, float time, void *da
 }
 KInterp p4_interp_pick(KInterp cb)
 {
-    if (cb == (KInterp)p4r_00415bc0) {
+    if (cb == func_00415bc0) {
         interp_calls++;
         return p4_interp_fast ? interp_checked : cb;
     }
@@ -5837,11 +6195,11 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
         } else {
             draw_alpha_known = 0; /* the batch's colours are not scanned */
         }
-        if (census3d_skip(material, batch->vtype, batch->indices, modulate))
-            continue;
-        prof_begin(PROF_STEST);
-        draw_tested(GU_TRIANGLES, batch->vtype, batch->indices, batch->idx, batch->v);
-        prof_end(PROF_STEST);
+        if (!census3d_skip(material, batch->vtype, batch->indices, modulate)) {
+            prof_begin(PROF_STEST);
+            draw_tested(GU_TRIANGLES, batch->vtype, batch->indices, batch->idx, batch->v);
+            prof_end(PROF_STEST);
+        }
         draw_skin_alpha = 0;
     }
     st_enable(GU_LIGHTING, 0);

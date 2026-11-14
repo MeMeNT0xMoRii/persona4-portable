@@ -62,6 +62,30 @@ FIXES = {
     "src/nmCmdList_inferred_00353b50.c": [
         ("width = 256.0f * ((DatScreenWipe *)wipe)->scaleX.f;", "width = 192.0f * ((DatScreenWipe *)wipe)->scaleX.f;"),
     ],
+    "src/shdMisc.c": [
+        ("    ShdQuadVertex verts[4];\n",
+         "    extern int p4_texture_tint;\n"
+         "    extern void p4_draw_texture_tint(u32, f32, f32, f32, f32, f32, f32, void *, int, int);\n"
+         "    if (p4_texture_tint && texture && (blendMode == 0 || blendMode == 1)) {\n"
+         "        p4_draw_texture_tint(color, x, y, maskX, maskY, width, height, *(void **)texture,\n"
+         "                             drawMask && (color & 255) != 255, blendMode);\n"
+         "        return;\n"
+         "    }\n"
+         "    ShdQuadVertex verts[4];\n"),
+    ],
+    "src/Scene/mt_scene_inferred_00266a40.c": [
+        ("    if (shape == 9) {\n        specialCount = counts.value[shape * 2];",
+         "    {\n"
+         "        extern int p4_draw_tv_ring(const void *, int, const void *, int, float, float,\n"
+         "                                  int, int, float, float, float, unsigned, unsigned);\n"
+         "        if ((unsigned)shape < 9 &&\n"
+         "            p4_draw_tv_ring(sources.value[shape * 2], counts.value[shape * 2],\n"
+         "                            sources.value[shape * 2 + 1], counts.value[shape * 2 + 1],\n"
+         "                            x, y, originX, originY, rotation, scaleX, scaleY, rgb, alpha))\n"
+         "            return;\n"
+         "    }\n"
+         "    if (shape == 9) {\n        specialCount = counts.value[shape * 2];"),
+    ],
     "src/unplaced/unplaced_inferred_00222210.c": [
         ("256.0f * scale[0],  512.0f * scale[1]", "192.0f * scale[0],  512.0f * scale[1]"),
     ],
@@ -176,6 +200,28 @@ FIXES["src/Kosaka/k_clump/k_clump_inferred.c"] = [
 # Profiler (b139): mdlAdvanceModel is ~1 ms a character in Heaven (mdlQueueModelForDraw 3.0 of draw scene's 3.1 Mcycles);
 # time its steps: 0 frame matrix, 1 attached matrices, 2 animation layers, 3 anim control, 4 effect transforms, 5 motion.
 FIXES["src/Graphics/Model/mdlManager.c"] = [
+    ("    extern float effMiscQuatAngle(unsigned char *, unsigned char *);",
+     "    extern float effMiscQuatAngle(unsigned char *, unsigned char *);\n"
+     "    extern void p4_hanim_prepare_pose(void *);\n"
+     "    extern int p4_head_quat_valid(const float *);\n"
+     "    extern float p4_head_acos_input(float);\n"
+     "    extern int p4_head_check;"),
+    ("      identityMatrix.flags = identityMatrix.flags | 0x20003;",
+     "      identityMatrix.flags = 0x20003;"),
+    ("      baseMatrix.flags |= 0x20003;",
+     "      baseMatrix.flags = 0x20003;"),
+    ("  interpolatorAddress = (unsigned int)hierarchy->currentAnim;",
+     "  p4_hanim_prepare_pose(hierarchy);\n"
+     "  interpolatorAddress = (unsigned int)hierarchy->currentAnim;"),
+    ("func_0044b920(look[1])", "func_0044b920(p4_head_acos_input(look[1]))"),
+    ("func_0044b920(workingVector.y)", "func_0044b920(p4_head_acos_input(workingVector.y))"),
+    ("        if (blendControl == (unsigned int *)0x0) {\n          if (parentMatrix == 0) {",
+     "        if (p4_head_check && !p4_head_quat_valid(lookState->rotation)) {\n"
+     "          RwMatrixMultiply((RwMatrix *)outputMatrix, &frameMatrix, (const RwMatrix *)nodeParentMatrix);\n"
+     "          RtQuatConvertFromMatrix((struct RtQuat *)lookState->rotation, (const RwMatrix *)outputMatrix);\n"
+     "          break;\n"
+     "        }\n"
+     "        if (blendControl == (unsigned int *)0x0) {\n          if (parentMatrix == 0) {"),
     # b154: log the per-node scale the hierarchy scale hook applies (Margaret's head drawn as a line)
     ('        *(f32*)D_00922BB4_abs = hierarchyScale->aspect;\n',
      '        *(f32*)D_00922BB4_abs = hierarchyScale->aspect;\n        { extern void p4_scale_hook_note(void *layer, int node, const float *scale, float model_scale, float aspect, int speed_zero);\n          p4_scale_hook_note(layer, hierarchyScale->node, (const float *)(scaleFields + 4), hierarchyScale->modelScale, hierarchyScale->aspect,\n                             ((MdlLayerState *)layer)->speed == 0.0f); }\n'),

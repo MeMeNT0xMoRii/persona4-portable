@@ -77,6 +77,7 @@ u_long128 ConditionalSetQuad(u_long128 *dst, u_long128 *src, int first) {
 #include <string.h>
 #include "vu0.h"
 struct P4Vu p4vu;
+int p4_vu0_profile = 1;
 static unsigned profiled_ops;
 void p4_vu0_site(unsigned short *id, const char *file, int line, int ops) {
     profiled_ops += ops;
@@ -90,6 +91,9 @@ int main(void) {
         for code in generated:
             harness += 'memset(&output, 0, sizeof output);\n' + code
             harness += '\nassert(memcmp(&output, input + 1, 16) == 0);\n'
+        harness += f'assert(profiled_ops == {2 * len(templates)});\n'
+        harness += 'p4_vu0_profile = 0;\nmemset(&output, 0, sizeof output);\n' + generated[0]
+        harness += '\nassert(memcmp(&output, input + 1, 16) == 0);\n'
         harness += f'assert(profiled_ops == {2 * len(templates)});\n}}\n'
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary)

@@ -15,9 +15,15 @@ typedef union {
 
 extern struct P4Vu { P4Reg vf[32], acc, r[32]; float q; } p4vu;
 
-/* Work counter: each translated block names its site once and adds its instruction count (rwmath.c reports). */
+/* Count translated work by site in profiling builds or when enabled by the debugger. */
+extern int p4_vu0_profile;
 void p4_vu0_site(unsigned short *id, const char *file, int line, int ops);
-#define P4_VU0_COUNT(n) do { static unsigned short p4_vu0_id_; p4_vu0_site(&p4_vu0_id_, __FILE__, __LINE__, (n)); } while (0)
+#define P4_VU0_COUNT(n) do { \
+    if (p4_vu0_profile) { \
+        static unsigned short p4_vu0_id_; \
+        p4_vu0_site(&p4_vu0_id_, __FILE__, __LINE__, (n)); \
+    } \
+} while (0)
 
 
 static __inline__ void p4_load(P4Reg *r, const void *from, unsigned size)

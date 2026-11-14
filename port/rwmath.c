@@ -12,15 +12,22 @@ typedef struct { Row right, up, at, pos; } Matrix; /* 64 bytes, rows like RwMatr
 /* out = a * b. RenderWare keeps two words of flags: the result has lost identity and may have lost orthonormality. */
 unsigned char *RwMatrixMultiply(unsigned char *out_, unsigned char *a_, unsigned char *b_)
 {
-    Matrix *out = (Matrix *)out_, *a = (Matrix *)a_, *b = (Matrix *)b_;
-    ROTATE(out->right, a->right, b);
-    ROTATE(out->up, a->up, b);
-    ROTATE(out->at, a->at, b);
-    ROTATE(out->pos, a->pos, b);
-    out->pos.x += b->pos.x;
-    out->pos.y += b->pos.y;
-    out->pos.z += b->pos.z;
-    out->right.flags = a->right.flags & b->right.flags;
+    const Matrix *a = (const Matrix *)a_, *b = (const Matrix *)b_;
+    Matrix *out = (Matrix *)out_;
+    /* The PS2 loads both inputs before it writes the result, including for in-place products. */
+    Matrix r;
+    ROTATE(r.right, a->right, b);
+    ROTATE(r.up, a->up, b);
+    ROTATE(r.at, a->at, b);
+    ROTATE(r.pos, a->pos, b);
+    r.pos.x += b->pos.x;
+    r.pos.y += b->pos.y;
+    r.pos.z += b->pos.z;
+    r.right.flags = a->right.flags & b->right.flags;
+    out->right = r.right;
+    out->up.x = r.up.x; out->up.y = r.up.y; out->up.z = r.up.z;
+    out->at.x = r.at.x; out->at.y = r.at.y; out->at.z = r.at.z;
+    out->pos.x = r.pos.x; out->pos.y = r.pos.y; out->pos.z = r.pos.z;
     return out_;
 }
 
@@ -123,6 +130,11 @@ int func_0044e168(int x, int y) { return wrap(unwrap(x) * unwrap(y)); }    /* mu
 int func_0044e3b8(int x, int y) { return wrap(unwrap(x) / unwrap(y)); }    /* divdf3 */
 
 /* VU0 work per call site (P4_VU0_COUNT in vu0.h): instructions the game runs through the C model of VU0. */
+#ifdef P4_HW_PROFILE
+int p4_vu0_profile = 1;
+#else
+int p4_vu0_profile;
+#endif
 enum { VU0_SITES = 2048 };
 static struct Vu0Site { const char *file; int line; unsigned ops, hits; } *vu0_site; /* heap: .bss must end below the data image */
 static int vu0_sites;
@@ -149,7 +161,7 @@ void p4_vu0_site(unsigned short *id, const char *file, int line, int ops)
 
 void p4_vu0_report(unsigned frames)
 {
-    if (!vu0_site)
+    if (!vu0_site || !vu0_blocks)
         return;
     p4_log("vu0 per frame: instructions %u blocks %u sites %d\n", vu0_ops / frames, vu0_blocks / frames, vu0_sites);
     for (int rank = 0; rank < 8; rank++) {

@@ -31,7 +31,7 @@ PIXELS = {
 def build_probe(pspdev, work):
     renderer = (ROOT / "port" / "rwsky.c").read_text(encoding="utf-8")
     start = renderer.index("static const int gs_alpha_method")
-    end = renderer.index("static int draw_body", start)
+    end = renderer.index("\n}\n", renderer.index("static void draw_2d_tested", start)) + len("\n}\n")
     (work / "p4_draw_2d_tested.h").write_text(renderer[start:end], encoding="utf-8")
     sdk = pspdev / "psp" / "sdk"
 
