@@ -31,9 +31,10 @@ keep the closest earlier one and note the route from it.
 For a report, record build, PSP model, configured clock, save slot, in-game
 date/time, location and exact trigger. Use the same camera movement or enemy
 action when comparing builds. Use 333 MHz with sound on for the hardware comparison and launch from
-`CAT_Ports` if that is the installed location. For P4-033, test HOME → Yes once
-after loading and once after a completed save after playing. If it hangs,
-record the screen and copy `p4.log` before another launch when possible.
+`CAT_Ports` if that is the installed location. For P4-033, use slot 7 to
+repeat HOME → Yes during Shadow Chie. Use slot 8 to check exit after a
+completed save. If it hangs, record the screen and copy `p4.log` before
+another launch when possible.
 For the b176 movie issue, note elapsed time since boot and the next
 prerendered movie that hangs, including whether picture, audio or input
 continues. Keep save files, logs and captures in the private test records.

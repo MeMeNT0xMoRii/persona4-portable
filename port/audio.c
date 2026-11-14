@@ -363,7 +363,8 @@ static void note_on(int owner,int group,int timbre,int velocity)
 {
     Sequence *seq=&sequences[owner];Bank *b=&banks[seq->bank];
     unsigned c=word(b->hd+0x34);
-    if(!offset_ok(c,28,b->hsize)||group<0||(unsigned)group>word(b->hd+c+12)||!offset_ok(c+24+group*4,4,b->hsize))goto bad;
+    /* Setb stores its last sample-set index at +20, before the offset table. */
+    if(!offset_ok(c,28,b->hsize)||group<0||(unsigned)group>word(b->hd+c+20)||!offset_ok(c+24+group*4,4,b->hsize))goto bad;
     unsigned g=c+word(b->hd+c+24+group*4);
     if(!offset_ok(g,8,b->hsize)||timbre<0||timbre>b->hd[g+6])goto bad;
     unsigned t=g+word(b->hd+g)+timbre*half(b->hd+g+4);
