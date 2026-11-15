@@ -20,7 +20,7 @@ before starting a new game. Record the slot alongside any backed-up copy.
 | 7 | 04/17 daytime | Central Shopping District, before Junes | Open the area menu with Square, select Leave the shopping district and confirm Junes. Continue through the food court, TV plaza and castle gate to 1F/2F, Shadow Chie, the Fool link and the return (P4-006, P4-007, P4-021–P4-029). |
 | 8 | 04/17 evening | Dojima Residence after Chie's Persona and dinner | Resume the regular playthrough. The tester saved here and returned to XMB. |
 | 9 | 04/18 after school | Yasogami High School | Walk Classroom Building 2F in both directions. Leave school, open Town Map, switch from the school to Central Shopping District, reopen the map and walk Shopping District South. Check Equip categories, item help and Social Stats (P4-043, P4-050–P4-052, P4-054). |
-| 10 | 04/18 after school | Entrance Hall, TV-world hub | Compare first entry and repeat entry to Yukiko's Castle. On 1F, repeat the long corridor approach and watch the white arch resolve into door/wall detail. Open System, then replay field Shadows, Zio weaknesses, All-Out, Shuffle Time and HOME (P4-015, P4-022, P4-026, P4-031–P4-033, P4-044, P4-053, P4-055–P4-056). |
+| 10 | 04/18 after school | Entrance Hall, TV-world hub | Enter the blue Velvet Room door to reproduce normal fusion (P4-057). In a separate replay, go to Yukiko's Castle. Repeat the long corridor approach, open System, then replay field Shadows, Yosuke's Garu weakness cut-in, All-Out, Shuffle Time and HOME (P4-015, P4-022, P4-026, P4-031–P4-033, P4-044, P4-053, P4-055–P4-056). |
 | Planned | Actual dungeon date | Yukiko's Castle 8F, save point before the boss door | Replay the boss and compare dungeon completion and return. Keep the hub save for ordinary fights. |
 
 The load menu numbers slots from one. Its underlying directories start at
@@ -32,8 +32,17 @@ slots 15 and 16). Their summaries give date indices 119 and 353 and
 area/room 20/1 and 30/1 respectively. Verify their displayed scenarios
 before using either to claim New Game+ coverage. Home14 PPSSPP loaded
 source slot 16 and showed Yomotsu Hirasaka Path 9 on 03/20 daytime. Slot 15
-has only been checked at summary level. Leave every supplied directory and
+loads the Entrance Hall on 07/28 daytime in home15 PPSSPP. Date and scene
+alone do not identify a New Game+ save. Leave every supplied directory and
 backup intact.
+
+For the home15 fusion regression, use a copy of each save. Record the first
+and second Persona and whether the result preview opens. If it completes,
+record the result, inherited skills and acquisition. Register the result in
+the Compendium when available, save in a fresh slot, restart and reload it.
+For Shuffle Time, keep the display at the initial prompt, after the preview
+turn and after confirming a selection. Record the face art and reward at
+each applicable step.
 
 Later dungeons can use the same three positions: hub before entry, last-floor
 save before the boss where available, and first save after returning if there is

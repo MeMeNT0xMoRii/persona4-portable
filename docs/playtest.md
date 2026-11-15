@@ -38,7 +38,7 @@ System-menu stripe appearance remain separate reports.
 | Host | Home15 native-map and existing split-archive, HOME and Shuffle-dispatch regression fixtures pass. Full discovery: 72 passed, two skipped and three inherited harness errors. |
 | PPSSPP | Home15 restores the Town Map scenery for two destinations and on reopening from South. Save/reload in Dojima passed. New Game reached Igor, slot 10 reached Castle Gate, and slot 16 reached the lead-in scene beyond the Yomotsu Hirasaka Path 9 gate. The sampled Shopping District South walk showed no black strips. Home14 covered System and Item. See the replay matrices for exact stages and gaps. |
 | PS2 | Play! booted the original US disc into its intro. Original PS2 reference captures cover Town Map and the Shuffle prompt. Matched gameplay comparisons are pending. |
-| PSP Go (PSP-N1000) | Home9 confirmed System, Item, Persona, save/load, HOME in a normal battle, Shadow models and sound, heads and FPS display. Home13 no longer showed black strips in the tester's field retest. The tester reports home14 runs and still has the Town Map and card-face defects. Home15 hardware replay is pending. |
+| PSP Go (PSP-N1000) | Home9 confirmed System, Item, Persona, save/load, HOME in a normal battle, Shadow models and sound, heads and FPS display. Home13 no longer showed black strips in the tester's field retest. Home15 at 333 MHz confirmed the Town Map repair. The tester reproduced a crash when choosing the second Persona for fusion and recorded the remaining Shuffle Time card issue, white corridor background and Garu cut-in for follow-up. |
 | PSP-3000 | Home15 hardware replay is pending. |
 
 ## Earlier hardware reports
@@ -69,6 +69,32 @@ on a newer build supersedes an older result only for the same scene and
 trigger. See the [home15 validation matrix](build_b249_xmb_home15.md)
 for current priorities, environment and replay coverage.
 
+### Home15 PSP Go follow-up
+
+1. **P0 P4-057 — Persona fusion crash.** On 333 MHz, the tester loaded slot 10,
+   an endgame save and a New Game+ save. Selecting the second Persona in
+   the Velvet Room crashed in all three reports. Record the pair, result
+   preview and any crash location. Successful retests must reach the animation,
+   acquisition, Compendium registration where available, then save and reload.
+2. **P0 P4-032 — Shuffle Time card faces.** The home15 recording
+   `IMG_7250.mp4` shows backs at the prompt and through the selection sequence.
+   The selected card still shows its blue back in the reward view. Compare
+   the same phases on US PS2 and record the illustrated fronts, chosen reward
+   and roster change.
+3. **P1 P4-022 and P4-055 — Castle background and entry stability.** In
+   `IMG_7249.mp4`, the distant bright arch follows the corridor view and
+   resolves into visible detail on approach. Replay at the same distance and
+   camera direction. Repeat separate Castle-entry tests across boots and
+   room changes for the earlier intermittent crash.
+4. **P1 P4-015 — Garu cut-in.** `IMG_7251.jpeg` shows Yosuke's eye strip in
+   the lower part of the 16:9 picture with the Garu label above. Match that
+   animation phase on US PS2 before changing its coordinates.
+
+P4-057 and P4-032 block a full New Game playthrough. Check P4-051 again from
+slot 9 by opening and reopening the Town Map and walking Shopping District
+South after travel. Keep the home15 raster decode and the home13 field-shadow
+dispatch covered by the existing fixtures.
+
 | ID | Scene / trigger | Observation | Evidence / current status |
 | --- | --- | --- | --- |
 | P4-001 | CRI logo immediately after Atlus at startup | Large white rectangle instead of the logo | The 1024 × 512 indexed texture exceeded the PSP texture limit. PPSSPP showed the rectangle on home4 and the CRIWARE logo on home5. Check the next PSP cold boot. |
@@ -85,14 +111,14 @@ for current priorities, environment and replay coverage.
 | P4-012 | Level-up screen | Black/white bars cover the character image | Recurred in both 04/15 fights and around 10 s in the 04/17 Shadow Chie results clip. The results backdrop submits depth-only rectangles. home5 fixes their colour write mode. Confirm the portrait and labels in the result animation. The home8 tint pass shows the hero portrait and stats on a natural Level Up in PPSSPP. Check the boss results on PSP. |
 | P4-013 | Text containing an inserted player name or a stat notification | Excessive spacing around parts of the line | Seen around “Knowledge”, after the player name and in Persona stat gains on 04/13–04/15. It recurs in Teddie’s item gift, Shadow Chie’s Persona stat gains (about 12–16 s in the results clip), and the Fool link text on 04/17. home5 puts joined runs on the same horizontal scale as the glyphs. Recheck these messages in play. |
 | P4-014 | TV-world liquor-store scene | Briefly wrong camera angle/foreground obstruction | 04/15 photo shows large foreground surfaces obscuring the view on entry. Compare the shot with US PS2. |
-| P4-015 | Attack hits an enemy weakness | Eye/face cut-in appears in the lower half of the screen | Comparison question: the tester is unsure whether this differs from the original. Not a confirmed bug. Home9 follow-up reports the eyes off-centre on weakness hits. Compare the same phase and aspect framing on US PS2. |
+| P4-015 | Yosuke uses Garu on a weak enemy | Eye/face cut-in sits low in the frame | Home15 PSP Go photo `IMG_7251.jpeg` records the placement. The departure from US PS2 remains unverified. Match character, move and phase before changing the 16:9 layout. |
 | P4-016 | Triangle-button tutorial in Dojima's living room | Large gap before the triangle symbol | Photo; text layout issue, not a report of triangle input failing. |
 | P4-017 | Various early-game scenes | Slowdowns and stutters | Report; no FPS/frame-time measurements or precise triggers yet. Home8 disables VU0 measurement calls in the release. Hardware frame times at 333 MHz are pending. Home9 Go capture shows 30.0 FPS standing at the Dojima save point and 27.0 in parts of the walking clip. The tester reports stretches near 30 FPS in the castle. Per-stage hardware measurements remain open. |
 | P4-018 | Rainy school route, Samegawa Flood Plain and 04/16 evening scene | Missing or transparent parts of umbrella canopies | Intermittent transparency seen on 04/12 and again on 04/15 on the school route and after leaving the TV world. The Flood Plain photo shows exposed ribs and incomplete-looking canopy surfaces. The 04/16 evening photo of Dojima and the young detective shows gaps at the edge of the pale umbrella. The missing panels reappear in a 04/15 school-route A/B test on home8 and retain translucency. Check the other scenes. |
 | P4-019 | Move installation into CAT_Ports and launch from normal XMB | Early exit loading data from fixed paths in home1 | Resolved for the tested PSP-3000 setup in b176-xmb-home2. The tester confirmed XMB launch and gameplay. The log confirms the categorized directory, successful boot data reads and 13,072 indexed files. |
 | P4-020 | Dojima's house, 04/17 early morning, talking to Nanako | Tall triangular surface beside the protagonist | Reproduced on home4 in the early-morning Nanako scene. Photo and clips show the surface in front of the protagonist. Compare foreground objects at the same camera position. |
 | P4-021 | Yukiko's Castle Gate, 04/17 daytime, approach the entrance | Red-and-black pattern appears over the side background as the camera moves closer | Improved on home3. The tester reports the outside wall looked correct during the home4 replay. Keep for regression checks. |
-| P4-022 | Yukiko's Castle 1F, walk down the long hallway | Bright white area at the far end | In home13 PSP Go clip `IMG_7239.mp4`, the far arch is white through roughly 1.5 s and becomes a detailed door or wall around 2 s as the player approaches. Compare the same 1F corridor and camera distance with US PS2. |
+| P4-022 | Yukiko's Castle 1F, walk down the long hallway | Bright white area at the far end | Seen in `IMG_7239.mp4` on home13 and again in `IMG_7249.mp4` on PSP Go with home15. Detail becomes visible at close range. A matched US PS2 comparison and renderer cause remain open. |
 | P4-023 | Yukiko's Castle 1F, flying Shadow outside combat | Only purple hand or arm shapes are visible in the reported encounter | The home6 hardware report confirms the body and face are visible. Audio is P4-044. |
 | P4-024 | Yukiko's Castle 1F, treasure chest on the red carpet | Chest shows disconnected red panels | The 04/17 home4 photo shows missing surfaces again. PPSSPP with home5 shows the red panels while the chest opens and awards a Soul Drop. Save slot 7 provides the route to the chest. Check material data and texture assignment. |
 | P4-025 | Yukiko's Castle 2F, walk around the room before Chie's awakening | Large bright panels appear at the sides near windows as the camera moves | Visible at about 2.7 s and 5.7 s in the earlier clip. Improved on home3. The tester reports the wall looked correct near Shadow Chie’s door on home4. |
@@ -102,7 +128,7 @@ for current priorities, environment and replay coverage.
 | P4-029 | 04/17, after returning from the TV world following Chie's awakening | First reported crash at the "Daytime" loading screen | The 403 MHz setting run logged three completed movies, then setup of `E175_001` / `F007_002`. The tester reached the next save at 333 MHz on home2 and reached the evening save again on home4. Cause and effective clock during the failed run remain open. |
 | P4-030 | Ground Shadows outside combat | Face or mask absent | The home6 hardware report confirms the face is visible again. Audio is P4-044. |
 | P4-031 | Party members during battle | Heads intermittently missing | 04/17 Shadow Chie photos show Yosuke missing his head in the menu, then both party members. The tester reports the head returned during Yosuke’s attack and disappeared again next turn. Compare menu and attack frames. Heads are visible in the regular home8 encounter. The invalid pose and controller guards need a targeted Shadow Chie replay. |
-| P4-032 | First Shuffle Time, including card selection and reward | Cards show backs or look blank through the reveal while Persona rewards still work | Repeated on PSP Go with home13 and still reported on home14. Home10 and home13 dispatch changes are present. Check the regular card quads and the separate selected-card reveal, recording face, angle, texture and actual reward. Card height at the prompt remains P4-045. |
+| P4-032 | Shuffle Time, including card selection and reward | Cards show backs or look blank through the reveal while Persona rewards still work | P0. Confirmed on home15 PSP Go in `IMG_7250.mp4`. Home10 and home13 dispatch changes are present. Check the loop and selected-card reveal, including face, angle, texture, acquisition and result screen. Card height at the prompt remains P4-045. |
 | P4-033 | HOME exit to XMB | Intermittent freeze | Recurred during Shadow Chie on home6. A log for that run is still missing. The home7 callback test cleared an intentionally stalled graphics list and exited in PPSSPP. Replay HOME → Yes during the boss fight on PSP. |
 | P4-034 | Opening gas station and phone call, 04/12 breakfast and classroom, 04/13 evening at Dojima's | Character motions look wrong when exiting the car, handling the phone and sitting down | The protagonist briefly stands again between sitting poses in class. Other reported cases: Dojima sitting on 04/13; the protagonist reaching into the Junes TV and switching between standing and sitting; Nanako rising on 04/14 evening; the protagonist moving oddly around TV-world entry and return on 04/15. The 04/15 and 04/16 bedroom clips add hand motion before watching TV. On 04/16, Yosuke's handshake and reaching into and withdrawing from the Junes TV were reported. On 04/17, Nanako's hand with the remote and her movement after putting it down were reported. Compare the scripted motions with US PS2. |
 | P4-035 | 04/11 evening, Dojima Residence, Nanako dialogue | Dojima stays visible after the sound of his car leaving | Photo shows him still in the room during Nanako's dialogue. Audio timing comes from the tester. Compare actor visibility through the departure with US PS2. |
@@ -121,12 +147,13 @@ for current priorities, environment and replay coverage.
 | P4-048 | Fool Social Link starts after Chie's awakening | Bright establishment effect similar to the Magician scene | 04/17 clip. Compare the strength and timing. The card framing is P4-028 and the spacing in the following message is P4-013. |
 | P4-049 | Save and load menus | The yellow/orange slot dials show no numbers | The tester confirmed the digits in both menus on home6. The load confirmation was visible in PPSSPP. Writing and reloading a new slot still needs a PSP check. |
 | P4-050 | Equip category and weapon screens | Misaligned highlight and panels, suspect bands | Home10 preserves both coordinates in the three affected draw helpers. Home14 PPSSPP displayed the character list, Accessory selection, and Golf Club highlight and Square help in Weapon. Multi-item scrolling and matched PS2 framing remain open. |
-| P4-051 | 04/18 Town Map from Yasogami High School or with Central Shopping District selected | Part of the 3D town scene is missing or distorted | Slot 9, Square → Go into town. Home14 reproduced the PSP Go symptom in PPSSPP. Its native raster reader blanked the retail version-1 1024×1024 map atlas. Home15 decodes the original indices and palette at the GE's supported 512×512. A/B with the same save confirms visible roads and buildings on School and Shopping District views. PSP Go and PSP-3000 acceptance pending. |
+| P4-051 | 04/18 Town Map from Yasogami High School or with Central Shopping District selected | Part of the 3D town scene is missing or distorted | Fixed on home15 PPSSPP and confirmed by the PSP Go tester at 333 MHz. The native raster reader used to blank the retail version-1 1024×1024 map atlas. Home15 decodes the original indices and palette at 512×512. Retest opening, switching and reopening from slot 9. PSP-3000 acceptance remains open. |
 | P4-052 | Status → Social Stats | Long orange diagonals behind the graph | Home9 Go photo. Check an original US PS2 capture before changing the background. |
 | P4-053 | Castle battle, Zio on Lying Hablerie and other skills | Circular or saturated bursts | Home9 Go clip identifies Zio. Match the original effect phase to determine which bursts differ. |
 | P4-054 | 04/18 Classroom Building 2F, walk while the camera tracks the player | Dark wedges across the floor | PSP Go `IMG_7236.mp4`. The home13 PSP Go field retest no longer showed the strips. Preserve the home13 shadow dispatch and replay from slot 9 on later builds. |
 | P4-055 | Enter Yukiko's Castle from the TV-world Entrance Hall | One reported crash, followed by a successful entry | Home13 PSP Go at 333 MHz. The report does not include a crash log. Repeat from slot 10 across boots, first entry and re-entry. The short-disc-read fix is a verified loader correction with an unconfirmed relationship to this incident. |
 | P4-056 | System menu over Yukiko's Castle | Vertical coloured stripe appearance | `IMG_7238.jpeg` on PSP Go. Home14 PPSSPP shows the band and correct selected text at the TV hub. US PS2 retail draws a full-height, palette-coloured stripe layer. A matching frame is needed to assess the reported differences in width, colour or placement. |
+| P4-057 | Velvet Room, choose the second Persona in normal fusion | Game crashes before the fusion can be completed | P0. Home15 at 333 MHz on PSP Go. Tester reproduced it with slot 10, an endgame save and a New Game+ save. The report has no crash address or Persona pair. Test a complete fusion with each available replay and save/reload the result. |
 
 The left stripe band in the castle System Menu photo `IMG_7238.jpeg`
 corresponds to a palette-coloured UI layer in the US PS2 executable. The
