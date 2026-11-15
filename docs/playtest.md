@@ -17,10 +17,11 @@ replay and the 04/17 evening save for ongoing play.
 
 ## Current build and verification
 
-The [b249-xmb-home14 test build](build_b249_xmb_home14.md) is on
-`playthrough/b249-home14`, based on the home13 diagnostic. Use home13
-for rollback. The `playthrough/b176-xmb-home` branch remains at
-the [home12 build](build_b249_xmb_home12.md).
+The [b249-xmb-home15 candidate](build_b249_xmb_home15.md) is on
+`playthrough/b249-home15`. Its baseline and rollback are the
+[home14 test build](build_b249_xmb_home14.md) on
+`playthrough/b249-home14`. The `playthrough/b176-xmb-home` branch
+remains at the [home12 build](build_b249_xmb_home12.md).
 
 For the confirmed home12 black polygons (P4-043 and P4-054), use the
 [home13 P0 diagnostic build](build_b249_xmb_home13_p0.md) on
@@ -34,10 +35,11 @@ System-menu stripe appearance remain separate reports.
 
 | Platform | Current evidence |
 | --- | --- |
-| Host | Home14 release build and address audit passed. The split-archive short-read test detects an error confirmed against home13. Full suite: 71 passed, two skipped and three inherited harness errors. |
-| PPSSPP | Home14 loaded the TV hub and school saves. System selection and Item help worked. Shopping District South replay showed no black strips. The missing Town Map scenery reproduced. See the home14 replay matrix for limits and exact stages. |
-| PSP Go (PSP-N1000) | Home9 confirmed System, Item, Persona, save/load, HOME in a normal battle, Shadow models and sound, heads and FPS display. Home13 no longer showed the black strips in the tester's field retest. The Castle crash, white arch and Shuffle Time report are open. Home14 hardware replay is pending. |
-| PSP-3000 | Home14 hardware replay is pending. |
+| Host | Home15 native-map and existing split-archive, HOME and Shuffle-dispatch regression fixtures pass. Full discovery: 72 passed, two skipped and three inherited harness errors. |
+| PPSSPP | Home15 A/B replay restores the Town Map scenery for two destinations. Home14 loaded the TV hub and school saves, with working System selection and Item help. The sampled Shopping District South walk showed no black strips. See the respective replay matrices for exact stages. |
+| PS2 | Play! booted the original US disc into its intro. Original PS2 reference captures cover Town Map and the Shuffle prompt. Matched gameplay comparisons are pending. |
+| PSP Go (PSP-N1000) | Home9 confirmed System, Item, Persona, save/load, HOME in a normal battle, Shadow models and sound, heads and FPS display. Home13 no longer showed black strips in the tester's field retest. The tester reports home14 runs and still has the Town Map and card-face defects. Home15 hardware replay is pending. |
+| PSP-3000 | Home15 hardware replay is pending. |
 
 ## Earlier hardware reports
 
@@ -60,7 +62,12 @@ System-menu stripe appearance remain separate reports.
   `3797d600c3dc29f62476d57f6b043c8bef23cc0119110ba11d204848e9af58cf`.
   The installed PSP file has not been rehashed.
 
-## Open observations
+## Issue and regression register
+
+Use the last observed build in each row when comparing results. A test
+on a newer build supersedes an older result only for the same scene and
+trigger. See the [home15 validation matrix](build_b249_xmb_home15.md)
+for current priorities, environment and replay coverage.
 
 | ID | Scene / trigger | Observation | Evidence / current status |
 | --- | --- | --- | --- |
@@ -95,7 +102,7 @@ System-menu stripe appearance remain separate reports.
 | P4-029 | 04/17, after returning from the TV world following Chie's awakening | First reported crash at the "Daytime" loading screen | The 403 MHz setting run logged three completed movies, then setup of `E175_001` / `F007_002`. The tester reached the next save at 333 MHz on home2 and reached the evening save again on home4. Cause and effective clock during the failed run remain open. |
 | P4-030 | Ground Shadows outside combat | Face or mask absent | The home6 hardware report confirms the face is visible again. Audio is P4-044. |
 | P4-031 | Party members during battle | Heads intermittently missing | 04/17 Shadow Chie photos show Yosuke missing his head in the menu, then both party members. The tester reports the head returned during Yosuke’s attack and disappeared again next turn. Compare menu and attack frames. Heads are visible in the regular home8 encounter. The invalid pose and controller guards need a targeted Shadow Chie replay. |
-| P4-032 | First Shuffle Time, including card selection and reward | Cards show backs or look blank through the reveal while Persona rewards still work | Repeated on PSP Go with home13. Home10 and home13 dispatch changes are present. Check the regular card quads and the separate selected-card reveal, recording face, angle, texture and actual reward. Card height at the prompt remains P4-045. |
+| P4-032 | First Shuffle Time, including card selection and reward | Cards show backs or look blank through the reveal while Persona rewards still work | Repeated on PSP Go with home13 and still reported on home14. Home10 and home13 dispatch changes are present. Check the regular card quads and the separate selected-card reveal, recording face, angle, texture and actual reward. Card height at the prompt remains P4-045. |
 | P4-033 | HOME exit to XMB | Intermittent freeze | Recurred during Shadow Chie on home6. A log for that run is still missing. The home7 callback test cleared an intentionally stalled graphics list and exited in PPSSPP. Replay HOME → Yes during the boss fight on PSP. |
 | P4-034 | Opening gas station and phone call, 04/12 breakfast and classroom, 04/13 evening at Dojima's | Character motions look wrong when exiting the car, handling the phone and sitting down | The protagonist briefly stands again between sitting poses in class. Other reported cases: Dojima sitting on 04/13; the protagonist reaching into the Junes TV and switching between standing and sitting; Nanako rising on 04/14 evening; the protagonist moving oddly around TV-world entry and return on 04/15. The 04/15 and 04/16 bedroom clips add hand motion before watching TV. On 04/16, Yosuke's handshake and reaching into and withdrawing from the Junes TV were reported. On 04/17, Nanako's hand with the remote and her movement after putting it down were reported. Compare the scripted motions with US PS2. |
 | P4-035 | 04/11 evening, Dojima Residence, Nanako dialogue | Dojima stays visible after the sound of his car leaving | Photo shows him still in the room during Nanako's dialogue. Audio timing comes from the tester. Compare actor visibility through the departure with US PS2. |
@@ -114,7 +121,7 @@ System-menu stripe appearance remain separate reports.
 | P4-048 | Fool Social Link starts after Chie's awakening | Bright establishment effect similar to the Magician scene | 04/17 clip. Compare the strength and timing. The card framing is P4-028 and the spacing in the following message is P4-013. |
 | P4-049 | Save and load menus | The yellow/orange slot dials show no numbers | The tester confirmed the digits in both menus on home6. The load confirmation was visible in PPSSPP. Writing and reloading a new slot still needs a PSP check. |
 | P4-050 | Equip category and weapon screens | Misaligned highlight and panels, suspect bands | Home10 preserves both coordinates in the three affected draw helpers. Home14 PPSSPP displayed the character list, Accessory selection, and Golf Club highlight and Square help in Weapon. Multi-item scrolling and matched PS2 framing remain open. |
-| P4-051 | 04/18 Town Map from Yasogami High School or with Central Shopping District selected | Part of the 3D town scene is missing or distorted | Slot 9. Home9 photo, PSP Go `IMG_7234.jpeg` and the home14 PPSSPP replay show intact selection UI over missing scenery. In PPSSPP both base and secondary packs completed and `init_lmap` ran. Home11 restores the secondary-room variant comparison for an already loaded scene. Compare the first opening and a reopen, then match camera, scene 1/1 variant and 3D draw state against US PS2. Open. |
+| P4-051 | 04/18 Town Map from Yasogami High School or with Central Shopping District selected | Part of the 3D town scene is missing or distorted | Slot 9, Square → Go into town. Home14 reproduced the PSP Go symptom in PPSSPP. Its native raster reader blanked the retail version-1 1024×1024 map atlas. Home15 decodes the original indices and palette at the GE's supported 512×512. A/B with the same save confirms visible roads and buildings on School and Shopping District views. PSP Go and PSP-3000 acceptance pending. |
 | P4-052 | Status → Social Stats | Long orange diagonals behind the graph | Home9 Go photo. Check an original US PS2 capture before changing the background. |
 | P4-053 | Castle battle, Zio on Lying Hablerie and other skills | Circular or saturated bursts | Home9 Go clip identifies Zio. Match the original effect phase to determine which bursts differ. |
 | P4-054 | 04/18 Classroom Building 2F, walk while the camera tracks the player | Dark wedges across the floor | PSP Go `IMG_7236.mp4`. The home13 PSP Go field retest no longer showed the strips. Preserve the home13 shadow dispatch and replay from slot 9 on later builds. |

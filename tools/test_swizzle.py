@@ -6,6 +6,26 @@ one wrong bit makes two pixels share a place. Whether the places are the right o
 
   python tools/test_swizzle.py
 """
+import shutil
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+
+class NativeTextureTest(unittest.TestCase):
+    def test_legacy_atlas_and_ge_swizzle(self):
+        compiler = shutil.which("gcc")
+        if compiler is None:
+            self.skipTest("host gcc is unavailable")
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory) / "texture-test"
+            subprocess.run([compiler, "-O2", "-I", str(root / "port"),
+                            str(root / "tools/test_ge_swizzle.c"), "-o", str(fixture)], check=True)
+            subprocess.run([str(fixture)], check=True)
+
+
 SHAPES = [(1 << a, 1 << b) for a in range(5, 11) for b in range(5, 11)]
 
 
