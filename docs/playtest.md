@@ -21,6 +21,14 @@ Use [b249-xmb-home12](build_b249_xmb_home12.md) on
 `playthrough/b176-xmb-home` for the next hardware pass. The previous
 [home11 release](build_b249_xmb_home11.md) is the immediate rollback build.
 
+For the confirmed home12 black polygons (P4-043 and P4-054), use the
+[home13 P0 diagnostic build](build_b249_xmb_home13_p0.md) on
+`diagnostics/b249-home13-p0`. On the same PSP Go the tester observed no
+black strips in home8 and home9. Home13 restores the home9 field shadow
+dispatch and limits the non-indexed immediate draw to Shuffle Time.
+Home13 hardware verification is pending. The Town Map and System-menu
+stripe appearance remain separate reports.
+
 | Platform | Current evidence |
 | --- | --- |
 | Host | Home12 release build and address audit passed. The guard-band, secondary-room, packed-coordinate and calendar tests passed. Full suite: 69 passed, two skipped and three inherited errors. |

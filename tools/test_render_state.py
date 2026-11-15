@@ -8,6 +8,79 @@ from pathlib import Path
 
 
 class RenderState(unittest.TestCase):
+    def test_nonindexed_im3d_is_scoped_to_shuffle_time(self):
+        gcc = shutil.which('gcc')
+        if not gcc:
+            self.skipTest('host gcc is unavailable')
+
+        root = Path(__file__).resolve().parent.parent
+        source = (root / 'port/rwsky.c').read_text()
+        functions = [re.search(rf'^(?:static )?(?:int |void \*){name}\(.*?^\}}',
+                               source, re.M | re.S)[0] for name in (
+                                   'p4_shuffle_render_primitive', 'im3d_caller', 'func_004114d0')]
+        harness = r'''
+#include <assert.h>
+static char addresses[10];
+#define p4r_00410420 (addresses + 0)
+#define p4r_004104d0 (addresses + 2)
+#define p4r_00410520 (addresses + 4)
+#define p4r_004106a0 (addresses + 6)
+#define p4r_00410800 (addresses + 8)
+#define __builtin_return_address(n) mock_caller
+#define SKIPPING skipping
+enum { OBJECT_ATOMIC = 1, FIELD_SHADOW_FLAGS = 0x19 };
+static const char *mock_caller;
+static int p4_im3d = 1, skipping, shuffle_nonindexed, shuffle_persona_card;
+static int transforms, draws, atomics, pipeline_other;
+static void im3d_transform(void *object) { ++transforms; }
+static void im3d_draw(void *object) { ++draws; }
+static void *func_003be9f0(void *object) { ++atomics; return object; }
+static void other_note(void *pipeline, void *object, const void *caller) {}
+'''
+        checks = r'''
+static unsigned char object_flags;
+static void dispatch(const char *caller, unsigned char flags) {
+    mock_caller = caller;
+    object_flags = flags;
+    assert(func_004114d0(0, &object_flags, 0) == &object_flags);
+}
+
+int func_004106a0(int primitive) {
+    assert(shuffle_nonindexed && primitive == 4);
+    dispatch(p4r_004106a0 + 1, 3);
+    return 17;
+}
+
+int main(void) {
+    dispatch(p4r_00410420 + 1, 4);
+    dispatch(p4r_00410520 + 1, 3);
+    dispatch(p4r_00410520 + 1, OBJECT_ATOMIC);
+    dispatch(p4r_004106a0 + 1, FIELD_SHADOW_FLAGS);
+    assert(transforms == 1 && draws == 1 && atomics == 1 && pipeline_other == 1);
+
+    assert(p4_shuffle_render_primitive(4) == 17);
+    assert(draws == 2 && !shuffle_nonindexed);
+    dispatch(p4r_004106a0 + 1, FIELD_SHADOW_FLAGS);
+    assert(draws == 2 && pipeline_other == 2);
+
+    skipping = 1;
+    assert(p4_shuffle_render_primitive(4) == 17);
+    skipping = 0;
+    assert(draws == 2 && !shuffle_nonindexed);
+    shuffle_persona_card = 1;
+    dispatch(p4r_00410520 + 1, OBJECT_ATOMIC);
+    assert(draws == 3 && atomics == 1);
+    dispatch(p4r_004106a0 + 1, FIELD_SHADOW_FLAGS);
+    assert(draws == 3 && pipeline_other == 3);
+}
+'''
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary)
+            (path / 'check.c').write_text(harness + '\n'.join(functions) + checks)
+            subprocess.run([gcc, '-O2', str(path / 'check.c'), '-o', str(path / 'check')],
+                           check=True)
+            subprocess.run([str(path / 'check')], check=True)
+
     def test_calendar_date_clips_do_not_overlap(self):
         gcc = shutil.which('gcc')
         if not gcc:

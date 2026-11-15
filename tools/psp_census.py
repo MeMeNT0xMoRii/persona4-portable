@@ -102,6 +102,11 @@ FIXES = {
          "    pscModelDraw(card);\n"
          "    p4_shuffle_card_begin(0);"),
     ],
+    "src/Battle/btlShuffleDraw.c": [
+        ("extern s32 func_004106a0(BtlShufflePrimitive primitive);",
+         "extern s32 p4_shuffle_render_primitive(BtlShufflePrimitive primitive);"),
+        ("func_004106a0(4);", "p4_shuffle_render_primitive(4);"),
+    ],
     "src/Main/Social/pscModel.c": [
         ("        (*renderStateSet)(1, pscResGetMiscCardW00Texture(1));\n"
          "        func_00410420(modeZeroModel->u.m01.b1, 4, matrix, 3);\n"

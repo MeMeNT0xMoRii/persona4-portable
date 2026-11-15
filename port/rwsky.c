@@ -10558,6 +10558,7 @@ static void other_report(unsigned frames)
     memset(other_table, 0, sizeof other_table);
 }
 static int shuffle_persona_card;
+static int shuffle_nonindexed;
 
 void p4_shuffle_card_begin(int active)
 {
@@ -10576,14 +10577,29 @@ int p4_shuffle_card_back_visible(const void *ltm)
     return model->at.x * view->right.z + model->at.y * view->up.z + model->at.z * view->at.z >= 0.0f;
 }
 
+int p4_shuffle_render_primitive(int primitive)
+{
+    extern int func_004106a0(int);
+    int previous = shuffle_nonindexed;
+    shuffle_nonindexed = 1;
+    int result = func_004106a0(primitive);
+    shuffle_nonindexed = previous;
+    return result;
+}
+
 /* RwIm3D: the indexed and non-indexed render calls execute the render
    pipeline on the pool's _rwIm3DPoolStash (rw/p2/baim3d.h): flags, ltm, numVerts, objVerts, camVerts, devVerts,
    meshState, renderState, pipeline, primType, indices, numIndices. The vertices are sky2 RxObjSpace3DVertex: position,
    RGBA, normal, u, v (36 bytes). b133 Shuffle Time: 36 draws a frame, nothing drawn, the cards missing. */
-extern char p4r_00410420[], p4r_004104d0[], p4r_00410520[], p4r_00410800[];
-static int im3d_caller(const char *ra)
+extern char p4r_00410420[], p4r_004104d0[], p4r_00410520[], p4r_004106a0[], p4r_00410800[];
+static int im3d_caller(const char *ra, int atomic)
 {
-    return (ra >= p4r_00410420 && ra < p4r_004104d0) || (ra >= p4r_00410520 && ra < p4r_00410800);
+    /* Field shadow projection also calls the non-indexed entry. Keep the
+       direct PSP draw scoped to the Shuffle Time calls that need it. */
+    if (ra >= p4r_004106a0 && ra < p4r_00410800)
+        return shuffle_nonindexed;
+    return (!atomic || shuffle_persona_card) &&
+           ((ra >= p4r_00410420 && ra < p4r_004104d0) || (ra >= p4r_00410520 && ra < p4r_004106a0));
 }
 typedef struct { float x, y, z; unsigned colour; float nx, ny, nz, u, v; } Im3DVertex;
 /* RwIm3DTransform executes the transform pipeline on the pool (rwIm3DPool: u16 numElements, u16 pad, elements, stride,
@@ -10636,19 +10652,21 @@ static void im3d_draw(const unsigned *stash)
 
 void *func_004114d0(void *pipeline, void *object, int force)
 {
-    if (p4_im3d && im3d_caller(__builtin_return_address(0))) {
+    const char *caller = __builtin_return_address(0);
+    int atomic = *(unsigned char *)object == OBJECT_ATOMIC;
+    if (p4_im3d && im3d_caller(caller, atomic)) {
         if (SKIPPING)
             return object;
-        if ((const char *)__builtin_return_address(0) < p4r_004104d0)
+        if (caller < p4r_004104d0)
             im3d_transform(object);
         else
             im3d_draw(object);
         return object;
     }
-    if (*(unsigned char *)object == OBJECT_ATOMIC)
+    if (atomic)
         return func_003be9f0(object);
     pipeline_other++;
-    other_note(pipeline, object, __builtin_return_address(0));
+    other_note(pipeline, object, caller);
     return object;
 }
 
