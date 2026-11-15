@@ -4,8 +4,26 @@
 #include <string.h>
 #include "swizzle.h"
 
+static void check_legacy_map_texture(void)
+{
+    enum { SOURCE = 1024, DEST = 512, STRIDE = 528 };
+    static unsigned char source[SOURCE * SOURCE], dest[STRIDE * DEST];
+    memset(dest, 0x55, sizeof dest);
+    /* The downsample keeps every even texel and drops the odd rows and columns. */
+    for (int y = 0; y < SOURCE; ++y)
+        for (int x = 0; x < SOURCE; ++x)
+            source[swizzle8(x, y, SOURCE / 2)] = (x * 11 + y * 17) % 255;
+    ps2_index8_reduce(dest, STRIDE, DEST, DEST, source, SOURCE, SOURCE);
+    for (int y = 0; y < DEST; ++y) {
+        for (int x = 0; x < DEST; ++x)
+            assert(dest[y * STRIDE + x] == (x * 22 + y * 34) % 255);
+        assert(dest[y * STRIDE + DEST] == 0x55);
+    }
+}
+
 int main(void)
 {
+    check_legacy_map_texture();
     /* a bijection onto the padded picture, and the documented layout: block 1 starts at byte 128 */
     static unsigned char seen[64 * 24];
     for (int y = 0; y < 24; y++)

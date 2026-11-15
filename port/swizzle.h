@@ -15,6 +15,17 @@ static inline int swizzle8(int x, int y, int rect_w)
     return (row * rect_w + column) * 4 + (y >> 1 & 1) + (x >> 2 & 2);
 }
 
+/* A version-1 native PSMT8 image starts at byte zero. Decode it directly
+   into the GE-sized raster, keeping the original normalized UVs. */
+static inline void ps2_index8_reduce(unsigned char *out, int stride, int width, int height,
+                                    const unsigned char *in, int source_width, int source_height)
+{
+    for (int y = 0; y < height; ++y)
+        for (int x = 0; x < width; ++x)
+            out[y * stride + x] = in[swizzle8(x * source_width / width, y * source_height / height,
+                                            source_width / 2)];
+}
+
 /* Nibble offset of a PSMT4 pixel in a PSMCT16 picture. */
 static inline int swizzle4(int x, int y, int rect_w)
 {

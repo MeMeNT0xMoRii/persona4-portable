@@ -2241,24 +2241,35 @@ void *func_003fd940(void *stream)
 {
     RasterInfo info;
     unsigned length;
-    if (!find_struct(stream, &length))
+    if (!find_struct(stream, &length) || length != sizeof info)
         return 0;
-    memset(&info, 0, sizeof info);
     if (!p4r_003df360(stream, &info, length))
         return 0;
+    int legacy = info.version < 2;
+    /* The retail Town Map uses version 1, with swizzled indices and a CLUT
+       immediately after the image. The GE cannot bind its 1024x1024 atlas. */
+    if (legacy && (info.version != 1 || info.depth != 8 ||
+                   info.width < 16 || info.width > 1024 || info.width % 16 ||
+                   info.height < 16 || info.height > 1024 || info.height % 16 ||
+                   info.pixelSize != (unsigned)(info.width * info.height) || info.paletteSize != 1024))
+        return 0;
+    int width = legacy && info.width > 512 ? 512 : info.width;
+    int height = legacy && info.height > 512 ? 512 : info.height;
     int levels = G32(0xabf8 - 0x10000);
-    G32(0xabf8 - 0x10000) = (info.tex1[1] >> 2) + 1;
-    G32(0xb8ac - 0x10000) = info.version < 2;
-    Raster *r = p4r_003ec590(info.width, info.height, info.depth, info.format);
+    G32(0xabf8 - 0x10000) = legacy ? 1 : (info.tex1[1] >> 2) + 1;
+    G32(0xb8ac - 0x10000) = legacy;
+    Raster *r = p4r_003ec590(width, height, info.depth, info.format);
     G32(0xabf8 - 0x10000) = levels;
     G32(0xb8ac - 0x10000) = 0;
     if (!r)
         return 0;
     unsigned char *blob = 0;
-    if (find_struct(stream, &length) && (blob = memalign(16, length)) && p4r_003e2910(stream, blob, length) == length) {
-        if (info.version < 2) { /* one texture in the game: no GIF packets */
-            p4_log("TRACE old texture %dx%dx%d stays blank\n", info.width, info.height, info.depth);
-            memset(r->originalPixels, 0, r->stride * r->height);
+    if (find_struct(stream, &length) &&
+        (!legacy || (length == info.pixelSize + info.paletteSize && r->palette)) &&
+        (blob = memalign(16, length)) && p4r_003e2910(stream, blob, length) == length) {
+        if (legacy) {
+            ps2_index8_reduce(r->originalPixels, r->stride, r->width, r->height, blob, info.width, info.height);
+            memcpy(r->palette, blob + info.pixelSize, info.paletteSize);
         } else {
             copy_level(r, blob);
             if (r->palette)
