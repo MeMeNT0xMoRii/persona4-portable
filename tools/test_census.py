@@ -10,6 +10,17 @@ class AddressCasts(unittest.TestCase):
         self.assertEqual(shim('extern s64 scrGetParamInt();'), 'extern s32 scrGetParamInt();')
         self.assertEqual(shim('s64 actual_wide_result(void);'), 's64 actual_wide_result(void);')
 
+    def test_secondary_room_comparison_uses_requested_halfword(self):
+        source = """void fieldSceneRequestSecondaryRoom(s64 roomId) {
+    if (((FieldSceneState *)sceneState)->secondaryRoom != ((s64)(roomId << 0x30) >> 0x30)) {
+        return;
+    }
+}
+"""
+        expected = source.replace("s64 roomId", "s32 roomId").replace(
+            "((s64)(roomId << 0x30) >> 0x30)", "(s16)roomId")
+        self.assertEqual(shim(source, "src/Kernel/h_malloc_inferred_001441e0.c"), expected)
+
     def test_menu_positions_keep_both_coordinates(self):
         for function in ("radarDrawSpritePair", "shdPersonaDrawNamePlate", "shdPersonaDrawFramePair",
                          "shdPersonaDrawExpRow", "shdPersonaDrawArcanaBadge", "shdPersonaDrawLevelDigits",

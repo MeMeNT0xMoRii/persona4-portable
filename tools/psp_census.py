@@ -89,6 +89,12 @@ FIXES = {
     "src/unplaced/unplaced_inferred_00222210.c": [
         ("256.0f * scale[0],  512.0f * scale[1]", "192.0f * scale[0],  512.0f * scale[1]"),
     ],
+    # Retail sign-extends the requested room's low halfword before comparing it.
+    # After argument narrowing a 48-bit shift on roomId (s32) is undefined.
+    "src/Kernel/h_malloc_inferred_001441e0.c": [
+        ("->secondaryRoom != ((s64)(roomId << 0x30) >> 0x30)",
+         "->secondaryRoom != (s16)roomId"),
+    ],
     "src/Battle/btlShuffleCard.c": [
         ("    pscModelDraw(card);",
          "    extern void p4_shuffle_card_begin(int);\n"

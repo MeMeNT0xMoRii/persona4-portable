@@ -17,16 +17,16 @@ replay and the 04/17 evening save for ongoing play.
 
 ## Current build and verification
 
-Use [b249-xmb-home10](build_b249_xmb_home10.md) on
+Use [b249-xmb-home11](build_b249_xmb_home11.md) on
 `playthrough/b176-xmb-home` for the next hardware pass. The previous
-[home9 release](build_b249_xmb_home9.md) is the rollback build.
+[home10 release](build_b249_xmb_home10.md) is the rollback build.
 
 | Platform | Current evidence |
 | --- | --- |
-| Host | Home10 release build, address audit, packed-coordinate and calendar clip tests passed. |
-| PPSSPP | Previously confirmed home9 System, Item, Persona, slot 8 load and the first conversation after New Game. Home10 replay pending. |
-| PSP Go (PSP-N1000) | On home9 the tester confirmed System, Item, Persona, save/load, HOME in a normal battle, Shadow models and sound, heads and FPS display. All-Out and calendar partially improved. Home10 replay pending. |
-| PSP-3000 | Home10 boot, branding, save/load and HOME pending. |
+| Host | Home11 release build and address audit passed. The secondary-room comparison, packed-coordinate and calendar clip tests passed. |
+| PPSSPP | Previously confirmed home9 System, Item, Persona, slot 8 load and the first conversation after New Game. Home10 and home11 replay pending. |
+| PSP Go (PSP-N1000) | On home9 the tester confirmed System, Item, Persona, save/load, HOME in a normal battle, Shadow models and sound, heads and FPS display. All-Out and calendar partially improved. Home10 and home11 replay pending. |
+| PSP-3000 | Home11 boot, branding, save/load and HOME pending. |
 
 ## Earlier hardware reports
 
@@ -103,7 +103,7 @@ Use [b249-xmb-home10](build_b249_xmb_home10.md) on
 | P4-048 | Fool Social Link starts after Chie's awakening | Bright establishment effect similar to the Magician scene | 04/17 clip. Compare the strength and timing. The card framing is P4-028 and the spacing in the following message is P4-013. |
 | P4-049 | Save and load menus | The yellow/orange slot dials show no numbers | The tester confirmed the digits in both menus on home6. The load confirmation was visible in PPSSPP. Writing and reloading a new slot still needs a PSP check. |
 | P4-050 | Equip category and weapon screens | Misaligned highlight and panels, suspect bands | Home10 preserves both coordinates in the three affected draw helpers. Replay Equip and Weapon/Show with slot 8 or 9. |
-| P4-051 | 04/18 Town Map from Yasogami High School | Part of the 3D town scene is missing or distorted | Slot 9. UI labels are visible in the home9 Go photo. Compare field scene 1/1 scenery, its weather variant and camera against US PS2. |
+| P4-051 | 04/18 Town Map from Yasogami High School | Part of the 3D town scene is missing or distorted | Slot 9. UI labels are visible in the home9 Go photo. Home11 restores the signed secondary-room variant comparison when the scene is already loaded. Missing initial scenery remains open. Compare scene 1/1 geometry, weather variant and camera against US PS2, including reopening the Town Map. |
 | P4-052 | Status → Social Stats | Long orange diagonals behind the graph | Home9 Go photo. Check an original US PS2 capture before changing the background. |
 | P4-053 | Castle battle, Zio on Lying Hablerie and other skills | Circular or saturated bursts | Home9 Go clip identifies Zio. Match the original effect phase to determine which bursts differ. |
 
