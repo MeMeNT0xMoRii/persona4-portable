@@ -19,8 +19,8 @@ before starting a new game. Record the slot alongside any backed-up copy.
 | 6 | 04/16 evening | Dojima Residence | 04/16 → 04/17 transition, early-morning Nanako scene and police station (P4-004, P4-006, P4-020). |
 | 7 | 04/17 daytime | Central Shopping District, before Junes | Open the area menu with Square, select Leave the shopping district and confirm Junes. Continue through the food court, TV plaza and castle gate to 1F/2F, Shadow Chie, the Fool link and the return (P4-006, P4-007, P4-021–P4-029). |
 | 8 | 04/17 evening | Dojima Residence after Chie's Persona and dinner | Resume the regular playthrough. The tester saved here and returned to XMB. |
-| 9 | 04/18 after school | Yasogami High School | Open the Town Map and compare destinations. Check Equip categories, item help and Social Stats (P4-050–P4-052). |
-| 10 | 04/18 after school | Entrance Hall, TV-world hub | Enter Yukiko's Castle. Replay field Shadows, regular fights, weakening a Shadow with Zio, All-Out, Shuffle Time and HOME (P4-015, P4-026, P4-031–P4-033, P4-044, P4-053). |
+| 9 | 04/18 after school | Yasogami High School | Walk Classroom Building 2F in both directions. Leave school, open Town Map, switch from the school to Central Shopping District, reopen the map and walk Shopping District South. Check Equip categories, item help and Social Stats (P4-043, P4-050–P4-052, P4-054). |
+| 10 | 04/18 after school | Entrance Hall, TV-world hub | Enter Yukiko's Castle. Open System over the castle backdrop, then replay field Shadows, regular fights, weakening a Shadow with Zio, All-Out, Shuffle Time and HOME (P4-015, P4-026, P4-031–P4-033, P4-044, P4-053). |
 | Planned | Actual dungeon date | Yukiko's Castle 8F, save point before the boss door | Replay the boss and compare dungeon completion and return. Keep the hub save for ordinary fights. |
 
 The load menu numbers slots from one. Its underlying directories start at

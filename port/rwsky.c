@@ -3528,8 +3528,7 @@ static void guard_world_planes(void)
         guard_world.len[k] = sqrtf(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
     }
 }
-/* The sphere (model space) wholly inside every plane. The model's largest row length scales the radius, so a
-   non-uniform scale only makes the answer "not inside" more often (the vertices are then looked at). */
+/* Test whether a model-space sphere is wholly inside the guard band. */
 static int guard_sphere_world(const Matrix *model, const float *sphere, float near)
 {
     float x = sphere[0], y = sphere[1], z = sphere[2], r = sphere[3];
@@ -3541,6 +3540,14 @@ static int guard_sphere_world(const Matrix *model, const float *sphere, float ne
         float a = m->right.x * m->right.x + m->right.y * m->right.y + m->right.z * m->right.z;
         float b = m->up.x * m->up.x + m->up.y * m->up.y + m->up.z * m->up.z;
         float c = m->at.x * m->at.x + m->at.y * m->at.y + m->at.z * m->at.z;
+        /* Bound the squared stretch with the largest absolute row sum of
+           the Gram matrix. Row lengths alone underestimate sheared models. */
+        float ab = fabsf(m->right.x * m->up.x + m->right.y * m->up.y + m->right.z * m->up.z);
+        float ac = fabsf(m->right.x * m->at.x + m->right.y * m->at.y + m->right.z * m->at.z);
+        float bc = fabsf(m->up.x * m->at.x + m->up.y * m->at.y + m->up.z * m->at.z);
+        a += ab + ac;
+        b += ab + bc;
+        c += ac + bc;
         float big = a > b ? a : b;
         r *= sqrtf(big > c ? big : c);
         x = wx, y = wy, z = wz;
