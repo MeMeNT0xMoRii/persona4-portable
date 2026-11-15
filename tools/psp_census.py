@@ -89,18 +89,38 @@ FIXES = {
     "src/unplaced/unplaced_inferred_00222210.c": [
         ("256.0f * scale[0],  512.0f * scale[1]", "192.0f * scale[0],  512.0f * scale[1]"),
     ],
+    "src/Battle/btlShuffleCard.c": [
+        ("    pscModelDraw(card);",
+         "    extern void p4_shuffle_card_begin(int);\n"
+         "    p4_shuffle_card_begin(((BtlShuffleCard *)card)->model.mode == 0);\n"
+         "    pscModelDraw(card);\n"
+         "    p4_shuffle_card_begin(0);"),
+    ],
+    "src/Main/Social/pscModel.c": [
+        ("        (*renderStateSet)(1, pscResGetMiscCardW00Texture(1));\n"
+         "        func_00410420(modeZeroModel->u.m01.b1, 4, matrix, 3);\n"
+         "        func_00410520(3, D_0064E470, 6);\n"
+         "        func_004104d0();",
+         "        extern int p4_shuffle_card_back_visible(const void *);\n"
+         "        if (p4_shuffle_card_back_visible(matrix)) {\n"
+         "            (*renderStateSet)(1, pscResGetMiscCardW00Texture(1));\n"
+         "            func_00410420(modeZeroModel->u.m01.b1, 4, matrix, 3);\n"
+         "            func_00410520(3, D_0064E470, 6);\n"
+         "            func_004104d0();\n"
+         "        }"),
+    ],
     "src/datCalendar_inferred_001228c0.c": [
         ("((SdkSpriteSample *)sprite)->signedScaleX = 0xFF6;", "((SdkSpriteSample *)sprite)->signedScaleX = 0xBF6;"),
     ],
     "src/unplaced/unplaced_inferred_00260510.c": [
         ("    struct CalendarColor { u8 r, g, b, a; } depthValue;",
-         "    extern void p4_calendar_selected_date(int);\n"
+         "    extern void p4_calendar_date_clip(int);\n"
          "    struct CalendarColor { u8 r, g, b, a; } depthValue;"),
         ("    drawDepth = 1.0f + depth;\n",
-         "    drawDepth = 1.0f + depth;\n    p4_calendar_selected_date(enabled);\n"),
+         "    drawDepth = 1.0f + depth;\n    p4_calendar_date_clip(enabled ? 1 : clipLeft == 0x58 && clipRight == 0x5A ? 2 : 0);\n"),
         ("color, alpha, number, 2, 31, 0, calDrawDayNumberGlyph, (u8 *)&glyphContext);",
          "color, alpha, number, 2, 31, 0, calDrawDayNumberGlyph, (u8 *)&glyphContext);\n"
-         "    p4_calendar_selected_date(0);"),
+         "    p4_calendar_date_clip(0);"),
         ("void calDrawDayStripCallback(s32 queue, u8 *task)\n{",
          "void calDrawDayStripCallback(s32 queue, u8 *task)\n{\n    extern void p4_calendar_depth_pass(int);"),
         ("    work = kwlnTaskGetWork((void*)(task));\n    state = ((CalendarDayChange *)(work))->state;\n    switch (state) {",
@@ -531,7 +551,8 @@ REALLY_64_BIT = {"gsPackGifTag", "mdlEffectEmitValuePacket", "dpsub", "RunningSt
                  # Item cursor and Persona layout pass packed screen coordinates by value.
                  "radarDrawSpritePair", "shdPersonaDrawNamePlate", "shdPersonaDrawFramePair",
                  "shdPersonaDrawExpRow", "shdPersonaDrawArcanaBadge", "shdPersonaDrawLevelDigits",
-                 "shdPersonaDrawPanelSprites"}
+                 "shdPersonaDrawPanelSprites",
+                 "radarDrawPalettePair", "radarDrawPaletteSet", "radarDrawItemCard"}
 
 
 def narrow_parameters(text):

@@ -13,7 +13,8 @@ class AddressCasts(unittest.TestCase):
     def test_menu_positions_keep_both_coordinates(self):
         for function in ("radarDrawSpritePair", "shdPersonaDrawNamePlate", "shdPersonaDrawFramePair",
                          "shdPersonaDrawExpRow", "shdPersonaDrawArcanaBadge", "shdPersonaDrawLevelDigits",
-                         "shdPersonaDrawPanelSprites"):
+                         "shdPersonaDrawPanelSprites", "radarDrawPalettePair", "radarDrawPaletteSet",
+                         "radarDrawItemCard"):
             with self.subTest(function=function):
                 prototype = f"void {function}(s64, f32);"
                 definition = f"void {function}(s64 position, f32 depth) {{}}"

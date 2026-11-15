@@ -2,7 +2,7 @@
 
 Use the original US PS2 release (SLUS_217.82). Dates below are in-game dates
 in month/day format. Slots 1–8 are available as private replay saves from
-the home4 playthrough. Record the date and slot for any later saves.
+the home4 playthrough. The private home9 replay archive adds slots 9 and 10.
 
 Keep the regular playthrough in its own slot. Preserve the replay saves in
 separate slots, or copy the complete P4 `saves` directory to a dated private
@@ -19,8 +19,16 @@ before starting a new game. Record the slot alongside any backed-up copy.
 | 6 | 04/16 evening | Dojima Residence | 04/16 → 04/17 transition, early-morning Nanako scene and police station (P4-004, P4-006, P4-020). |
 | 7 | 04/17 daytime | Central Shopping District, before Junes | Open the area menu with Square, select Leave the shopping district and confirm Junes. Continue through the food court, TV plaza and castle gate to 1F/2F, Shadow Chie, the Fool link and the return (P4-006, P4-007, P4-021–P4-029). |
 | 8 | 04/17 evening | Dojima Residence after Chie's Persona and dinner | Resume the regular playthrough. The tester saved here and returned to XMB. |
-| Planned | 04/18 or first free dungeon visit | TV-world hub butterfly before entering Yukiko's Castle | Repeatable 1F/2F field and combat tests for the chest, field Shadows, heads, entry and defeat effects, All-Out Attack and Shuffle Time (P4-011, P4-022–P4-026, P4-030–P4-032). Knock down all enemies to trigger All-Out. Record the floor and enemy for encounter differences. |
+| 9 | 04/18 after school | Yasogami High School | Open the Town Map and compare destinations. Check Equip categories, item help and Social Stats (P4-050–P4-052). |
+| 10 | 04/18 after school | Entrance Hall, TV-world hub | Enter Yukiko's Castle. Replay field Shadows, regular fights, weakening a Shadow with Zio, All-Out, Shuffle Time and HOME (P4-015, P4-026, P4-031–P4-033, P4-044, P4-053). |
 | Planned | Actual dungeon date | Yukiko's Castle 8F, save point before the boss door | Replay the boss and compare dungeon completion and return. Keep the hub save for ordinary fights. |
+
+The load menu numbers slots from one. Its underlying directories start at
+zero. Slot 9 is `BASLUS-21782Save8` (date index 17, phase 4,
+area/room 6/6), and slot 10 is `BASLUS-21782Save9` (date index 17,
+phase 4, area/room 20/1). The supplied files passed the retail summary
+checksum check. The archive also contains internal slots 14 and 15.
+Leave every supplied directory and backup intact.
 
 Later dungeons can use the same three positions: hub before entry, last-floor
 save before the boss where available, and first save after returning if there is

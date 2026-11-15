@@ -8,6 +8,51 @@ from pathlib import Path
 
 
 class RenderState(unittest.TestCase):
+    def test_calendar_date_clips_do_not_overlap(self):
+        gcc = shutil.which('gcc')
+        if not gcc:
+            self.skipTest('host gcc is unavailable')
+        root = Path(__file__).resolve().parent.parent
+        source = (root / 'port/rwsky.c').read_text()
+        draw = re.search(r'^static void draw_calendar_date\(.*?^\}', source, re.M | re.S)[0]
+        harness = r'''
+#include <assert.h>
+typedef struct { unsigned colour; } GuVertex;
+static int calendar_date_clip, target_h = 272, target_w = 480;
+static float target_sx = 0.75f;
+static int left, right, draws;
+static int coverage[480];
+static void sceGuScissor(int x, int y, int w, int h) {
+    assert(y == 0 && h == target_h && 0 <= x && x < w && w <= target_w);
+    left = x, right = w;
+}
+static void draw_2d_tested(int prim, int count, const GuVertex *v, int alpha_writer) {
+    ++draws;
+    for (int i = left; i < right; ++i)
+        ++coverage[i];
+}
+'''
+        checks = r'''
+int main(void) {
+    calendar_date_clip = 1;
+    draw_calendar_date(4, 6, 0, 0);
+    assert(draws == 1 && left == 0 && right == target_w);
+    for (int i = 0; i < target_w; ++i)
+        assert(coverage[i] == (i >= 66 && i < 133));
+    calendar_date_clip = 2;
+    draw_calendar_date(4, 6, 0, 0);
+    assert(draws == 3 && left == 0 && right == target_w);
+    for (int i = 0; i < target_w; ++i)
+        assert(coverage[i] == 1);
+}
+'''
+        with tempfile.TemporaryDirectory(dir=root / 'build') as temporary:
+            path = Path(temporary)
+            (path / 'check.c').write_text(harness + draw + checks)
+            subprocess.run([gcc, '-O2', str(path / 'check.c'), '-o', str(path / 'check.exe')],
+                           check=True, capture_output=True)
+            subprocess.run([str(path / 'check.exe')], check=True)
+
     def test_2d_alpha_fail_outputs(self):
         gcc = shutil.which('gcc')
         if not gcc:

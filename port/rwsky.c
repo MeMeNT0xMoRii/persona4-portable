@@ -2789,7 +2789,7 @@ int p4_effect_mask = 1;
 static unsigned gs_alpha_splits;
 unsigned p4_gs_alpha_splits(void) { unsigned n = gs_alpha_splits; gs_alpha_splits = 0; return n; }
 
-static int calendar_depth_pass, calendar_selected_date;
+static int calendar_depth_pass, calendar_date_clip;
 static int system_cursor_mask;
 
 void p4_system_cursor_mask(int phase)
@@ -2804,9 +2804,9 @@ void p4_calendar_depth_pass(int active)
     calendar_depth_pass = active;
 }
 
-void p4_calendar_selected_date(int active)
+void p4_calendar_date_clip(int mode)
 {
-    calendar_selected_date = calendar_depth_pass && active;
+    calendar_date_clip = calendar_depth_pass ? mode : 0;
 }
 
 static void draw_2d_tested(int prim, int count, const GuVertex *vertices, int alpha_writer)
@@ -3009,6 +3009,23 @@ static void draw_effect_mask(int prim, int count, const GuVertex *vertices)
     sceGuDepthMask(!render_state[RS_ZWRITE]);
 }
 
+/* Split the coloured and grey date glyphs at the edges of the highlighted
+   column. Their equal-depth mask rectangles cannot separate them on the PSP. */
+static void draw_calendar_date(int prim, int count, const GuVertex *out, int alpha_writer)
+{
+    int left = 88 * target_sx;
+    int right = 178 * target_sx;
+    if (calendar_date_clip == 1) {
+        sceGuScissor(left, 0, right, target_h);
+    } else {
+        sceGuScissor(0, 0, left, target_h);
+        draw_2d_tested(prim, count, out, alpha_writer);
+        sceGuScissor(right, 0, target_w, target_h);
+    }
+    draw_2d_tested(prim, count, out, alpha_writer);
+    sceGuScissor(0, 0, target_w, target_h);
+}
+
 static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *indices, int count)
 {
     if (p4_probe_2d && count > 0)
@@ -3047,7 +3064,7 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
         return 1;
     begin_frame();
     bind_depth();
-    if (calendar_selected_date) {
+    if (calendar_date_clip) {
         st_enable(GU_DEPTH_TEST, 0);
         st_depth_mask(GU_TRUE);
     } else if (calendar_depth_pass && render_state[RS_ZTEST] && (sky_state[3] >> 16 & 7) == 7 &&
@@ -3130,9 +3147,9 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
         draw_effect_mask(gu_prim[prim], count, out);
         return 1;
     }
-    if (calendar_selected_date) {
-        /* Match the highlighted column while the dates scroll underneath it. */
-        sceGuScissor(88 * target_sx, 0, 178 * target_sx, target_h);
+    if (calendar_date_clip) {
+        draw_calendar_date(gu_prim[prim], count, out, test_alpha_writer);
+        return 1;
     }
     P4FeedbackRect rect;
     if (p4_feedback_sprites && (Raster *)render_state[1] == &display_raster &&
@@ -3145,8 +3162,6 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     } else {
         draw_2d_tested(gu_prim[prim], count, out, test_alpha_writer);
     }
-    if (calendar_selected_date)
-        sceGuScissor(0, 0, target_w, target_h);
     return 1;
 }
 
@@ -10535,14 +10550,33 @@ static void other_report(unsigned frames)
                other_table[i].calls / frames, other_table[i].word0, other_table[i].word1);
     memset(other_table, 0, sizeof other_table);
 }
-/* RwIm3D: p4r_00410420 and p4r_00410520 (RwIm3DRenderPrimitive / RwIm3DRenderIndexedPrimitive) execute the render
+static int shuffle_persona_card;
+
+void p4_shuffle_card_begin(int active)
+{
+    shuffle_persona_card = active;
+}
+
+int p4_shuffle_card_back_visible(const void *ltm)
+{
+    if (!shuffle_persona_card || !current_camera)
+        return 1;
+    const Matrix *model = ltm;
+    const Matrix *view = (const Matrix *)((const char *)current_camera + CAMERA_VIEW);
+    /* The card begins back-up with its local +Z forward in view space.
+       A half turn about Y reverses that sign. The back is coplanar with
+       the face and otherwise paints over it in the PSP immediate path. */
+    return model->at.x * view->right.z + model->at.y * view->up.z + model->at.z * view->at.z >= 0.0f;
+}
+
+/* RwIm3D: the indexed and non-indexed render calls execute the render
    pipeline on the pool's _rwIm3DPoolStash (rw/p2/baim3d.h): flags, ltm, numVerts, objVerts, camVerts, devVerts,
    meshState, renderState, pipeline, primType, indices, numIndices. The vertices are sky2 RxObjSpace3DVertex: position,
    RGBA, normal, u, v (36 bytes). b133 Shuffle Time: 36 draws a frame, nothing drawn, the cards missing. */
-extern char p4r_00410420[], p4r_004104d0[], p4r_00410520[], p4r_004106a0[];
+extern char p4r_00410420[], p4r_004104d0[], p4r_00410520[], p4r_00410800[];
 static int im3d_caller(const char *ra)
 {
-    return (ra >= p4r_00410420 && ra < p4r_004104d0) || (ra >= p4r_00410520 && ra < p4r_004106a0);
+    return (ra >= p4r_00410420 && ra < p4r_004104d0) || (ra >= p4r_00410520 && ra < p4r_00410800);
 }
 typedef struct { float x, y, z; unsigned colour; float nx, ny, nz, u, v; } Im3DVertex;
 /* RwIm3DTransform executes the transform pipeline on the pool (rwIm3DPool: u16 numElements, u16 pad, elements, stride,
@@ -10595,8 +10629,6 @@ static void im3d_draw(const unsigned *stash)
 
 void *func_004114d0(void *pipeline, void *object, int force)
 {
-    if (*(unsigned char *)object == OBJECT_ATOMIC)
-        return func_003be9f0(object);
     if (p4_im3d && im3d_caller(__builtin_return_address(0))) {
         if (SKIPPING)
             return object;
@@ -10606,6 +10638,8 @@ void *func_004114d0(void *pipeline, void *object, int force)
             im3d_draw(object);
         return object;
     }
+    if (*(unsigned char *)object == OBJECT_ATOMIC)
+        return func_003be9f0(object);
     pipeline_other++;
     other_note(pipeline, object, __builtin_return_address(0));
     return object;
