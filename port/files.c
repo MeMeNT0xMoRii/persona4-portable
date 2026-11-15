@@ -147,18 +147,25 @@ unsigned func_004c95f8(Handle *h) { return (h->size + SECTOR - 1) / SECTOR; }
 int func_004c9010(Handle *h, int sectors, void *buffer)
 {
     static SceUID lock;
-    if (!lock)
+    if (lock <= 0)
         lock = sceKernelCreateSema("p4io", 0, 1, 1, 0);
     char *to = buffer;
     long long offset = h->offset;
     int left = sectors * SECTOR, got = 0;
-    sceKernelWaitSema(lock, 1, 0); /* a read yields, and the game's worker thread reads too */
+    /* A read yields, and the game's worker thread reads too. */
+    if (lock < 0 || sceKernelWaitSema(lock, 1, 0) < 0) {
+        h->stat = 4;
+        return 0;
+    }
     while (left > 0) {
         int part = offset / PART;
         int inside = offset % PART;
         int size = left < PART - inside ? left : PART - inside;
+        if (part >= MAX_PARTS)
+            break;
         SceUID fd = fds[h->container][part];
-        sceIoLseek(fd, inside, PSP_SEEK_SET);
+        if (fd < 0 || sceIoLseek(fd, inside, PSP_SEEK_SET) != inside)
+            break;
         int n = sceIoRead(fd, to + got, size);
         if (n <= 0)
             break;
@@ -167,9 +174,21 @@ int func_004c9010(Handle *h, int sectors, void *buffer)
         offset += n;
     }
     sceKernelSignalSema(lock, 1);
+    /* Rounding a short final sector up to a block let the archive loader
+       parse a buffer whose tail had never been read. */
+    if (left != 0 || !got) {
+        static unsigned reports;
+        if (reports < 8) {
+            reports++;
+            p4_log("disc read incomplete: %s sector %u got %d of %d bytes\n",
+                   containers[h->container], (unsigned)(h->offset / SECTOR), got, sectors * SECTOR);
+        }
+        h->stat = 4;
+        return 0;
+    }
     sceKernelDcacheWritebackRange(buffer, sectors * SECTOR);
-    h->stat = got > 0 ? 3 : 4;
-    return got > 0 ? (got + SECTOR - 1) / SECTOR : 0;
+    h->stat = 3;
+    return sectors;
 }
 
 /* ADXF_GetStat: 3 done, 4 error */
