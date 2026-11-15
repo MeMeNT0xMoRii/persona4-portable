@@ -1755,7 +1755,7 @@ unsigned RpSkyRenderStateGet(int state, unsigned *value)
 
 /* fpRenderStateSet / fpRenderStateGet: remembered until Im2D needs them. */
 #define MAX_STATE 64
-enum { RS_ZTEST = 6, RS_ZWRITE = 8 };
+enum { RS_ZTEST = 6, RS_ZWRITE = 8, RS_CULLMODE = 20 };
 static int render_state[MAX_STATE];
 static unsigned pixel_mask;
 
@@ -10568,24 +10568,12 @@ static void other_report(unsigned frames)
                other_table[i].calls / frames, other_table[i].word0, other_table[i].word1);
     memset(other_table, 0, sizeof other_table);
 }
-static int shuffle_persona_card;
+static int shuffle_card;
 static int shuffle_nonindexed;
 
 void p4_shuffle_card_begin(int active)
 {
-    shuffle_persona_card = active;
-}
-
-int p4_shuffle_card_back_visible(const void *ltm)
-{
-    if (!shuffle_persona_card || !current_camera)
-        return 1;
-    const Matrix *model = ltm;
-    const Matrix *view = (const Matrix *)((const char *)current_camera + CAMERA_VIEW);
-    /* The card begins back-up with its local +Z forward in view space.
-       A half turn about Y reverses that sign. The back is coplanar with
-       the face and otherwise paints over it in the PSP immediate path. */
-    return model->at.x * view->right.z + model->at.y * view->up.z + model->at.z * view->at.z >= 0.0f;
+    shuffle_card = active;
 }
 
 int p4_shuffle_render_primitive(int primitive)
@@ -10609,7 +10597,7 @@ static int im3d_caller(const char *ra, int atomic)
        direct PSP draw scoped to the Shuffle Time calls that need it. */
     if (ra >= p4r_004106a0 && ra < p4r_00410800)
         return shuffle_nonindexed;
-    return (!atomic || shuffle_persona_card) &&
+    return (!atomic || shuffle_card) &&
            ((ra >= p4r_00410420 && ra < p4r_004104d0) || (ra >= p4r_00410520 && ra < p4r_004106a0));
 }
 typedef struct { float x, y, z; unsigned colour; float nx, ny, nz, u, v; } Im3DVertex;
@@ -10656,7 +10644,18 @@ static void im3d_draw(const unsigned *stash)
         memcpy(idx, indices, nidx * 2);
     }
     draw_prelit = 0, draw_alpha_known = 0, draw_material_alpha = 255;
+    /* Retail requests back-face culling for the card draws. The real blue back
+       (PSC_BASIC entry 7) and the illustrated layers have opposite winding.
+       With culling off the coplanar back can paint over the front. Leave the
+       GE state as the rest of the port expects it after the immediate draw. */
+    int cull_cards = (shuffle_card || shuffle_nonindexed) && render_state[RS_CULLMODE] == 2;
+    if (cull_cards) {
+        sceGuFrontFace(GU_CCW);
+        st_enable(GU_CULL_FACE, 1);
+    }
     draw_tested(prims[type], idx ? VT_3D : VT_3D & ~GU_INDEX_BITS, n, idx, out);
+    if (cull_cards)
+        st_enable(GU_CULL_FACE, 0);
     im3d_draws++;
     im3d_vertices += count;
 }

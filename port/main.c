@@ -414,7 +414,7 @@ int main(int argc, char **argv)
     SceIoStat fps_stat;
     snprintf(fps_marker, sizeof fps_marker, "%sFPS", p4_game_dir);
     p4_fps_overlay = sceIoGetstat(fps_marker, &fps_stat) >= 0;
-    p4_log("Persona4 PORTABLE b249-xmb-home15: HOME exit callback ready\n");
+    p4_log("Persona4 PORTABLE b249-xmb-home16: HOME exit callback ready\n");
     p4_log("game directory %s\n", p4_game_dir);
 #ifdef P4_HW_PROFILE
     extern char p4_image[];

@@ -30,7 +30,7 @@ static char addresses[10];
 #define SKIPPING skipping
 enum { OBJECT_ATOMIC = 1, FIELD_SHADOW_FLAGS = 0x19 };
 static const char *mock_caller;
-static int p4_im3d = 1, skipping, shuffle_nonindexed, shuffle_persona_card;
+static int p4_im3d = 1, skipping, shuffle_nonindexed, shuffle_card;
 static int transforms, draws, atomics, pipeline_other;
 static void im3d_transform(void *object) { ++transforms; }
 static void im3d_draw(void *object) { ++draws; }
@@ -67,7 +67,7 @@ int main(void) {
     assert(p4_shuffle_render_primitive(4) == 17);
     skipping = 0;
     assert(draws == 2 && !shuffle_nonindexed);
-    shuffle_persona_card = 1;
+    shuffle_card = 1;
     dispatch(p4r_00410520 + 1, OBJECT_ATOMIC);
     assert(draws == 3 && atomics == 1);
     dispatch(p4r_004106a0 + 1, FIELD_SHADOW_FLAGS);
@@ -79,6 +79,76 @@ int main(void) {
             (path / 'check.c').write_text(harness + '\n'.join(functions) + checks)
             subprocess.run([gcc, '-O2', str(path / 'check.c'), '-o', str(path / 'check')],
                            check=True)
+            subprocess.run([str(path / 'check')], check=True)
+
+    def test_shuffle_card_culling_is_restored_after_each_draw(self):
+        gcc = shutil.which('gcc')
+        if not gcc:
+            self.skipTest('host gcc is unavailable')
+        root = Path(__file__).resolve().parent.parent
+        source = (root / 'port/rwsky.c').read_text()
+        draw = re.search(r'^static void im3d_draw\(.*?^\}', source, re.M | re.S)[0]
+        vertex = re.search(r'^typedef struct \{ [^\n]+ \} Im3DVertex;', source, re.M)[0]
+        harness = r'''
+#include <assert.h>
+#include <string.h>
+enum { GU_REPEAT, GU_LINES, GU_LINE_STRIP, GU_TRIANGLES, GU_TRIANGLE_STRIP,
+       GU_TRIANGLE_FAN, GU_POINTS, GU_CCW, GU_CULL_FACE, RS_CULLMODE = 20,
+       VT_3D = 0x100, GU_INDEX_BITS = 0x100 };
+typedef struct Matrix Matrix;
+typedef struct Raster Raster;
+typedef struct { float u, v; unsigned colour; float x, y, z; } Vertex3D;
+static Im3DVertex input[4];
+static Vertex3D vertices[4];
+static const unsigned char *im3d_elements = (const unsigned char *)input;
+static unsigned im3d_count = 4, im3d_stride = sizeof(Im3DVertex);
+static const void *current_camera = &vertices;
+static int shuffle_card, shuffle_nonindexed, render_state[21];
+static int draw_prelit, draw_alpha_known, draw_material_alpha;
+static int culling, expected, winding_commands, state_commands;
+static unsigned im3d_draws, im3d_vertices;
+static void p4_log(const char *fmt, ...) { assert(0); }
+static void begin_frame(void) {}
+static void mesh_state(const Matrix *m, int lit) {}
+static void bind_mask(int alpha) {}
+static void bind_raster(Raster *r, int wrap) {}
+static void *sceGuGetMemory(unsigned n) { assert(n == sizeof vertices); return vertices; }
+static void sceGuFrontFace(int winding) { assert(winding == GU_CCW); ++winding_commands; }
+static void st_enable(int state, int active) {
+    assert(state == GU_CULL_FACE);
+    culling = active;
+    ++state_commands;
+}
+static void draw_tested(int primitive, int format, int count, const void *indices, const void *verts) {
+    assert(primitive == GU_TRIANGLE_STRIP && count == 4 && culling == expected);
+}
+'''
+        checks = r'''
+int main(void) {
+    unsigned strip[12] = { [9] = 4 };
+    render_state[RS_CULLMODE] = 2;
+    im3d_draw(strip);
+    assert(!culling && !winding_commands && !state_commands);
+
+    expected = shuffle_card = 1;
+    im3d_draw(strip);
+    assert(!culling && winding_commands == 1 && state_commands == 2);
+
+    shuffle_card = 0;
+    shuffle_nonindexed = 1;
+    im3d_draw(strip);
+    assert(!culling && winding_commands == 2 && state_commands == 4);
+
+    expected = 0;
+    render_state[RS_CULLMODE] = 1;
+    im3d_draw(strip);
+    assert(!culling && winding_commands == 2 && state_commands == 4 && im3d_draws == 4);
+}
+'''
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary)
+            (path / 'check.c').write_text(vertex + '\n' + harness + draw + checks)
+            subprocess.run([gcc, '-O2', str(path / 'check.c'), '-o', str(path / 'check')], check=True)
             subprocess.run([str(path / 'check')], check=True)
 
     def test_calendar_date_clips_do_not_overlap(self):

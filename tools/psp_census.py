@@ -98,7 +98,7 @@ FIXES = {
     "src/Battle/btlShuffleCard.c": [
         ("    pscModelDraw(card);",
          "    extern void p4_shuffle_card_begin(int);\n"
-         "    p4_shuffle_card_begin(((BtlShuffleCard *)card)->model.mode == 0);\n"
+         "    p4_shuffle_card_begin(1);\n"
          "    pscModelDraw(card);\n"
          "    p4_shuffle_card_begin(0);"),
     ],
@@ -106,19 +106,6 @@ FIXES = {
         ("extern s32 func_004106a0(BtlShufflePrimitive primitive);",
          "extern s32 p4_shuffle_render_primitive(BtlShufflePrimitive primitive);"),
         ("func_004106a0(4);", "p4_shuffle_render_primitive(4);"),
-    ],
-    "src/Main/Social/pscModel.c": [
-        ("        (*renderStateSet)(1, pscResGetMiscCardW00Texture(1));\n"
-         "        func_00410420(modeZeroModel->u.m01.b1, 4, matrix, 3);\n"
-         "        func_00410520(3, D_0064E470, 6);\n"
-         "        func_004104d0();",
-         "        extern int p4_shuffle_card_back_visible(const void *);\n"
-         "        if (p4_shuffle_card_back_visible(matrix)) {\n"
-         "            (*renderStateSet)(1, pscResGetMiscCardW00Texture(1));\n"
-         "            func_00410420(modeZeroModel->u.m01.b1, 4, matrix, 3);\n"
-         "            func_00410520(3, D_0064E470, 6);\n"
-         "            func_004104d0();\n"
-         "        }"),
     ],
     "src/datCalendar_inferred_001228c0.c": [
         ("((SdkSpriteSample *)sprite)->signedScaleX = 0xFF6;", "((SdkSpriteSample *)sprite)->signedScaleX = 0xBF6;"),

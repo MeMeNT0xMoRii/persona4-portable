@@ -40,9 +40,23 @@ For the home15 fusion regression, use a copy of each save. Record the first
 and second Persona and whether the result preview opens. If it completes,
 record the result, inherited skills and acquisition. Register the result in
 the Compendium when available, save in a fresh slot, restart and reload it.
+In PPSSPP, source slot 10 gives Izanagi + Ukobach → Apsaras. The later
+source slot 15 gives Rakshasa + Jack Frost → Power and exercised the Rank 10
+Social Link bonus. Both pairs completed the result animation in home15.
+For the Apsaras run, save from the Entrance Hall into a free row and cold
+boot the game. The PPSSPP home16 run loaded an isolated copy of that result
+and showed Apsaras Lv 4 in the Persona list. The hardware crash and
+unambiguously identified NG+ case remain open.
+
 For Shuffle Time, keep the display at the initial prompt, after the preview
 turn and after confirming a selection. Record the face art and reward at
-each applicable step.
+each applicable step. From slot 10, go through the Castle Gate to 1F and
+fight the two Lying Hableries near the first right turn. Repeat a battle if
+the normal post-victory roll does not start Shuffle Time. After selecting a
+Persona, check the regular Persona list on the floor. The home16 PPSSPP
+replay selected and acquired Slime. See the
+[home16 notes](build_b249_xmb_home16.md#p4-032--shuffle-time-faces)
+for the controlled comparison.
 
 Later dungeons can use the same three positions: hub before entry, last-floor
 save before the boss where available, and first save after returning if there is
