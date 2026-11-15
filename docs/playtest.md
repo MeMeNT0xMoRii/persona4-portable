@@ -36,7 +36,7 @@ System-menu stripe appearance remain separate reports.
 | Platform | Current evidence |
 | --- | --- |
 | Host | Home15 native-map and existing split-archive, HOME and Shuffle-dispatch regression fixtures pass. Full discovery: 72 passed, two skipped and three inherited harness errors. |
-| PPSSPP | Home15 A/B replay restores the Town Map scenery for two destinations. Home14 loaded the TV hub and school saves, with working System selection and Item help. The sampled Shopping District South walk showed no black strips. See the respective replay matrices for exact stages. |
+| PPSSPP | Home15 restores the Town Map scenery for two destinations and on reopening from South. Save/reload in Dojima passed. New Game reached Igor, slot 10 reached Castle Gate, and slot 16 reached the lead-in scene beyond the Yomotsu Hirasaka Path 9 gate. The sampled Shopping District South walk showed no black strips. Home14 covered System and Item. See the replay matrices for exact stages and gaps. |
 | PS2 | Play! booted the original US disc into its intro. Original PS2 reference captures cover Town Map and the Shuffle prompt. Matched gameplay comparisons are pending. |
 | PSP Go (PSP-N1000) | Home9 confirmed System, Item, Persona, save/load, HOME in a normal battle, Shadow models and sound, heads and FPS display. Home13 no longer showed black strips in the tester's field retest. The tester reports home14 runs and still has the Town Map and card-face defects. Home15 hardware replay is pending. |
 | PSP-3000 | Home15 hardware replay is pending. |
