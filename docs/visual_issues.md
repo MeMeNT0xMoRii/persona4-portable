@@ -22,12 +22,12 @@ later blue layer occluded by a transparent foreground quad with depth writes.
 The second shows both layers contributing under `0x71801`. Existing opaque
 foreground depth and later ordinary depth writes are covered by control tiles.
 
-The second row verifies a separate limitation. `draw_effect_mask` quantizes
-destination alpha to 0, 85, 170 and 255. A destination-alpha additive overlay
-across that gradient takes corresponding visible steps. Compare individual
-effect resources and passes on US PS2 and PSP before changing the shared mask.
+The second row compares destination-alpha mask steps. Home20 stores alpha
+as 0, 85, 170 and 255. The [home21 test build](build_b249_xmb_home21.md)
+preserves the full sampled alpha for the single-layer mask quads used by
+the verified blur and distortion paths. The fixture uses synthetic assets.
 Zio, All-Out and the alternating Apsaras halo (P4-058) each need a matched
-scene trace. The fixture uses synthetic assets.
+scene trace to identify the active effect resources and passes.
 
 ### Battle arena TV screens do not animate (reported 2026-11-13, b225; low priority)
 

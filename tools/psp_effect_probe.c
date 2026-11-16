@@ -1,6 +1,7 @@
 #include <pspkernel.h>
 #include <pspgu.h>
 #include <pspdisplay.h>
+#include <math.h>
 #include <stdio.h>
 
 PSP_MODULE_INFO("P4 Effect Probe", PSP_MODULE_USER, 1, 0);
@@ -9,9 +10,11 @@ PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER | PSP_THREAD_ATTR_VFPU);
 enum { WIDTH = 480, HEIGHT = 272, STRIDE = 512, PS2_TEST = 200, RS_ZWRITE = 8 };
 enum { CAMERA_NEAR = 0x80, CAMERA_FAR = 0x84, GU_2D_FORMAT = GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D };
 enum { K_ZERO, K_ONE, K_F, K_ONE_MINUS_F };
+enum { MASK_X = 16, MASK_W = 256, MASK_H = 8, STRIP_Y = 86, INDEXED_Y = 156, DEPTH_Y = 238, FOLDED_Y = 256 };
 typedef struct { float u, v; unsigned colour; float x, y, z; } Vertex3D, GuVertex;
 static unsigned commands[32768] __attribute__((aligned(64)));
 static unsigned mask_texture[64 * 8] __attribute__((aligned(64)));
+static unsigned precision_texture[MASK_W * MASK_H] __attribute__((aligned(64)));
 static unsigned blend_unusual[8], blend_unusual_n;
 static int p4_blend_fix, render_state[64];
 static float camera[40];
@@ -110,6 +113,88 @@ static void mask_ramp(void)
     sceGuPixelMask(0);
 }
 
+static GuVertex *mask_quad(int y, unsigned colour, int indexed)
+{
+    const GuVertex corner[4] = {
+        {0, 0, colour, MASK_X, y, 16000}, {MASK_W, 0, colour, MASK_X + MASK_W, y, 16000},
+        {0, MASK_H, colour, MASK_X, y + MASK_H, 16000}, {MASK_W, MASK_H, colour, MASK_X + MASK_W, y + MASK_H, 16000},
+    };
+    static const int index[] = {0, 2, 3, 0, 3, 1};
+    int count = indexed ? 6 : 4;
+    GuVertex *out = sceGuGetMemory(count * sizeof *out);
+    for (int i = 0; i < count; i++)
+        out[i] = corner[indexed ? index[i] : i];
+    return out;
+}
+
+static void mask_precision(void)
+{
+    for (unsigned i = 0; i < sizeof precision_texture / sizeof *precision_texture; i++)
+        precision_texture[i] = (i % MASK_W) << 24 | 0xffffff;
+    sceKernelDcacheWritebackRange(precision_texture, sizeof precision_texture);
+
+    /* Begin with a nonzero alpha so an unwritten low bit cannot pass the test. */
+    sceGuEnable(GU_STENCIL_TEST);
+    sceGuStencilFunc(GU_ALWAYS, 0xa5, 0xff);
+    sceGuStencilOp(GU_KEEP, GU_KEEP, GU_REPLACE);
+    sceGuPixelMask(0x00ffffff);
+    GuVertex *seed = sceGuGetMemory(6 * sizeof *seed);
+    static const int y[] = {STRIP_Y, INDEXED_Y, DEPTH_Y};
+    for (int i = 0; i < 3; i++) {
+        seed[2 * i] = (GuVertex){0, 0, 0, MASK_X, y[i], 0};
+        seed[2 * i + 1] = (GuVertex){0, 0, 0, MASK_X + MASK_W, y[i] + MASK_H, 0};
+    }
+    sceGuDrawArray(GU_SPRITES, GU_2D_FORMAT, 6, NULL, seed);
+    sceGuEnable(GU_TEXTURE_2D);
+    sceGuTexImage(0, MASK_W, MASK_H, MASK_W, precision_texture);
+    draw_effect_mask(GU_TRIANGLE_STRIP, 4, mask_quad(STRIP_Y, 0xffffffff, 0));
+    draw_effect_mask(GU_TRIANGLES, 6, mask_quad(INDEXED_Y, 0x80ffffff, 1));
+
+    GuVertex *folded = mask_quad(FOLDED_Y, 0xffffffff, 0);
+    folded[3] = folded[0];
+    folded[3].u = MASK_W;
+    draw_effect_mask(GU_TRIANGLE_STRIP, 4, folded);
+
+    sceGuEnable(GU_DEPTH_TEST);
+    sceGuDepthMask(GU_FALSE);
+    sceGuDisable(GU_TEXTURE_2D);
+    sceGuPixelMask(0xffffffff);
+    GuVertex *control = sceGuGetMemory(6 * sizeof *control);
+    control[0] = (GuVertex){0, 0, 0, MASK_X + 64, DEPTH_Y, 32000};
+    control[1] = (GuVertex){0, 0, 0, MASK_X + 80, DEPTH_Y + MASK_H, 32000};
+    sceGuDrawArray(GU_SPRITES, GU_2D_FORMAT, 2, NULL, control);
+    sceGuScissor(MASK_X + 32, DEPTH_Y, MASK_W - 64, MASK_H);
+    sceGuEnable(GU_TEXTURE_2D);
+    render_state[RS_ZWRITE] = 1;
+    draw_effect_mask(GU_TRIANGLE_STRIP, 4, mask_quad(DEPTH_Y, 0xffffffff, 0));
+
+    /* The first farther control passes when the mask leaves depth intact.
+       It must then write depth and occlude the second, even farther control. */
+    sceGuDisable(GU_TEXTURE_2D);
+    sceGuEnable(GU_STENCIL_TEST);
+    sceGuStencilFunc(GU_ALWAYS, 0x3c, 0xff);
+    control[2] = (GuVertex){0, 0, 0, MASK_X + 128, DEPTH_Y, 10000};
+    control[3] = (GuVertex){0, 0, 0, MASK_X + 132, DEPTH_Y + MASK_H, 10000};
+    sceGuDrawArray(GU_SPRITES, GU_2D_FORMAT, 2, NULL, control + 2);
+    sceGuStencilFunc(GU_ALWAYS, 0xff, 0xff);
+    control[4] = control[2];
+    control[5] = control[3];
+    control[4].z = control[5].z = 5000;
+    sceGuDrawArray(GU_SPRITES, GU_2D_FORMAT, 2, NULL, control + 4);
+    sceGuDisable(GU_STENCIL_TEST);
+    sceGuScissor(0, 0, WIDTH, HEIGHT);
+    sceGuPixelMask(0);
+}
+
+static void report_mask_precision(FILE *result)
+{
+    static const int y[] = {STRIP_Y, INDEXED_Y, DEPTH_Y, FOLDED_Y};
+    for (unsigned row = 0; row < sizeof y / sizeof *y; row++) {
+        for (int x = 0; x < MASK_W; x++)
+            fprintf(result, "%08x%c", pixels[(y[row] + 2) * STRIDE + MASK_X + x], x == MASK_W - 1 ? '\n' : ' ');
+    }
+}
+
 static void init_gu(void)
 {
     sceGuInit();
@@ -182,6 +267,7 @@ int main(void)
     depth_tiles();
     blend_tiles();
     mask_ramp();
+    mask_precision();
     sceGuFinish();
     sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
     sceDisplaySetFrameBuf((void *)0x04000000, STRIDE, PSP_DISPLAY_PIXEL_FORMAT_8888, PSP_DISPLAY_SETBUF_IMMEDIATE);
@@ -194,6 +280,11 @@ int main(void)
             fprintf(result, "%08x%c", pixels[127 * STRIDE + i * 48 + 40], i == 7 ? '\n' : ' ');
         for (int i = 0; i < 8; i++)
             fprintf(result, "%08x%c", pixels[204 * STRIDE + i * 60 + 30], i == 7 ? '\n' : ' ');
+        fclose(result);
+    }
+    result = fopen("ms0:/p4-mask-precision.txt", "w");
+    if (result) {
+        report_mask_precision(result);
         fclose(result);
     }
     result = fopen("ms0:/p4-effect-timing.tsv", "w");

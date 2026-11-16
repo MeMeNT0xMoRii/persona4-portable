@@ -12,13 +12,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def extract(source, name):
-    return re.search(rf"^static void {name}\([^\n]*\)\n\{{.*?^\}}", source, re.M | re.S)
+    return re.search(rf"^static (?:void|int) {name}\([^\n]*\)\n\{{.*?^\}}", source, re.M | re.S)
 
 
 def build(pspdev, output, renderer):
     source = renderer.read_text()
-    names = ("blend_factor", "set_blend", "camera_projection", "draw_effect_mask")
-    functions = [extract(source, name)[0] for name in names]
+    names = ("blend_factor", "set_blend", "camera_projection", "mask_diagonal_side", "effect_mask_quad",
+             "draw_effect_mask")
+    functions = [match[0] for name in names if (match := extract(source, name))]
     submit = extract(source, "draw_ptank_quads")
     if submit:
         functions.append(submit[0])

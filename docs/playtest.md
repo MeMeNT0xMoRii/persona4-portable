@@ -17,14 +17,15 @@ replay and the 04/17 evening save for ongoing play.
 
 ## Current build and verification
 
-The [b249-xmb-home20 test build](build_b249_xmb_home20.md) restores the
-color-only depth behavior for a known group of particle states. Its base,
-[home19](build_b249_xmb_home19.md), restores linear dungeon fog and samples
+The [b249-xmb-home21 test build](build_b249_xmb_home21.md) preserves the full
+alpha of supported effect-mask quads. Its base, [home20](build_b249_xmb_home20.md),
+restores the color-only depth behavior for a known group of particle states.
+[Home19](build_b249_xmb_home19.md) restores linear dungeon fog and samples
 the rendered frames during the fusion acquisition dialogue. The PSP Go tester
 reached the Apsaras acquisition in [home18](build_b249_xmb_home18.md) and
 confirmed the Social Stats layout and day-change display in
-[home17](build_b249_xmb_home17.md). Home20 is ready for a device replay of
-the skill effects, fog and acquisition scene. Home19 is the rollback package. Earlier
+[home17](build_b249_xmb_home17.md). Home21 is ready for a device replay of
+the skill effects, fog and acquisition scene. Home20 is the rollback package. Earlier
 packages include [home16](build_b249_xmb_home16.md) on
 `playthrough/b249-home16`, followed by [home15](build_b249_xmb_home15.md) on
 `playthrough/b249-home15`. The home15 rollback remains the
@@ -44,8 +45,8 @@ System-menu stripe appearance remain separate reports.
 
 | Platform | Current evidence |
 | --- | --- |
-| Host | Home20 compiled and linked. Its address audit, PSP import check and fog-state test passed. Six MIPS CPU fixtures of the packaged home20 code kept the digit colors and reached the fusion preview. Full host discovery reported 75 passes, two skips and the three baseline harness errors. |
-| PPSSPP | Home20 reproduced the particle depth correction and matched home19 in the normal-particle, mask-ramp and 16-point fog controls. Home17 reopened the Town Map after travelling to Shopping District South, displayed filled day-change numerals and reached the Apsaras acquisition in Normal Spread. Home16 completed the 1F Shuffle Time selection and Slime reward. |
+| Host | Home21 linked against the same generated objects as home20. Six MIPS CPU fixtures of the packaged home21 code kept the digit colors and reached the fusion preview. Full host discovery reported 75 passes, two skips and the three baseline harness errors. |
+| PPSSPP | Home21 matched home20 in the particle depth and 16-point fog controls. The new synthetic mask probe recovered all 256 alpha values. Home17 reopened the Town Map after travelling to Shopping District South, displayed filled day-change numerals and reached the Apsaras acquisition in Normal Spread. Home16 completed the 1F Shuffle Time selection and Slime reward. |
 | PS2 | Play! ran the original US disc for the Town Map and Social Stats from slot 9 and the 04/17 → 04/18 day change from slot 8. The tester's Anbernic captures show distance fog in Yukiko's Castle and Yomotsu Hirasaka Path 8. A published PS2 capture shows illustrations and cracked blank faces at the Shuffle prompt. The Garu cut-in comparison remains open. |
 | PSP Go (PSP-N1000) | Home9 confirmed System, Item, Persona, save/load, HOME in a normal battle, Shadow models and sound, heads and FPS display. Home13 no longer showed black strips in the tester's field retest. Home15 at 333 MHz confirmed the Town Map repair. The tester confirmed the Social Stats layout and day-change display on home17 and reached the Apsaras acquisition on home18. The acquisition lighting and home19 dungeon appearance still need a device replay. |
 | PSP-3000 | Home20 hardware replay is pending. |

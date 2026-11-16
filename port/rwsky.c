@@ -3051,19 +3051,62 @@ static void bind_crossfade_capture(void)
     texture_h = SCREEN_H;
 }
 
+static int mask_diagonal_side(const GuVertex *a, const GuVertex *b, const GuVertex *point)
+{
+    float dx = b->x - a->x, dy = b->y - a->y;
+    float x = point->x - a->x, y = point->y - a->y;
+    float area = dx * y - dy * x;
+    /* Leave room for rounding the positions to GE subpixels. */
+    float margin = (fabsf(dx) + fabsf(dy) + fabsf(x) + fabsf(y) + 1.0f) / 8;
+    return area > margin ? 1 : area < -margin ? -1 : 0;
+}
+
+static int effect_mask_quad(int prim, int count, const GuVertex *v)
+{
+    if (prim == GU_SPRITES)
+        return count == 2;
+    if ((prim != GU_TRIANGLE_STRIP || count != 4) && (prim != GU_TRIANGLES || count != 6))
+        return 0;
+    /* Keep the coverage check within the GE's ordinary subpixel range. */
+    for (int i = 0; i < count; i++) {
+        if (!(fabsf(v[i].x) < 1024 && fabsf(v[i].y) < 1024))
+            return 0;
+    }
+    if (count == 4)
+        return mask_diagonal_side(v + 1, v + 2, v) * mask_diagonal_side(v + 1, v + 2, v + 3) == -1;
+    if (v[0].x == v[3].x && v[0].y == v[3].y && v[2].x == v[4].x && v[2].y == v[4].y)
+        return mask_diagonal_side(v, v + 2, v + 1) * mask_diagonal_side(v, v + 2, v + 5) == -1;
+    return 0;
+}
+
 static void draw_effect_mask(int prim, int count, const GuVertex *vertices)
 {
-    /* Test coverage from the actual mask texture. Stencil replacement can
-       represent a few opacity bands for the following destination blend. */
     sceGuEnable(GU_STENCIL_TEST);
-    sceGuEnable(GU_ALPHA_TEST);
     sceGuStencilOp(GU_KEEP, GU_KEEP, GU_REPLACE);
     sceGuDepthMask(GU_TRUE);
     sceGuPixelMask(0x00ffffff);
-    for (int opacity = 0; opacity <= 255; opacity += 85) {
-        sceGuStencilFunc(GU_ALWAYS, opacity, 0xff);
-        sceGuAlphaFunc(GU_GEQUAL, opacity ? opacity - 42 : 0, 0xff);
+    if (effect_mask_quad(prim, count, vertices)) {
+        /* Clear the alpha on the covered pixels, then copy each source-alpha bit
+           into stencil. A single fragment covers each pixel of these quads. */
+        sceGuDisable(GU_ALPHA_TEST);
+        sceGuStencilFunc(GU_ALWAYS, 0, 0xff);
         sceGuDrawArray(prim, GU_2D_FORMAT, count, 0, vertices);
+        sceGuEnable(GU_ALPHA_TEST);
+        sceGuStencilFunc(GU_ALWAYS, 0xff, 0xff);
+        for (unsigned bit = 1; bit <= 0x80; bit <<= 1) {
+            sceGuPixelMask(~(bit << 24));
+            sceGuAlphaFunc(GU_NOTEQUAL, 0, bit);
+            sceGuDrawArray(prim, GU_2D_FORMAT, count, 0, vertices);
+        }
+        sceGuPixelMask(0x00ffffff);
+    } else {
+        /* Bit writes would combine alpha from overlapping fragments. */
+        sceGuEnable(GU_ALPHA_TEST);
+        for (int opacity = 0; opacity <= 255; opacity += 85) {
+            sceGuStencilFunc(GU_ALWAYS, opacity, 0xff);
+            sceGuAlphaFunc(GU_GEQUAL, opacity ? opacity - 42 : 0, 0xff);
+            sceGuDrawArray(prim, GU_2D_FORMAT, count, 0, vertices);
+        }
     }
     sceGuDisable(GU_ALPHA_TEST);
     sceGuDisable(GU_STENCIL_TEST);
