@@ -4,6 +4,7 @@
 #include <pspsdk.h>
 #include <psppower.h>
 #include <pspsysmem.h>
+#include <pspge.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,9 +15,10 @@ PSP_MAIN_THREAD_STACK_SIZE_KB(1024);
 PSP_HEAP_SIZE_KB(-1); /* the heap is claimed before main */
 PSP_HEAP_THRESHOLD_SIZE_KB(4096); /* left free: thread stacks */
 
-#define BUILD 249
+#define BUILD 339
 #define P4_IMAGE_SIZE 0x40B000 /* retail 0x52da00..0x938a00: data and bss */
-#define GAME_DIR "ms0:/PSP/GAME/P4/"
+#include "paths.h"
+#define GAME_DIR "ms0:/PSP/GAME/P4/" /* only until p4_paths_init: the log before it */
 #ifdef P4_HW_PROFILE
 #define DATA_FILE "p4data.hwdbg.bin"
 #define LOG_FILE "p4_hwdbg.log"
@@ -49,9 +51,12 @@ int p4_log_sync;
 
 /* The file first: a PSPLink stdout write blocks while the USB cable is out (b111: thousands of reconnects an evening),
    and the log on the memory stick must keep going meanwhile. */
+/* b321 (from MeMeNT0xMoRii's fork): files live in the folder the EBOOT was launched from (paths.c), so the game
+   also runs from CAT_ folders; the log starts in the default folder until that is known */
+static char log_path[P4_PATH_MAX] = GAME_DIR LOG_FILE;
 static void log_commit(const char *a, int n, const char *b, int m)
 {
-    SceUID fd = sceIoOpen(GAME_DIR LOG_FILE, PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
+    SceUID fd = sceIoOpen(log_path, PSP_O_WRONLY | PSP_O_CREAT | PSP_O_APPEND, 0777);
     if (fd >= 0) {
         if (n) sceIoWrite(fd, a, n);
         if (m) sceIoWrite(fd, b, m);
@@ -193,13 +198,69 @@ static void ms_remove(void *p)
 }
 
 #define MS_RA ((unsigned)__builtin_return_address(0))
-void *__wrap_malloc(size_t n) { void *p = __real_malloc(n); ms_add(p, n, MS_RA); return p; }
-void *__wrap_calloc(size_t a, size_t b) { void *p = __real_calloc(a, b); ms_add(p, a * b, MS_RA); return p; }
-void *__wrap_memalign(size_t a, size_t n) { void *p = __real_memalign(a, n); ms_add(p, n, MS_RA); return p; }
+/* b272: an allocation that fails gets one retry after the animation tracks (rwsky.c anim_tracks.h) give their memory
+   back: the game writes through the null block of a failed chkmemAllocate (b271 bus error loading a dialogue) */
+unsigned p4_anim_tracks_release(void);
+unsigned p4_mesh_cache_release(void);
+/* b274: the mesh cache too (rwsky.c). b275: logs the heap before and after (free total and the largest block). */
+unsigned p4_heap_unclaimed(void);
+void __real_free(void *);
+/* b275: the largest block malloc can give now (binary search, 64 KB steps) */
+static unsigned heap_largest(void)
+{
+    unsigned lo = 0, hi = 32u << 20;
+    while (hi - lo > 65536) {
+        unsigned mid = (lo + hi) / 2;
+        void *p = __real_malloc(mid);
+        if (p)
+            __real_free(p), lo = mid;
+        else
+            hi = mid;
+    }
+    return lo;
+}
+static unsigned heap_release(unsigned n)
+{
+    struct mallinfo a = mallinfo();
+    unsigned free_before = a.fordblks + p4_heap_unclaimed(), big_before = heap_largest();
+    unsigned freed = p4_anim_tracks_release();
+    freed += p4_mesh_cache_release();
+    struct mallinfo b = mallinfo();
+    p4_log("heap short: request %u, free %u largest %u; released %u, now free %u largest %u, arena %u\n", n, free_before,
+           big_before, freed, b.fordblks + p4_heap_unclaimed(), heap_largest(), (unsigned)b.arena);
+    p4_log_flush();
+    return freed;
+}
+void *__wrap_malloc(size_t n)
+{
+    void *p = __real_malloc(n);
+    if (!p && n && heap_release(n))
+        p = __real_malloc(n);
+    ms_add(p, n, MS_RA);
+    return p;
+}
+void *__wrap_calloc(size_t a, size_t b)
+{
+    void *p = __real_calloc(a, b);
+    if (!p && a && b && heap_release(a * b))
+        p = __real_calloc(a, b);
+    ms_add(p, a * b, MS_RA);
+    return p;
+}
+void *__wrap_memalign(size_t a, size_t n)
+{
+    void *p = __real_memalign(a, n);
+    if (!p && n && heap_release(n))
+        p = __real_memalign(a, n);
+    ms_add(p, n, MS_RA);
+    return p;
+}
 void __wrap_free(void *p) { ms_remove(p); __real_free(p); }
 void *__wrap_realloc(void *old, size_t n)
 {
     void *p = __real_realloc(old, n);
+    if (!p && n && heap_release(n))
+        p = __real_realloc(old, n);
     if (p || !n) {
         ms_remove(old);
         ms_add(p, n, MS_RA);
@@ -372,13 +433,65 @@ static int check_strings(const unsigned *list, int count)
     return bad;
 }
 
-int main(void)
+/* HOME (PS) button: the system menu offers "Quit game" only once an exit callback is registered. The firmware stops
+   the game's threads, audio and the Media Engine itself; the callback only lets a save in progress finish (up to 5 s)
+   and commits the log. */
+extern volatile int p4_mc_writing;
+
+static int exit_callback(int a, int b, void *c)
 {
-    static unsigned list[8192];
+    (void)a; (void)b; (void)c;
+    for (int i = 0; p4_mc_writing && i < 500; i++)
+        sceKernelDelayThread(10 * 1000);
+    /* b321 (from MeMeNT0xMoRii's fork, HOME froze on a PSP Go): HOME can pause the game with a frame stopped at its
+       GE stall address; a list that is not done is broken off before the exit */
+    int ge = sceGeDrawSync(1), broke = ge > PSP_GE_LIST_DONE ? sceGeBreak(1, 0) : 0;
+    p4_log("HOME: exit to XMB (GE state %d, break %d)\n", ge, broke);
+    p4_log_flush();
+    sceKernelExitGame();
+    return 0;
+}
+
+static int callback_thread(SceSize args, void *argp)
+{
+    (void)args; (void)argp;
+    int cb = sceKernelCreateCallback("p4_exit", exit_callback, NULL);
+    sceKernelRegisterExitCallback(cb);
+    sceKernelSleepThreadCB();
+    return 0;
+}
+
+static void exit_callback_start(void)
+{
+    SceUID id = sceKernelCreateThread("p4_exit", callback_thread, 0x11, 4 * 1024, PSP_THREAD_ATTR_USER, 0);
+    if (id < 0 || sceKernelStartThread(id, 0, 0) < 0)
+        p4_log("exit callback thread failed %x, HOME will not quit\n", id);
+}
+
+int main(int argc, char **argv)
+{
+    static unsigned list[4096]; /* b250: 8192 -> 4096 words (the image was 856 bytes over); p4str.bin is 2476 words, a full buffer stops the boot below */
     __asm__ volatile("ctc1 $0, $31"); /* FPU traps off: on hardware a NaN compare powers the console off */
     __asm__ volatile("move $gp, %0" : : "r"(P4_GP)); /* reassembled code reads small data off $gp; threads inherit it */
     scePowerSetClockFrequency(333, 333, 166);
     pspDebugScreenInit();
+    {
+        char cwd[P4_PATH_MAX];
+        /* a launch from elsewhere (PSPLink's host0:) keeps the old fixed folder */
+        if (p4_paths_init(argc > 0 ? argv[0] : NULL, getcwd(cwd, sizeof cwd)) < 0 && p4_paths_init(NULL, "ms0:/PSP/GAME/P4") < 0) {
+            pspDebugScreenPrintf("Cannot resolve the game folder from the launch path.\n");
+            sceKernelDelayThread(5 * 1000 * 1000);
+            sceKernelExitGame();
+            return 1;
+        }
+        snprintf(log_path, sizeof log_path, "%s%s", p4_game_dir, LOG_FILE);
+        p4_log("game folder %s\n", p4_game_dir);
+    }
+    { /* b321: an empty FPS file next to the EBOOT turns the frame-rate overlay on (rwsky.c) */
+        extern int p4_fps_overlay;
+        SceIoStat st;
+        p4_fps_overlay = sceIoGetstat(p4_path("FPS"), &st) >= 0;
+    }
 #ifdef P4_HW_PROFILE
     extern char p4_image[];
     if ((unsigned)p4_image != P4_IMAGE) {
@@ -400,15 +513,18 @@ int main(void)
         return 1;
     }
     memset(got, 0, P4_IMAGE_SIZE);
-    int data = load(GAME_DIR DATA_FILE, got, P4_IMAGE_SIZE);
-    int count = load(GAME_DIR "p4str.bin", list, sizeof list) / 4;
+    int data = load(p4_path(DATA_FILE), got, P4_IMAGE_SIZE);
+    int count = load(p4_path("p4str.bin"), list, sizeof list) / 4;
     p4_log("loaded data=%d list=%d\n", data, count);
-    if (data <= 0 || count <= 0 || check_strings(list, count)) {
+    if (count >= (int)(sizeof list / 4))
+        p4_log("p4str.bin fills the list of %d words: enlarge it in main()\n", (int)(sizeof list / 4));
+    if (data <= 0 || count <= 0 || count >= (int)(sizeof list / 4) || check_strings(list, count)) {
         stop();
         return 1;
     }
     sceKernelDcacheWritebackAll();
     log_start();
+    exit_callback_start();
     p4_log("entering kwlnBoot free=%d KB\n", (int)sceKernelTotalFreeMemSize() / 1024);
     int result = kwlnBoot();
     void p4_video_shutdown(void);

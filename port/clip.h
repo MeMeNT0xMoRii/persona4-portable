@@ -1,19 +1,29 @@
 #ifndef P4_CLIP_H
 #define P4_CLIP_H
 
-/* The GE has no near-plane clipping: a triangle with a corner behind the camera is dropped whole, which shows as
-   hard straight edges in dense fog. Clip a particle quad here instead. Needs Vertex3D {u, v, colour, x, y, z}. */
+/* Particle-quad reference clipper. The GE can clip the near plane, but its finite XY
+   guard band can still discard large crossing billboards. Needs Vertex3D {u,v,colour,x,y,z}. */
 enum { CLIP_MAX_OUT = 9 }; /* a quad cut by one plane has at most 5 corners: 3 triangles */
 
 /* quad: 4 corners in order around the edge; depth[i]: view distance of each; keeps depth >= near.
    Writes triangles to out, returns the vertex count (0, 6 or up to 9). */
 static int clip_quad_near(const Vertex3D quad[4], const float depth[4], float near, Vertex3D *out)
 {
+    const float d[4] = { depth[0] - near, depth[1] - near, depth[2] - near, depth[3] - near };
+    unsigned inside = (d[0] >= 0) | (d[1] >= 0) << 1 | (d[2] >= 0) << 2 | (d[3] >= 0) << 3;
+    if (!inside)
+        return 0;
+    if (inside == 15) { /* nothing to cut: the plain fan (from the persona4-portable fork, home24) */
+        out[0] = quad[0], out[1] = quad[1], out[2] = quad[2];
+        out[3] = quad[0], out[4] = quad[2], out[5] = quad[3];
+        return 6;
+    }
     Vertex3D poly[5];
     int n = 0;
     for (int i = 0; i < 4; i++) {
-        const Vertex3D *a = &quad[i], *b = &quad[(i + 1) & 3];
-        float da = depth[i] - near, db = depth[(i + 1) & 3] - near;
+        int j = (i + 1) & 3;
+        const Vertex3D *a = &quad[i], *b = &quad[j];
+        float da = d[i], db = d[j];
         if (da >= 0)
             poly[n++] = *a;
         if ((da >= 0) != (db >= 0)) {

@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define GAME_DIR "ms0:/PSP/GAME/P4/"
+#include "paths.h"
 #define SECTOR 0x800
 #define NUM_CONTAINERS 5
 #define NUM_HANDLES 16
@@ -57,7 +57,9 @@ static const Row *find(unsigned hash)
 
 static int open_index(void)
 {
-    SceUID fd = sceIoOpen(GAME_DIR "p4files.idx", PSP_O_RDONLY, 0);
+    char index_path[P4_PATH_MAX];
+    snprintf(index_path, sizeof index_path, "%sp4files.idx", p4_game_dir);
+    SceUID fd = sceIoOpen(index_path, PSP_O_RDONLY, 0);
     if (fd < 0)
         return 0;
     int size = (int)sceIoLseek(fd, 0, PSP_SEEK_END);
@@ -68,8 +70,8 @@ static int open_index(void)
     num_rows = size / sizeof(Row);
     for (int i = 0; i < NUM_CONTAINERS; i++)
         for (int part = 0; part < MAX_PARTS; part++) {
-            char path[64];
-            sprintf(path, GAME_DIR "%s.%d", containers[i], part);
+            char path[P4_PATH_MAX];
+            snprintf(path, sizeof path, "%s%s.%d", p4_game_dir, containers[i], part);
             fds[i][part] = sceIoOpen(path, PSP_O_RDONLY, 0);
         }
     p4_log("disc index %d files, DATA part 0 %x\n", num_rows, fds[0][0]);
@@ -108,6 +110,16 @@ Handle *func_004c85a0(const char *name, int mode)
     base = base ? base + 1 : name;
     while (*base == '\\' || *base == '/')
         base++;
+    /* b275: a field pack starts loading (f044_000.p00 after Heaven needs a 2 MB block): the mesh cache gives its
+       entries back first, so the load finds whole free runs instead of the holes between ~5 MB of cache entries */
+    {
+        extern int p4_cache_flush_on_load;
+        size_t len = strlen(base);
+        if (p4_cache_flush_on_load && len > 4 && !strcmp(base + len - 4, ".p00")) {
+            extern volatile int p4_cache_flush_pending; /* b276: released on the drawing thread at its next frame */
+            p4_cache_flush_pending = 1;
+        }
+    }
     unsigned hash = path_hash(directory, base);
     const Row *row = find(hash);
     if (!row) {
@@ -145,18 +157,25 @@ unsigned func_004c95f8(Handle *h) { return (h->size + SECTOR - 1) / SECTOR; }
 int func_004c9010(Handle *h, int sectors, void *buffer)
 {
     static SceUID lock;
-    if (!lock)
+    if (lock <= 0)
         lock = sceKernelCreateSema("p4io", 0, 1, 1, 0);
     char *to = buffer;
     long long offset = h->offset;
     int left = sectors * SECTOR, got = 0;
-    sceKernelWaitSema(lock, 1, 0); /* a read yields, and the game's worker thread reads too */
+    /* a read yields, and the game's worker thread reads too */
+    if (lock < 0 || sceKernelWaitSema(lock, 1, 0) < 0) {
+        h->stat = 4;
+        return 0;
+    }
     while (left > 0) {
         int part = offset / PART;
         int inside = offset % PART;
         int size = left < PART - inside ? left : PART - inside;
+        if (part >= MAX_PARTS)
+            break;
         SceUID fd = fds[h->container][part];
-        sceIoLseek(fd, inside, PSP_SEEK_SET);
+        if (fd < 0 || sceIoLseek(fd, inside, PSP_SEEK_SET) != inside)
+            break;
         int n = sceIoRead(fd, to + got, size);
         if (n <= 0)
             break;
@@ -165,9 +184,21 @@ int func_004c9010(Handle *h, int sectors, void *buffer)
         offset += n;
     }
     sceKernelSignalSema(lock, 1);
+    /* A short read rounded up to whole sectors let the archive loader parse a tail never read
+       (fix from MeMeNT0xMoRii's fork): report it as an error instead. */
+    if (left != 0) {
+        static unsigned reports;
+        if (reports < 8) {
+            reports++;
+            p4_log("disc read incomplete: %s sector %u got %d of %d bytes\n",
+                   containers[h->container], (unsigned)(h->offset / SECTOR), got, sectors * SECTOR);
+        }
+        h->stat = 4;
+        return 0;
+    }
     sceKernelDcacheWritebackRange(buffer, sectors * SECTOR);
-    h->stat = got > 0 ? 3 : 4;
-    return got > 0 ? (got + SECTOR - 1) / SECTOR : 0;
+    h->stat = 3;
+    return sectors;
 }
 
 /* ADXF_GetStat: 3 done, 4 error */

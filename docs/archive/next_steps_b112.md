@@ -1,7 +1,7 @@
 # Next steps after build 112 (written 2026-11-06)
 
 > **Historical record.** This file is no longer the current plan. Its "Plan" and "Next" items were done,
-> superseded or carried over. The current status and plan are in [perf_status.md](perf_status.md). Keep this file
+> superseded or carried over. The current status and plan are in [perf_status.md](../perf_status.md). Keep this file
 > for its measured facts and the reasons behind earlier decisions. Device numbers dated 2026-11-10 were taken at
 > 423 MHz, not 333.
 
@@ -95,7 +95,7 @@ Each step: one change, one build, measured on the device with baseline and basel
 4. **Cost of one draw.** `draw_mesh_vertices` costs ~11k cycles, ~1.5M a frame in Heaven (138 draws). Look at `bind_ge_light`, `draw_tested` and the state calls per draw.
 5. **memit on the VFPU.** Writing vertices for the GE: ~4.6M cycles in Heaven before the hash fix, probably much less now. Remeasure first.
 6. **Unattributed CPU.** ~13 ms in `mesh` and ~15 ms in `atomic` with no sub-section in Heaven, plus ~29 ms outside the render frame (game logic). Add profiler sections before optimising.
-7. **Title screen (scene C of `docs/hw_test_plan_b97.md`).** Never measured.
+7. **Title screen (scene C of `docs/archive/hw_test_plan_b97.md`).** Never measured.
 
 ## Facts measured this session (do not re-learn them)
 

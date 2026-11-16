@@ -230,6 +230,17 @@ def translate(inner, parameters=()):
         body, decls, after = [], [], []
         lines = [raw.strip() for raw in re.split(r"[\n;]", template)]
         lines = [line for line in lines if line and not line.startswith(".")]
+        # ParticleProjectVertices reloads the same basis for each particle. Preserve its shared VU0
+        # register state, but execute this exact matrix block on the PSP's native VFPU.
+        particle_matrix = [
+            "lqc2 $vf28, 0(%0)", "lqc2 $vf29, 16(%0)",
+            "lqc2 $vf30, 32(%0)", "lqc2 $vf31, 48(%0)", "lqc2 $vf10, 0(%1)",
+            "vmulax.xyzw $ACC, $vf28, $vf10x", "vmadday.xyzw $ACC, $vf29, $vf10y",
+            "vmaddaz.xyzw $ACC, $vf30, $vf10z", "vmaddw.xyzw $vf10, $vf31, $vf0w",
+        ]
+        if lines == particle_matrix and not outs and len(ins) == 2 and all(c == 'r' for c, _ in ins):
+            return ('{ extern void p4_particle_matrix(const void *, const void *); P4_VU0_COUNT(9); '
+                    f'p4_particle_matrix(({ins[0][1]}), ({ins[1][1]})); }}')
         for n in incoming(lines):
             if n - 4 >= len(parameters):
                 raise Unknown("argument register without an argument")

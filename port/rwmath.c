@@ -1,4 +1,5 @@
 /* The VU0 math of RenderWare and the game, in plain C. VFPU when a profile on the device says so. */
+#include "vu0.h"
 
 typedef struct { float x, y, z; unsigned flags; } Row;
 typedef struct { Row right, up, at, pos; } Matrix; /* 64 bytes, rows like RwMatrix */
@@ -9,50 +10,25 @@ typedef struct { Row right, up, at, pos; } Matrix; /* 64 bytes, rows like RwMatr
     (out).z = (m).x * (in)->right.z + (m).y * (in)->up.z + (m).z * (in)->at.z; \
 } while (0)
 
-/* b230 p4_rwmul_vfpu: out = a x b on the VFPU (as rwsky.c's multiply_vfpu: b's rows in M400, a's rows with w 0, 0, 0, 1
-   in M600, each row through E400), all loads before the stores so out may be a or b. The w words (flags and pads) are
-   put back as the FPU forms leave them. 0 when a matrix is not 16-byte aligned. The game's look-at pose
-   (mdlUpdateHierarchyPose, ~2.4k cycles a node on the PSP, b229) and frame updates multiply through here. */
-int p4_rwmul_vfpu = 0; /* b230 on the PSP (dialogue, on/off/on/off): no difference (apose 2.5 ms either way); off keeps the FPU results */
-unsigned p4_rwmul_vfpu_calls, p4_rwmul_fpu_calls;
-static int mul_vfpu(Matrix *out, const Matrix *a, const Matrix *b)
-{
-    if (!p4_rwmul_vfpu || (((unsigned)out | (unsigned)a | (unsigned)b) & 15))
-        return 0;
-    unsigned f0 = out->right.flags, f1 = out->up.flags, f2 = out->at.flags, f3 = out->pos.flags;
-    __asm__ volatile(
-        "lv.q    C400, 0(%[b])\n lv.q C410, 16(%[b])\n lv.q C420, 32(%[b])\n lv.q C430, 48(%[b])\n"
-        "lv.q    C600, 0(%[a])\n lv.q C610, 16(%[a])\n lv.q C620, 32(%[a])\n lv.q C630, 48(%[a])\n"
-        "vzero.s S603\n vzero.s S613\n vzero.s S623\n vone.s S633\n"
-        "vtfm4.q C700, E400, C600\n"
-        "vtfm4.q C710, E400, C610\n"
-        "vtfm4.q C720, E400, C620\n"
-        "vtfm4.q C730, E400, C630\n"
-        "sv.q    C700, 0(%[o])\n sv.q C710, 16(%[o])\n sv.q C720, 32(%[o])\n sv.q C730, 48(%[o])\n"
-        : : [o] "r"(out), [a] "r"(a), [b] "r"(b) : "memory");
-    out->right.flags = f0, out->up.flags = f1, out->at.flags = f2, out->pos.flags = f3;
-    p4_rwmul_vfpu_calls++;
-    return 1;
-}
-
 /* out = a * b. RenderWare keeps two words of flags: the result has lost identity and may have lost orthonormality. */
 unsigned char *RwMatrixMultiply(unsigned char *out_, unsigned char *a_, unsigned char *b_)
 {
     Matrix *out = (Matrix *)out_, *a = (Matrix *)a_, *b = (Matrix *)b_;
+    /* The PS2 loads both inputs before it writes: out may be a or b (fix from MeMeNT0xMoRii's fork). */
     unsigned flags = a->right.flags & b->right.flags;
-    if (mul_vfpu(out, a, b)) {
-        out->right.flags = flags;
-        return out_;
-    }
-    p4_rwmul_fpu_calls++;
-    ROTATE(out->right, a->right, b);
-    ROTATE(out->up, a->up, b);
-    ROTATE(out->at, a->at, b);
-    ROTATE(out->pos, a->pos, b);
-    out->pos.x += b->pos.x;
-    out->pos.y += b->pos.y;
-    out->pos.z += b->pos.z;
-    out->right.flags = a->right.flags & b->right.flags;
+    Matrix r;
+    ROTATE(r.right, a->right, b);
+    ROTATE(r.up, a->up, b);
+    ROTATE(r.at, a->at, b);
+    ROTATE(r.pos, a->pos, b);
+    r.pos.x += b->pos.x;
+    r.pos.y += b->pos.y;
+    r.pos.z += b->pos.z;
+    out->right.x = r.right.x; out->right.y = r.right.y; out->right.z = r.right.z;
+    out->up.x = r.up.x; out->up.y = r.up.y; out->up.z = r.up.z;
+    out->at.x = r.at.x; out->at.y = r.at.y; out->at.z = r.at.z;
+    out->pos.x = r.pos.x; out->pos.y = r.pos.y; out->pos.z = r.pos.z;
+    out->right.flags = flags;
     return out_;
 }
 
@@ -61,9 +37,6 @@ void matrixASMMult(unsigned char *out_, unsigned char *a_, unsigned char *b_)
 {
     Matrix *out = (Matrix *)out_, *a = (Matrix *)a_, *b = (Matrix *)b_;
     unsigned flags = out->right.flags;
-    if (mul_vfpu(out, a, b)) /* keeps out's flags, as below */
-        return;
-    p4_rwmul_fpu_calls++;
     Matrix r;
     ROTATE(r.right, a->right, b);
     ROTATE(r.up, a->up, b);
@@ -113,7 +86,7 @@ unsigned char *vectorASMMultPointSingle(unsigned char *out, unsigned char *in, u
 }
 
 /* VF0 always reads as (0, 0, 0, 1). */
-struct P4Vu { struct { float f[4]; } vf[32], acc, r[32]; float q; } __attribute__((aligned(16))) p4vu = { .vf = { { { 0, 0, 0, 1 } } } };
+struct P4Vu p4vu = { .vf = { { .f = { 0, 0, 0, 1 } } } };
 
 /* The EE's soft-float doubles: game code only ever wraps a float, calls one of these and unwraps it, so "double" here
    is a float's bits in the one register the callers pass. */
@@ -173,7 +146,78 @@ int func_0044e100(int x, int y) { return wrap(unwrap(x) - unwrap(y)); }    /* su
 int func_0044e168(int x, int y) { return wrap(unwrap(x) * unwrap(y)); }    /* muldf3 */
 int func_0044e3b8(int x, int y) { return wrap(unwrap(x) / unwrap(y)); }    /* divdf3 */
 
+#include "particle_vfpu.h"
+int p4_particle_vfpu = 1, p4_particle_vfpu_check = 0;
+static unsigned particle_native, particle_reference, particle_checks, particle_diffs;
+void p4_log(const char *fmt, ...);
+void p4_particle_matrix(const void *matrix, const void *point)
+{
+    if (!p4_particle_vfpu || (((unsigned long)matrix | (unsigned long)point) & 15) || !particle_matrix_regular(matrix, point)) {
+        particle_matrix_reference(matrix, point);
+        particle_reference++;
+        return;
+    }
+    particle_matrix_native(matrix, point);
+    if (p4_particle_vfpu_check && !(particle_native & 63)) {
+        P4Reg fast = p4vu.vf[10], acc = p4vu.acc;
+        particle_matrix_reference(matrix, point);
+        int same = 1;
+        for (int i = 0; i < 4; i++) {
+            float a = fast.f[i] - p4vu.vf[10].f[i], b = acc.f[i] - p4vu.acc.f[i];
+            if (!(fabsf(a) <= 1e-4f * (1 + fabsf(p4vu.vf[10].f[i]))) || !(fabsf(b) <= 1e-4f * (1 + fabsf(p4vu.acc.f[i]))))
+                same = 0;
+        }
+        particle_checks++;
+        if (!same) {
+            if (particle_diffs++ < 8) p4_log("TRACE particle VFPU differs: matrix %p point %p\n", matrix, point);
+            p4_particle_vfpu = 0; /* retain reference registers and fall back until explicitly re-enabled */
+        } else {
+            p4vu.vf[10] = fast;
+            p4vu.acc = acc;
+        }
+    }
+    particle_native++;
+}
+
+void p4_particle_selftest(void)
+{
+    static int done;
+    if (done++) return;
+    extern unsigned sceKernelGetSystemTimeLow(void);
+    struct P4Vu saved = p4vu;
+    float m[16] __attribute__((aligned(16))), p[4] __attribute__((aligned(16)));
+    unsigned seed=17, bad=0;
+    for (int test=0;test<512;test++) {
+        for (int j=0;j<16;j++) { seed=seed*1664525u+1013904223u; m[j]=((int)(seed>>16)-32768)*(j>=12 ? 0.125f : 0.0001f); }
+        for (int j=0;j<4;j++) { seed=seed*1664525u+1013904223u; p[j]=((int)(seed>>16)-32768)*0.0625f; }
+        particle_matrix_native(m,p);
+        P4Reg native=p4vu.vf[10], acc=p4vu.acc;
+        particle_matrix_reference(m,p);
+        for (int j=0;j<4;j++)
+            if (!(fabsf(native.f[j]-p4vu.vf[10].f[j])<=1e-4f*(1+fabsf(p4vu.vf[10].f[j]))) ||
+                !(fabsf(acc.f[j]-p4vu.acc.f[j])<=1e-4f*(1+fabsf(p4vu.acc.f[j])))) bad++;
+    }
+    int on=p4_particle_vfpu, check=p4_particle_vfpu_check;
+    p4_particle_vfpu_check=0;
+    unsigned us[2];
+    for (int mode=0;mode<2;mode++) {
+        p4_particle_vfpu=mode;
+        unsigned start=sceKernelGetSystemTimeLow();
+        for (int k=0;k<8192;k++) p4_particle_matrix(m,p);
+        us[mode]=sceKernelGetSystemTimeLow()-start;
+    }
+    p4vu=saved;
+    p4_particle_vfpu=bad ? 0 : on; p4_particle_vfpu_check=check;
+    particle_native=particle_reference=particle_checks=particle_diffs=0;
+    p4_log("particle VFPU selftest: 512 vectors bad %u; 8192 transforms reference %u us native %u us; enabled %d\n",bad,us[0],us[1],p4_particle_vfpu);
+}
+
 /* VU0 work per call site (P4_VU0_COUNT in vu0.h): instructions the game runs through the C model of VU0. */
+#ifdef P4_HW_PROFILE
+int p4_vu0_profile = 1;
+#else
+int p4_vu0_profile;
+#endif
 enum { VU0_SITES = 2048 };
 static struct Vu0Site { const char *file; int line; unsigned ops, hits; } *vu0_site; /* heap: .bss must end below the data image */
 static int vu0_sites;
@@ -200,6 +244,9 @@ void p4_vu0_site(unsigned short *id, const char *file, int line, int ops)
 
 void p4_vu0_report(unsigned frames)
 {
+    p4_log("particle VFPU %d check %d: native %u reference %u checks %u diffs %u per %u frames\n",
+           p4_particle_vfpu, p4_particle_vfpu_check, particle_native, particle_reference, particle_checks, particle_diffs, frames);
+    particle_native = particle_reference = particle_checks = particle_diffs = 0;
     if (!vu0_site)
         return;
     p4_log("vu0 per frame: instructions %u blocks %u sites %d\n", vu0_ops / frames, vu0_blocks / frames, vu0_sites);

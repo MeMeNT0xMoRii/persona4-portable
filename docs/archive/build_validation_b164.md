@@ -1,6 +1,6 @@
 # Clean source-build validation, 2026-11-08
 
-The commands in [Building from source](building.md) were checked in a separate local directory using the current working-tree port sources and an archive of upstream commit `363eab8a966d60a9773b45f330f2344329ec4f0a`. No previous generated objects, assembly, linker scripts or rebase tables were reused. The only retail input was the local `SLUS_217.82` ELF. The existing development build and installed game were not replaced.
+The commands in [Building from source](../building.md) were checked in a separate local directory using the current working-tree port sources and an archive of upstream commit `363eab8a966d60a9773b45f330f2344329ec4f0a`. No previous generated objects, assembly, linker scripts or rebase tables were reused. The only retail input was the local `SLUS_217.82` ELF. The existing development build and installed game were not replaced.
 
 Environment: Windows x64, Python 3.14, the local Windows PSPDEV toolchain described in the build guide (PSP GCC 15.2.0, GNU binutils 2.44).
 

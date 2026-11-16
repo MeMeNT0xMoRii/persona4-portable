@@ -150,6 +150,10 @@ int scePadRead(int port, int slot, unsigned char *out)
         p4_pad_reads--;
         pad.Buttons |= p4_pad_press;
     }
+    {
+        unsigned p4_scene_frame(unsigned buttons); /* scene_menu.c: L + R + START, PSPLink scene requests */
+        pad.Buttons = p4_scene_frame(pad.Buttons);
+    }
     unsigned char low = 0, high = 0;
     for (unsigned i = 0; i < sizeof byte2 / sizeof *byte2; i++)
         if (pad.Buttons & byte2[i].psp)

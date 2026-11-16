@@ -55,7 +55,10 @@ def main():
     update = out / 'UPDATE/PSP/GAME/P4'
     update.mkdir(parents=True, exist_ok=True)
     planned = {}
-    for name in ['EBOOT.PBP', 'p4data.bin', 'p4str.bin']:
+    artifacts = ['EBOOT.PBP', 'p4data.bin', 'p4str.bin']
+    if 'p4strips.bin' in manifest['artifact_sha256']:
+        artifacts.append('p4strips.bin')
+    for name in artifacts:
         expected = manifest['artifact_sha256'][name]
         if sha256(out / name) != expected:
             raise ValueError(f'Build artifact hash mismatch: {name}')
@@ -92,7 +95,7 @@ def main():
             os.replace(temporary, target)
         hashes[name] = expected
     # Keep the full installation directory usable too; archives/index and saves are independent.
-    for name in ['EBOOT.PBP', 'p4data.bin', 'p4str.bin']:
+    for name in artifacts:
         shutil.copyfile(out / name, DIST / name)
     for name in hashes:
         if name.startswith('SOUND/'):
@@ -111,6 +114,7 @@ def main():
         'Copy the PSP directory from UPDATE to the memory-card root, merging directories\n'
         'and replacing files with the same names. Destination: ms0:/PSP/GAME/P4/.\n\n'
         'This updates EBOOT.PBP, p4data.bin, p4str.bin, SOUND/ and VIDEO/*.p4v, VIDEO/*.pcm.\n'
+        'If present in UPDATE, copy p4strips.bin too (precomputed character strips).\n'
         'Game archives DATA.*, BTL.0, BGM.0, ENV.0, ZZZZZ.0 and p4files.idx\n'
         'are required from an existing installation. Saves are not included in the update.\n\n'
         'For a clean installation, copy build/psp_dist/PSP/GAME/P4 to PSP/GAME/P4\n'

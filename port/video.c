@@ -41,7 +41,7 @@ void (*p4_video_on_frame)(unsigned);
 unsigned (*p4_video_buttons)(void);
 static const char *stem = "P4CTOP1";
 static int mute;
-/* Firmware is initialized once for the game, not rebooted between cutscenes. */
+/* Ownership of the current firmware session; default sessions close completely. */
 static int codec_loaded, base_loaded, initialized;
 volatile unsigned video_frame, video_shown, video_step;
 
@@ -132,6 +132,7 @@ static void *vol_ddr, *vol_output, *vol_packet, *vol_work, *vol_params;
 int p4_video_keep = 0;
 static int vol_held, kept;
 static SceMpeg kept_mpeg;
+static SceMpegRingbuffer rb; /* a kept SceMpeg points at it */
 static unsigned last_movie_end;
 static int volatile_carve(unsigned params_bytes)
 {
@@ -168,7 +169,6 @@ int p4_video_play(const char *directory, const char *name, int muted)
     int audio_running = 0;
     void *work = NULL, *ddr = NULL, *packet = NULL, *params = NULL, *output = NULL;
     SceMpeg mpeg = NULL;
-    static SceMpegRingbuffer rb; /* static: a kept SceMpeg points at it */
     Header h;
     char path[256]; snprintf(path, sizeof path, "%sVIDEO/%s.p4v", video_dir, stem);
     fd = sceIoOpen(path, PSP_O_RDONLY, 0);
@@ -339,24 +339,47 @@ done:
     }
     if (kept && result < 0) { log_line("dropping the kept mpeg after a failure"); kept = 0; }
     int keep_now = kept && created && mpeg == kept_mpeg;
-    if (created && !keep_now) sceMpegDelete(&mpeg);
-    if (rb_created && !keep_now) sceMpegRingbufferDestruct(&rb);
+    if (created && !keep_now) {
+        log_line("mpeg delete begin"); sceMpegDelete(&mpeg); log_line("mpeg delete end");
+    }
+    if (rb_created && !keep_now) {
+        sceMpegRingbufferDestruct(&rb); log_line("ringbuffer destruct end");
+    }
+    /* Keep every decoder buffer valid through Finish and module shutdown.
+     * b253 returned volatile RAM/freed heap buffers before finishing MPEG. */
+    if (!keep_now && (!p4_video_keep || result < 0)) p4_video_shutdown();
     if (heap_work || !volatile_locked) { free(ddr); free(work); free(output); }
     if (!volatile_locked) { free(packet); free(params); }
-    if (volatile_locked && !kept) { sceKernelVolatileMemUnlock(0); vol_held = 0; }
+    if (volatile_locked && !kept && vol_held && !initialized) {
+        int unlock = sceKernelVolatileMemUnlock(0);
+        log_line("volatile unlock %08x", unlock); if (unlock >= 0) vol_held = 0;
+    }
     last_movie_end = sceKernelGetSystemTimeLow();
     if (fd >= 0) sceIoClose(fd);
-    if (!p4_video_keep) p4_video_shutdown();
     log_line("probe finished result %d", result);
     return result;
 }
 
 void p4_video_shutdown(void)
 {
-    if (kept) { sceMpegDelete(&kept_mpeg); kept = 0; }
-    if (vol_held) { sceKernelVolatileMemUnlock(0); vol_held = 0; }
-    if (initialized) sceMpegFinish();
-    if (base_loaded) sceUtilityUnloadAvModule(PSP_AV_MODULE_MPEGBASE);
-    if (codec_loaded == 1) sceUtilityUnloadAvModule(PSP_AV_MODULE_AVCODEC);
-    initialized = base_loaded = codec_loaded = 0;
+    if (kept) {
+        log_line("kept mpeg delete begin"); sceMpegDelete(&kept_mpeg); log_line("kept mpeg delete end");
+        sceMpegRingbufferDestruct(&rb); kept = 0;
+    }
+    if (initialized) {
+        log_line("mpeg finish begin"); sceMpegFinish(); log_line("mpeg finish end");
+        initialized = 0;
+    }
+    if (base_loaded) {
+        int r = sceUtilityUnloadAvModule(PSP_AV_MODULE_MPEGBASE);
+        log_line("unload mpegbase %08x", r); if (r >= 0) base_loaded = 0;
+    }
+    if (!base_loaded && codec_loaded == 1) {
+        int r = sceUtilityUnloadAvModule(PSP_AV_MODULE_AVCODEC);
+        log_line("unload avcodec %08x", r); if (r >= 0) codec_loaded = 0;
+    } else if (codec_loaded == 2) codec_loaded = 0; /* borrowed module: release no ownership */
+    if (vol_held) {
+        int r = sceKernelVolatileMemUnlock(0);
+        log_line("volatile unlock %08x", r); if (r >= 0) vol_held = 0;
+    }
 }

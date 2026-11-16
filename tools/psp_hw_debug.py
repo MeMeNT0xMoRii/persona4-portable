@@ -85,7 +85,8 @@ def main():
                   "mdlEffectFlushWithTable", "mdlEffectAdvanceAndFlushWithTable",
                   "FldResource_QueueDrawCallbacks", "FldResource_QueueDrawCallbacksPrimary",
                   "FldResource_QueueDrawCallbacksSecondary", "PrimAllocQueueNode", "PrimAppendNode",
-                  "func_003d5bc0", "func_003d5e40", "func_003d5e90", "func_003d5840", "func_003e9680"]
+                  "func_003d5bc0", "func_003d5e40", "func_003d5e90", "func_003d5840", "func_003e9680",
+                  "p4r_003ed7e0", "func_003e9cb0", "mdlEffectListInvokeEach"]  # b263 frame sync, RwFrameTransform
     run(binpath / "psp-gcc.exe", "-G0", f"-L{sdk / 'lib'}", "-Wl,-zmax-page-size=128",
         f"-specs={sdk / 'lib' / 'prxspecs'}", f"-Wl,-q,-T{(stage / 'linkfile.prx').as_posix()}",
         "-Wl,--allow-multiple-definition", *[f"-Wl,--wrap={name}" for name in wraps],
@@ -108,14 +109,19 @@ def main():
     run(binpath / "pack-pbp.exe", out / "EBOOT.PBP", out / "PARAM.SFO", "NULL", "NULL", "NULL", "NULL", "NULL", out / "p4.prx", "NULL")
     print(run(binpath / "psp-size.exe", elf).strip())
     destination.mkdir(parents=True, exist_ok=True)
-    for name in ("p4.elf", "p4.prx", "EBOOT.PBP", data_name, "p4str.bin"):
+    artifacts = ["p4.elf", "p4.prx", "EBOOT.PBP", data_name, "p4str.bin"]
+    strip_pack = ROOT / "build/psp_dist/PSP/GAME/P4/p4strips.bin"
+    if strip_pack.is_file():
+        shutil.copyfile(strip_pack, out / strip_pack.name)
+        artifacts.append(strip_pack.name)
+    for name in artifacts:
         shutil.copyfile(out / name, destination / name)
     for path in (ROOT / "port").glob("*.h"):
         source_hashes[str(path.relative_to(ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()
     manifest = {"build": build_number, "release": args.release, "source_sha256": source_hashes,
                 "object_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in original_objects}, "artifact_sha256": {
         name: hashlib.sha256((destination / name).read_bytes()).hexdigest()
-        for name in ("p4.elf", "p4.prx", "EBOOT.PBP", data_name, "p4str.bin")}}
+        for name in artifacts}}
     (destination / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(f"Diagnostic output: {destination}")
 

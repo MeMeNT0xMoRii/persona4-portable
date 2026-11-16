@@ -6,6 +6,8 @@
 #include <sys/stat.h>
 #ifdef __psp__
 #include <pspiofilemgr.h>
+#include <pspthreadman.h>
+extern void p4_log(const char *fmt, ...);
 #endif
 #ifdef _WIN32
 #include <direct.h>
@@ -13,7 +15,12 @@
 #endif
 
 #ifndef P4_CARD_ROOT
-#define P4_CARD_ROOT "ms0:/PSP/GAME/P4/saves"
+#ifdef __psp__
+#include "paths.h"
+#define P4_CARD_ROOT p4_save_dir
+#else
+#define P4_CARD_ROOT "saves"
+#endif
 #endif
 
 enum { MC_MISSING = (int)0x80000002u, MC_IO = (int)0x80000013u };
@@ -82,6 +89,49 @@ int sceMc2GetInfoAsync(int socket, int *info)
     return complete(1, ok ? 0 : MC_IO);
 }
 
+/* b259: from b252 on (strip pack on) the title's save check failed now and then with 0x13 on a save that exists
+   (SDKMEMCARD_ERROR -3, "no memory card"), and a retry of the menu read it. A failed open or read of an existing
+   file is logged with errno and the firmware's own code of a fresh sceIoOpen, then tried again a few times. */
+/* b263: the code was 80020320, too many open files (the strip pack's held handle plus audio streams). The open
+   handles are then listed once (number@position) and the read waits up to 0.5 s: an audio stream gives its handle
+   back soon. Returns nonzero while waiting can help. */
+enum { CARD_TRIES = 25 }; /* 20 ms apart: up to 0.5 s */
+
+static int card_failure(const char *what, const char *path, int attempt)
+{
+#ifdef __psp__
+    int e = errno;
+    int fd = sceIoOpen(path, PSP_O_RDONLY, 0);
+    if (fd >= 0) sceIoClose(fd);
+    if (attempt == 1 || attempt == CARD_TRIES || fd >= 0)
+        p4_log("memcard %s failed (try %d): %s errno %d sceIoOpen %08x\n", what, attempt, path, e, (unsigned)fd);
+    if (attempt == 1 && fd == (int)0x80020320) {
+        char line[512] = "";
+        int n = 0, count = 0;
+        for (int i = 0; i < 128; i++) {
+            int at = sceIoLseek32(i, 0, PSP_SEEK_CUR);
+            if (at == (int)0x80020323) /* bad file descriptor: not open */
+                continue;
+            count++;
+            if (n < (int)sizeof line - 24)
+                n += snprintf(line + n, sizeof line - n, " %d@%x", i, (unsigned)at);
+        }
+        p4_log("memcard open handles %d:%s\n", count, line);
+    }
+    return fd >= 0 || fd == (int)0x80020320;
+#else
+    (void)what; (void)path; (void)attempt;
+    return 0;
+#endif
+}
+
+static void card_wait(void)
+{
+#ifdef __psp__
+    sceKernelDelayThread(20 * 1000);
+#endif
+}
+
 static FILE *open_saved(const char *path)
 {
     FILE *f = fopen(path, "rb");
@@ -99,11 +149,21 @@ int func_00431d78(int socket, const char *name, void *info)
     p4_mc_calls[1]++;
     char path[256];
     if (!card_path(path, socket, name)) return complete(1, MC_IO);
-    FILE *f = open_saved(path);
-    if (!f) return complete(1, errno == ENOENT ? MC_MISSING : MC_IO);
-    int ok = fseek(f, 0, SEEK_END) == 0;
-    long size = ok ? ftell(f) : -1;
-    if (fclose(f) != 0) size = -1;
+    long size = -1;
+    for (int attempt = 1; attempt <= CARD_TRIES; attempt++) {
+        FILE *f = open_saved(path);
+        int opened = f != NULL;
+        if (!f && errno == ENOENT) return complete(1, MC_MISSING);
+        if (f) {
+            int ok = fseek(f, 0, SEEK_END) == 0;
+            size = ok ? ftell(f) : -1;
+            if (fclose(f) != 0) size = -1;
+            if (size >= 0 && size <= INT_MAX) break;
+        }
+        size = -1;
+        if (!card_failure(opened ? "size" : "open for size", path, attempt)) break;
+        if (attempt < CARD_TRIES) card_wait();
+    }
     if (size < 0 || size > INT_MAX) return complete(1, MC_IO);
     memset(info, 0, 64);
     ((unsigned *)info)[4] = (unsigned)size;
@@ -117,15 +177,38 @@ int func_00431f28(int socket, const char *name, void *data, unsigned offset, uns
     p4_mc_bytes += size;
     char path[256];
     if (!card_path(path, socket, name) || offset > INT_MAX) return complete(5, MC_IO);
-    FILE *f = open_saved(path);
-    if (!f) return complete(5, errno == ENOENT ? MC_MISSING : MC_IO);
-    int ok = fseek(f, offset, SEEK_SET) == 0 && fread(data, 1, size, f) == size;
-    if (fclose(f) != 0) ok = 0;
+    int ok = 0;
+    for (int attempt = 1; attempt <= CARD_TRIES && !ok; attempt++) {
+        FILE *f = open_saved(path);
+        int opened = f != NULL;
+        if (!f && errno == ENOENT) return complete(5, MC_MISSING);
+        if (f) {
+            ok = fseek(f, offset, SEEK_SET) == 0 && fread(data, 1, size, f) == size;
+            if (fclose(f) != 0) ok = 0;
+        }
+        if (!ok) {
+            if (!card_failure(opened ? "read" : "open", path, attempt)) break;
+            if (attempt < CARD_TRIES) card_wait();
+        }
+    }
     return complete(5, ok && size <= INT_MAX ? (int)size : MC_IO);
 }
 
+/* Nonzero while a save is being written: the HOME exit waits for it (main.c). */
+volatile int p4_mc_writing;
+
+static int write_save(int socket, const char *name, const void *data, unsigned offset, unsigned size);
+
 /* Write to a temporary file first; retain the previous committed save if any step fails. */
 int func_00432288(int socket, const char *name, const void *data, unsigned offset, unsigned size)
+{
+    p4_mc_writing++;
+    int r = write_save(socket, name, data, offset, size);
+    p4_mc_writing--;
+    return r;
+}
+
+static int write_save(int socket, const char *name, const void *data, unsigned offset, unsigned size)
 {
     p4_mc_calls[3]++;
     char path[256], temp[264], backup[264];
@@ -171,10 +254,15 @@ int func_00432288(int socket, const char *name, const void *data, unsigned offse
 int func_004323a8(int socket, const char *name)
 {
     p4_mc_calls[4]++;
-    char path[256];
+    char path[256], backup[264];
     struct stat st;
     if (!card_path(path, socket, name)) return complete(1, MC_IO);
     if (stat(path, &st) == 0) return complete(1, S_ISREG(st.st_mode) ? 0 : MC_IO);
+    if (errno != ENOENT) return complete(1, MC_IO);
+    /* An interrupted replacement can leave the committed slot only in .bak; an empty primary would hide it
+       from open_saved (fix from MeMeNT0xMoRii's fork). */
+    snprintf(backup, sizeof backup, "%s.bak", path);
+    if (stat(backup, &st) == 0) return complete(1, S_ISREG(st.st_mode) ? 0 : MC_IO);
     if (errno != ENOENT) return complete(1, MC_IO);
     FILE *f = fopen(path, "wb");
     return complete(1, f && fclose(f) == 0 ? 0 : MC_IO);

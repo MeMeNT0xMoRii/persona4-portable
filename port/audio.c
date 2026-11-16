@@ -12,7 +12,7 @@
 #include <math.h>
 #include "audio.h"
 
-#define DIR "ms0:/PSP/GAME/P4/SOUND/"
+#include "paths.h"
 #define GRAIN 512
 #define STREAMS 5
 #define RING_BLOCKS 2048
@@ -193,7 +193,7 @@ static int read_exact(int fd,void *data,unsigned size)
 }
 static unsigned char *load_file(const char *name,unsigned *size)
 {
-    char path[128];snprintf(path,sizeof path,DIR "%s",name);
+    char path[P4_PATH_MAX];snprintf(path,sizeof path,"%s%s",p4_sound_dir,name);
     int fd=sceIoOpen(path,PSP_O_RDONLY,0);if(fd<0)return NULL;
     long long n=sceIoLseek(fd,0,PSP_SEEK_END);sceIoLseek(fd,0,PSP_SEEK_SET);
     unsigned char *p=n>0&&n<4*1024*1024?memalign(64,(unsigned)n):NULL;
@@ -280,9 +280,9 @@ static int refill(Stream *s)
 static int open_stream(Stream *s)
 {
     const Index *row=find(s->id);if(!row)return -1;
-    char name[128];
-    if(row->part==0xffffffffu)snprintf(name,sizeof name,DIR "%08x.p4a",s->id);
-    else snprintf(name,sizeof name,DIR "AUDIO.%u",row->part);
+    char name[P4_PATH_MAX];
+    if(row->part==0xffffffffu)snprintf(name,sizeof name,"%s%08x.p4a",p4_sound_dir,s->id);
+    else snprintf(name,sizeof name,"%sAUDIO.%u",p4_sound_dir,row->part);
     s->fd=sceIoOpen(name,PSP_O_RDONLY,0);if(s->fd<0)return -1;
     s->data_offset=row->offset;
     if(sceIoLseek(s->fd,s->data_offset,PSP_SEEK_SET)<0)return -1;
@@ -312,13 +312,14 @@ static int loader_main(SceSize size,void *arg)
             Stream *s=&streams[i];int state=s->state;
             if(state==CLOSE){if(s->fd>=0)sceIoClose(s->fd);s->fd=-1;BARRIER();s->state=EMPTY;}
             else if(state==LOAD){
+                if(s->fd>=0){sceIoClose(s->fd);s->fd=-1;} /* b259: a stream that failed in PREFILL kept its handle */
                 int result=open_stream(s);
                 if(result<0){if(s->fd>=0)sceIoClose(s->fd);s->fd=-1;++p4_audio_errors;}
                 BARRIER();if(s->state==LOAD)s->state=result<0?FAILED:PREFILL;
                 cursor=(i+1)%STREAMS;did_work=1;break;
             }else if(state==PREFILL){
                 int result=refill(s);
-                if(result<0){++p4_audio_errors;if(s->state==PREFILL)s->state=FAILED;}
+                if(result<0){++p4_audio_errors;if(s->fd>=0)sceIoClose(s->fd);s->fd=-1;BARRIER();if(s->state==PREFILL)s->state=FAILED;}
                 else if(s->produced>=RING_BLOCKS/2&&s->state==PREFILL){BARRIER();s->state=READY;}
                 cursor=(i+1)%STREAMS;did_work=1;break;
             }else if(state==PLAY&&s->produced-s->consumed<RING_BLOCKS-CHUNK_BLOCKS*2){
@@ -371,7 +372,8 @@ static void note_on(int owner,int group,int timbre,int velocity)
 {
     Sequence *seq=&sequences[owner];Bank *b=&banks[seq->bank];
     unsigned c=word(b->hd+0x34);
-    if(!offset_ok(c,28,b->hsize)||group<0||(unsigned)group>word(b->hd+c+12)||!offset_ok(c+24+group*4,4,b->hsize))goto bad;
+    /* Setb keeps its last sample-set index at +20, before the offset table (fix from MeMeNT0xMoRii's fork). */
+    if(!offset_ok(c,28,b->hsize)||group<0||(unsigned)group>word(b->hd+c+20)||!offset_ok(c+24+group*4,4,b->hsize))goto bad;
     unsigned g=c+word(b->hd+c+24+group*4);
     if(!offset_ok(g,8,b->hsize)||timbre<0||timbre>b->hd[g+6])goto bad;
     unsigned t=g+word(b->hd+g)+timbre*half(b->hd+g+4);

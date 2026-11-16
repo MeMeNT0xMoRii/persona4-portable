@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "audio.h"
+#include "paths.h"
 extern void p4_log(const char *fmt,...);
 static short current_cue=-1,current_track=-1;
 static char partitions[256][192];
@@ -18,7 +19,9 @@ void sdkSndInit(void)
     current_cue=current_track=-1;
     for(int i=0;i<6;++i)slot_complete[i]=1;
     SceIoStat st;
-    if(sceIoGetstat("ms0:/PSP/GAME/P4/NOSOUND",&st)>=0){p4_log("audio off: NOSOUND present\n");return;}
+    char marker[P4_PATH_MAX];
+    snprintf(marker,sizeof marker,"%sNOSOUND",p4_game_dir);
+    if(sceIoGetstat(marker,&st)>=0){p4_log("audio off: NOSOUND present\n");return;}
     p4_audio_init();
 }
 void sdkSndUpdate(void)

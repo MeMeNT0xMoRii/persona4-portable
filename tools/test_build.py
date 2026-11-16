@@ -76,6 +76,22 @@ class SourceBuildTests(unittest.TestCase):
             self.assertEqual(stage.call_count, 8)
             self.assertEqual((release / 'p4data.bin').read_bytes(), b'data')
 
+    def test_optional_strip_pack_is_checked_and_unknown_artifacts_are_rejected(self):
+        release = self.folder / 'release'
+        release_fixture(release)
+        manifest = builder.validate_result(release, 164)
+        (release / 'p4strips.bin').write_bytes(b'local strip pack')
+        manifest['artifact_sha256']['p4strips.bin'] = builder.digest(release / 'p4strips.bin')
+        builder.save_json(release / 'manifest.json', manifest)
+        builder.validate_result(release, 164)
+        (release / 'p4strips.bin').write_bytes(b'corruption')
+        with self.assertRaisesRegex(ValueError, 'hash mismatch: p4strips.bin'):
+            builder.validate_result(release, 164)
+        manifest['artifact_sha256']['unexpected.bin'] = '0' * 64
+        builder.save_json(release / 'manifest.json', manifest)
+        with self.assertRaisesRegex(ValueError, 'manifest is incomplete'):
+            builder.validate_result(release, 164)
+
     def test_changed_source_is_rejected_before_compiler(self):
         (self.bundle / 'source/port/main.c').write_text('changed')
         with patch.object(builder, 'find_pspdev') as compiler:

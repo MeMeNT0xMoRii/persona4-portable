@@ -4,7 +4,7 @@ These instructions target the current **b249** working-tree sources. Run command
 
 The aim is to rebuild the port and recreate the installation from your own disc. Bit-for-bit equality with the maintainer's previous b164 binary is not yet guaranteed: compiler, libraries, upstream revision and compiled inputs affect the output. Record the versions and hashes from your own build.
 
-The [2026-11-08 clean-build record](build_validation_b164.md) confirms that the code pipeline produced an EBOOT from fresh generated inputs. That build differs from the older local b164 binary and still needs hardware validation.
+The [2026-11-08 clean-build record](archive/build_validation_b164.md) confirms that the code pipeline produced an EBOOT from fresh generated inputs. That build differs from the older local b164 binary and still needs hardware validation.
 
 ## Requirements
 
@@ -143,6 +143,6 @@ python -m unittest discover -s tools -p test_video.py
 
 Keep `manifest.json`, `release.json`, the compile report, `build/address_audit/report.md`, the full retail ELF SHA-1, your port commit/working-tree changes, the upstream commit, compiler build information and `python -m pip freeze`. Manifest hashes identify a local build; they do not by themselves prove that it matches an older release.
 
-On hardware, check boot, consecutive opening movies, skip/return to gameplay, loading/saving, a voiced dialogue, music, a battle and a dungeon transition. Measure performance in the same scene with the same profiler settings. See [hardware test notes](hw_test_plan_b97.md) and [development measurements](next_steps_b112.md); the scenes and saves in historical experiments are not bundled with the source.
+On hardware, check boot, consecutive opening movies, skip/return to gameplay, loading/saving, a voiced dialogue, music, a battle and a dungeon transition. Measure performance in the same scene with the same profiler settings. See [hardware test notes](archive/hw_test_plan_b97.md) and [development measurements](archive/next_steps_b112.md); the scenes and saves in historical experiments are not bundled with the source.
 
 Do not publish the generated installation or EBOOT as part of a source snapshot. See [publication notes](publishing.md) for the distinction between source preparation and binary distribution.

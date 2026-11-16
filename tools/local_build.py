@@ -64,7 +64,7 @@ def main() -> None:
     # An absent/changed stamp requires regenerated objects: copying new FIXES alone does not
     # rebuild build/obj (b194 accidentally linked the pre-b192 mdlManager.o).
     census_hash = hashlib.sha256()
-    for name in ("tools/psp_census.py", "port/compat.h"):
+    for name in ("tools/psp_census.py", "tools/psp_vu0.py", "port/compat.h", "port/vu0.h"):
         census_hash.update(name.encode())
         census_hash.update((local / name).read_bytes())
     census_stamp = local / "build/census/local_build_inputs.sha256"

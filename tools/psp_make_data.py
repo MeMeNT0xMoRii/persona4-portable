@@ -13,8 +13,11 @@ from psp_ptr_proof import vu_regions
 from psp_xref import symbol_addresses
 
 MARKED = re.compile(r"//\s*FUN_([0-9A-Fa-f]{8})\s*\n(?:\s*(?:/\*.*?\*/|//[^\n]*|#[^\n]*)\s*\n)*[^(;{}]*?\b(\w+)\s*\([^;{}]*\)\s*\{", re.S)
-# K is 64 KB aligned so code only moves its lui. ponytail: the program may grow to here, about 4.7 MB of it unused now; lower this when the code is final.
-PSP_IMAGE = 0x0900DA00
+# K is 64 KB aligned so code only moves its lui. The port's code and .bss must end below this address: when the link
+# reports ".p4image overlaps .bss", raise it by a multiple of 0x10000 (the heap after the image shrinks by as much),
+# then rebuild from psp_census --compile, since RETAIL_LITERAL embeds K.
+# b305: 0x0900DA00 -> 0x0902DA00 (+128 KB), the .bss had grown 6.3 KB past the image.
+PSP_IMAGE = 0x0902DA00
 START = 0x52DA00
 K = PSP_IMAGE - START
 

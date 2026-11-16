@@ -1,5 +1,10 @@
 # Long-session audio/video hang investigation (2026-11-14)
 
+**Open regression:** b250 again hung on the title-return movie. The b249
+firmware handoff was present and ran; it is a partial mitigation, not a confirmed
+fix. See the b250 result below. A single successful b249 run did not establish
+long-session stability.
+
 Historical result: b169/b172/b174 hung in the first Media Engine video call
 after about ten minutes of gameplay with SAS running. b176 with `NOSOUND`
 decoded a movie after 2560 seconds. Those older measurements used 423 MHz;
@@ -155,3 +160,61 @@ It is running through PSPLink; the card's XMB EBOOT was not replaced. `NOSOUND`
 was renamed to `NOSOUND.b247-backup`, so game sound is enabled. This validates
 the reported title-return scenario once; broader cutscene/scene coverage remains
 open.
+
+## b250: title-return hang reproduced with the b249 handoff enabled
+
+The user confirmed another hang while returning to the title screen. The b249,
+b250 and b251 build manifests have identical hashes for `port/audio.c`,
+`port/audio.h`, `port/video.c` and `port/video_game.c`: the strip experiment did
+not omit the audio/video changes.
+
+The PSPLink console's final transition is `P4CTOP2`, movie index 22, after
+107083 mixed audio blocks, 47 aggregate errors and zero underruns. These errors
+also count unresolved game sound requests; the counter alone does not identify
+a firmware failure. The renderer drained and released 6984764 bytes of geometry
+caches. Audio reached state 5 (running, pause acknowledged), then both SASCORE
+and AVCODEC unloads returned 0. The workers stopped; video freshly loaded
+AVCODEC and MPEGBASE, both returning 0. There is no subsequent `mpeg init`
+return message: execution stopped within the following `sceMpegInit` call,
+before decoder creation and before any movie frame.
+
+This repeats the original failure despite a clean, acknowledged handoff and
+successful module lifecycle calls. It does not establish a strip-pack cause.
+Do not describe b249 as a complete fix or disable sound/skip movies silently.
+The user has requested no game restart while preparing the next build; no new
+hardware validation is claimed for b251/b252. A future device test must inspect
+the waiting MPEG/Media Engine threads at this boundary and repeat the long
+gameplay-to-title scenario, without screenshots during AVC playback.
+
+Read-only PSPLink inspection of the frozen b250, without restarting or changing
+game memory: `user_main` (UID `039C3A7F`) is WAITING, WaitType 4, WaitId
+`039D9723`, Real EPC `0B5C7184`. That event is **SceMediaEngineRpcWait**,
+current pattern 0, one waiting thread. `sceMpeg_library` text begins at
+`0B5C0000`. No `p4_audio` or `p4_audio_loader` thread remains. Thus the observed
+block is a Media Engine RPC response wait after audio teardown, rather than
+an audio worker failing to acknowledge the pause. This does not yet establish
+why the Media Engine did not signal completion. The persistent
+`sceMeCodecWrapper` module remains loaded; unloading AVCODEC/MPEGBASE does not
+unload this kernel service. Raw snapshots:
+`build/psplink_b250/title_return_hang_b250.log` and `title_return_threads.log`.
+
+## Attempt history b250-b265 (from the PSPLink session log, 2026-11-15)
+
+Every P4CTOP2 (movie index 22) start since b249, from `${P4_SESSION}/console.log`.
+"Hung" means the log stops right after `video load mpegbase 00000000`, i.e. inside
+`sceMpegInit`, as in b248/b250.
+
+| Build | Audio blocks before the movie | Audio errors | Result |
+|---|---:|---:|---|
+| b250 | 107083 | 47 | hung |
+| b252 | 3400 | 1 | passed |
+| b253 | 3402 / 5243 / 6994 / 4670 | 0-1 | hung, 4 times (startup attract loop, under 2 min) |
+| b253 | 64494 | 107 | hung |
+| b258 | 63494 | 1 | passed |
+| b265 | 107723 | 49 | hung |
+
+The hang does not need a long play session: b253 hung after 40-80 s of title
+attract playback. It predates commit d6de4e1 (memcard retries, audio stream
+handles closed on failure), which only touches handles of failed streams and
+save-file reads. That commit is not the cause. The b249 handoff passed once and
+does not fix the hang; the cause is still unknown.

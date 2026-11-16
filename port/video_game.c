@@ -6,6 +6,7 @@
 #include <string.h>
 #include <ctype.h>
 #include "video.h"
+#include "paths.h"
 #include "audio.h"
 
 extern void p4_log(const char *fmt, ...);
@@ -34,8 +35,8 @@ int mwPlayerUpdate(unsigned char *owner)
         stem[length] = toupper((unsigned char)base[length]); length++;
     }
     stem[length] = 0;
-    char converted[128]; SceIoStat stat;
-    snprintf(converted, sizeof converted, "ms0:/PSP/GAME/P4/VIDEO/%s.p4v", stem);
+    char converted[P4_PATH_MAX]; SceIoStat stat;
+    snprintf(converted, sizeof converted, "%sVIDEO/%s.p4v", p4_game_dir, stem);
     if (sceIoGetstat(converted, &stat) < 0) {
         p4_log("video missing %s; continuing\n", converted); return -1;
     }
@@ -59,7 +60,7 @@ int mwPlayerUpdate(unsigned char *owner)
         audio_suspended = p4_audio_suspend_for_video();
     }
     if (audio_suspended >= 0) {
-        result = p4_video_play("ms0:/PSP/GAME/P4/", stem, 0);
+        result = p4_video_play(p4_game_dir, stem, 0);
         p4_video_shutdown();
     } else
         p4_log("video skipped: audio firmware could not be released; continuing game\n");

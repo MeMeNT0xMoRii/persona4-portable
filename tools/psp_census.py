@@ -56,6 +56,12 @@ FIXES = {
     ],
     "src/frFontRaster.c": [
         ("void frFontRasterUploadGlyph(int entryAddress, u8 *bitmap, int palette)\n{", "__attribute__((noipa)) void frFontRasterUploadGlyph(int entryAddress, u8 *bitmap, int palette)\n{"),
+        ('    s32 blueShifted;\n', '    s32 blueShifted;\n    extern int p4_font_skip, p4_font_skip_prepare(void);\n    int p4_font_skip_ = p4_font_skip && p4_font_skip_prepare();\n'),
+        ('    originX = (f32)x / 16.0f;', '    if (p4_font_skip_) goto p4_font_cache_;\n    originX = (f32)x / 16.0f;'),
+        ('    if (MEMBER(u8 *, glyph, FrFontGlyphData, raster) == NULL) {', 'p4_font_cache_:\n    if (MEMBER(u8 *, glyph, FrFontGlyphData, raster) == NULL) {'),
+        ('    ((FrFontRasterEntry *)raster)->flags |= 1;\n    if (opacity == 0)', '    ((FrFontRasterEntry *)raster)->flags |= 1;\n    if (p4_font_skip_) {\n        if ((rgba & 0xFF) == 0) return 0;\n        goto p4_font_bind_;\n    }\n    if (opacity == 0)'),
+        ('    D_00887300[0](1, ((FrFontRasterEntry *)raster)->texture);', 'p4_font_bind_:\n    D_00887300[0](1, ((FrFontRasterEntry *)raster)->texture);'),
+        ('    D_00887310[0](4, vertices, 4);', '    if (!p4_font_skip_) D_00887310[0](4, vertices, 4);'),
         ("originX = (f32)x / 16.0f;", "originX = (f32)x / 21.0f;"),
         ("extentX = (f32)(u32)width;", "extentX = (f32)((width * 12) >> 4);"),
     ],
@@ -65,7 +71,46 @@ FIXES = {
     "src/unplaced/unplaced_inferred_00222210.c": [
         ("256.0f * scale[0],  512.0f * scale[1]", "192.0f * scale[0],  512.0f * scale[1]"),
     ],
+    # The CRI splash: a 640x448 active picture in a 1024x512 atlas, drawn 4:3 and centred (persona4-portable, home25).
+    "src/promoted/code1_0012.c": [
+        ("        sflDataDrawTexturedQuad(0, 0, 0.0f, 0x400, 0x200, 0xFFFFFF, 0xFF, 1, 0, 0, 0, fullImage, 0);",
+         "        { extern void p4_draw_cri_logo(s32 texture); p4_draw_cri_logo(fullImage); }"),
+    ],
+    # The fusion list's 16x16 indicators keep their 4:3 shape around the original column centres (home25).
+    "src/Event/y_fclCmbBall.c": [
+        ("    position.x += packetIndex * 19;",
+         "    const f32 halfWidth = 8.0f * (4.0f * 272.0f / (3.0f * 480.0f)); position.x += packetIndex * 19;"),
+        ("->x = position.x;", "->x = position.x + 8.0f - halfWidth;"),
+        ("->x = 16.0f + position.x;", "->x = position.x + 8.0f + halfWidth;"),
+    ],
+    # Retail sign-extends the room's low halfword; on an s32 roomId the 48-bit shift is undefined
+    # (secondary room fix from MeMeNT0xMoRii's fork; the primary compare has the same shape).
+    # The digit fade reads RGBA at sprite + 0x75. GCC ignores packed on the typedef name, leaving an unaligned lw
+    # that raises an address error on the PSP when a fusion's Persona rows retract (fix from MeMeNT0xMoRii's fork,
+    # P4-057: PSP Go crash after the second Persona; PPSSPP tolerates the load).
+    "src/nmCmdList_inferred_002ba080.c": [
+        ("    typedef struct {\n        u32 word;\n    } DigitStoredWord __attribute__((packed));",
+         "    typedef struct __attribute__((packed, may_alias)) {\n"
+         "        u32 word;\n"
+         "    } DigitStoredWord;\n"
+         "    _Static_assert(_Alignof(DigitStoredWord) == 1, \"digit color must be byte-aligned\");"),
+    ],
+    # Social Stats (P4-052, MeMeNT0xMoRii's fork): radarDrawSegment's last argument is a full register.
+    "src/Kernel/h_malloc_inferred_001400f0.c": [
+        ("extern void radarDrawSegment(s64 work, s64 value, s32 context, f32 depth, u8 option);",
+         "extern void radarDrawSegment(s64 work, s64 value, s32 context, f32 depth, s32 option);"),
+    ],
+    "src/Kernel/h_malloc_inferred_001441e0.c": [
+        ("->primaryRoom != ((s64)(roomId << 0x30) >> 0x30)", "->primaryRoom != (s16)roomId"),
+        ("->secondaryRoom != ((s64)(roomId << 0x30) >> 0x30)", "->secondaryRoom != (s16)roomId"),
+    ],
     "src/datCalendar_inferred_001228c0.c": [
+        ("void calendarDrawBackdrop(void *unusedNode, void *work)\n{", f'#include "{(ROOT / "port/calendar_skip.h").as_posix()}"\nvoid calendarDrawBackdrop(void *unusedNode, void *work)\n{{\n    extern int p4_calendar_skip, p4_calendar_skip_prepare(void);\n    int p4skip;\n    unsigned p4initial;'),
+        ("    calendar = (CalendarState *)work;", "    p4skip = p4_calendar_skip && p4_calendar_skip_prepare();\n    calendar = (CalendarState *)work;\n    p4initial = calendar->field_0C;"),
+        ("        startFrame = calendar->records[1].field_28;", "        if (p4skip) goto p4_calendar_end_;\n        startFrame = calendar->records[1].field_28;"),
+        ("    if ((calendar->field_0C & 2) != 0)", "    if (!p4skip && (calendar->field_0C & 2) != 0)"),
+        ("    if ((calendar->field_0C & 4) != 0)", "    if (!p4skip && (calendar->field_0C & 4) != 0)"),
+        ("    states[0](rwRENDERSTATEFOGENABLE, (void *)savedFog);", "p4_calendar_end_:\n    if (p4skip) p4_calendar_restore_state(calendar, p4initial);\n    states[0](rwRENDERSTATEFOGENABLE, (void *)savedFog);"),
         ("((SdkSpriteSample *)sprite)->signedScaleX = 0xFF6;", "((SdkSpriteSample *)sprite)->signedScaleX = 0xBF6;"),
     ],
     "src/shdPersona.c": [
@@ -96,9 +141,84 @@ FIXES = {
     "src/Graphics/Effect/effObjectParticle.c": [("*(f32 (*)[1])", "*(f32 *)")],
     "src/frFont.c": [
         ("extern u8 iGpffffa748;", "extern s8 iGpffffa748;"),
-        ("x = ((FrFontTextRun *)node)->x;", "x = (((FrFontTextRun *)node)->x >> 4) * 21;"),
+        # Run anchors use sixteenths of a pixel, glyph advances twenty-firsts in the PSP rasterizer (fix from
+        # MeMeNT0xMoRii's fork: gaps around inserted names and in stat messages).
+        ("x = ((FrFontTextRun *)node)->x;", "x = (((FrFontTextRun *)node)->x * 21) / 16;"),
+        ("((FrFontTextRun *)tail)->width * 0x10;", "((FrFontTextRun *)tail)->width * 256 / 21;"),
     ],
     "src/Event/Fcl/fclCombineMisc.c": [("typedef struct p4_q s128;", "typedef long long s128;")],  # holds a small integer
+    # The point transform reads all three components, even for the screen-plane rotation; retail leaves z unwritten
+    # (fix from MeMeNT0xMoRii's fork).
+    # b311 TMX images over 512 a side reduced for the GE (fix from MeMeNT0xMoRii's fork, P4-001: blank CRI logo).
+    "src/Kernel/sdkUttmx.c": [
+        ("    return image;\n}\n\n\n/* Read the TMX header",
+         "    if (image->width > 512 || image->height > 512) {\n"
+         "        extern unsigned p4_tmx_texture_size(unsigned size);\n"
+         "        extern void p4_tmx_reduce(void *, unsigned, const void *, unsigned, unsigned, unsigned, int);\n"
+         "        /* RwImage stores one byte per index even for a four-bit palette. */\n"
+         "        p4_tmx_reduce(image->cpPixels, image->stride, image->cpPixels, image->stride,\n"
+         "                      image->width, image->height, image->depth == 4 ? 8 : image->depth);\n"
+         "        image->width = p4_tmx_texture_size(image->width);\n"
+         "        image->height = p4_tmx_texture_size(image->height);\n"
+         "    }\n"
+         "    return image;\n}\n\n\n/* Read the TMX header"),
+        ("textureHandle = func_003ec590(width, height, bitsPerPixel, resourceValue);",
+         "{ extern unsigned p4_tmx_texture_size(unsigned size);\n"
+         "    textureHandle = func_003ec590(p4_tmx_texture_size(width), p4_tmx_texture_size(height), bitsPerPixel, resourceValue); }"),
+        ("  switch (bitsPerPixel)\n  {",
+         "  if (width > 512 || height > 512) {\n"
+         "    extern void p4_tmx_copy_limited(void *, const void *, unsigned, unsigned, int);\n"
+         "    p4_tmx_copy_limited((void *)textureBuffer, (const void *)sourceAddressOrBits, width, height, bitsPerPixel);\n"
+         "  } else switch (bitsPerPixel)\n  {"),
+    ],
+    # b312 silhouette tint and TV rings (from MeMeNT0xMoRii's fork).
+    "src/shdMisc.c": [
+        ("    ShdQuadVertex verts[4];\n",
+         "    extern int p4_texture_tint;\n"
+         "    extern void p4_draw_texture_tint(u32, f32, f32, f32, f32, f32, f32, void *, int, int);\n"
+         "    if (p4_texture_tint && texture && (blendMode == 0 || blendMode == 1)) {\n"
+         "        p4_draw_texture_tint(color, x, y, maskX, maskY, width, height, *(void **)texture,\n"
+         "                             drawMask && (color & 255) != 255, blendMode);\n"
+         "        return;\n"
+         "    }\n"
+         "    ShdQuadVertex verts[4];\n"),
+    ],
+    "src/Scene/mt_scene_inferred_00266a40.c": [
+        ("    if (shape == 9) {\n        specialCount = counts.value[shape * 2];",
+         "    {\n"
+         "        extern int p4_draw_tv_ring(const void *, int, const void *, int, float, float,\n"
+         "                                  int, int, float, float, float, unsigned, unsigned);\n"
+         "        if ((unsigned)shape < 9 &&\n"
+         "            p4_draw_tv_ring(sources.value[shape * 2], counts.value[shape * 2],\n"
+         "                            sources.value[shape * 2 + 1], counts.value[shape * 2 + 1],\n"
+         "                            x, y, originX, originY, rotation, scaleX, scaleY, rgb, alpha))\n"
+         "            return;\n"
+         "    }\n"
+         "    if (shape == 9) {\n        specialCount = counts.value[shape * 2];"),
+    ],
+    # b323 Shuffle Time card scopes for the back-face culling in im3d_draw (MeMeNT0xMoRii's fork, P4-032).
+    "src/Battle/btlShuffleCard.c": [
+        ("    pscModelDraw(card);",
+         "    extern void p4_shuffle_card_begin(int);\n"
+         "    p4_shuffle_card_begin(1);\n"
+         "    pscModelDraw(card);\n"
+         "    p4_shuffle_card_begin(0);"),
+    ],
+    "src/Battle/btlShuffleDraw.c": [
+        ("extern s32 func_004106a0(BtlShufflePrimitive primitive);",
+         "extern s32 p4_shuffle_render_primitive(BtlShufflePrimitive primitive);"),
+        ("func_004106a0(4);", "p4_shuffle_render_primitive(4);"),
+    ],
+    "src/Kernel/sdkSpr.c": [
+        ("    /* Retail leaves source[].z unwritten, yet both point-transform providers read Z, so these calls\n"
+         "     * read uninitialized input. */\n",
+         "    for (copyIndex = 0; copyIndex < 4; copyIndex++) {\n"
+         "        source[copyIndex].z = 0.0f;\n"
+         "    }\n"),
+    ],
+    "src/unplaced/unplaced_inferred_0046a770.c": [
+        ("        /* Retail leaves the third component unwritten before rotation. */", "        d->z = 0.0f;"),
+    ],
 }
 # FldFrame_RaycastFieldWorlds gets NULL from MT_Scene_GetRes (b112-b130, dungeon corridors, near treasure chests): the
 # key is not a resource id but the low half of a stack address (fc20, f030, e440 ... one frame size apart). The PS2
@@ -126,6 +246,9 @@ FIXES["src/Kosaka/k_clump/k_clump_inferred.c"] = [
 # mdlEffectResolveChildOffset loads values[] as a full quadword: the fourth word was a stray stack slot.
 FIXES["src/Graphics/Model/mdlEffect_inferred_00486780.c"] = [("u32 values[3];", "u32 values[4] = {0};")]
 FIXES["src/Graphics/Model/mdlManager.c"] = [
+    # The local matrices' flags were or-ed into an unset stack word (fix from MeMeNT0xMoRii's fork).
+    ("      identityMatrix.flags = identityMatrix.flags | 0x20003;", "      identityMatrix.flags = 0x20003;"),
+    ("      baseMatrix.flags |= 0x20003;", "      baseMatrix.flags = 0x20003;"),
     # b154: log the per-node scale the hierarchy scale hook applies (Margaret's head drawn as a line)
     ('        *(f32*)D_00922BB4_abs = hierarchyScale->aspect;\n',
      '        *(f32*)D_00922BB4_abs = hierarchyScale->aspect;\n        { extern void p4_scale_hook_note(void *layer, int node, const float *scale, float model_scale, float aspect, int speed_zero);\n          p4_scale_hook_note(layer, hierarchyScale->node, (const float *)(scaleFields + 4), hierarchyScale->modelScale, hierarchyScale->aspect,\n                             ((MdlLayerState *)layer)->speed == 0.0f); }\n'),
@@ -136,24 +259,41 @@ FIXES["src/Graphics/Model/mdlManager.c"] = [
     ('                        mdlUpdateHierarchyPose(*(void * *)&((MdlLayerState *)layer)->hierarchy, layer, layer + 0x54, 0);\n',
      '                        { extern void p4_sec(int, int); p4_sec(8, 1); }\n                        { extern int p4_pose_plain; if (p4_pose_plain) func_00397c40(*(void * *)&((MdlLayerState *)layer)->hierarchy); else\n                        mdlUpdateHierarchyPose(*(void * *)&((MdlLayerState *)layer)->hierarchy, layer, layer + 0x54, 0); }\n                        { extern void p4_sec(int, int); p4_sec(8, 0); }\n'),
     ('        func_003e9cb0(frame, &matrix, 0);\n',
-     '        { extern void p4_sec(int, int); p4_sec(0, 1); }\n        func_003e9cb0(frame, &matrix, 0);\n        { extern void p4_sec(int, int); p4_sec(0, 0); }\n'),
+     '        { extern void p4_sec(int, int); p4_sec(0, 1); }\n        { extern int p4_tick_lite(int); if (!p4_tick_lite(1)) func_003e9cb0(frame, &matrix, 0); }\n        { extern void p4_sec(int, int); p4_sec(0, 0); }\n'),
     ('        mdlSetAttachedModelMatrices((Model*)model, &matrix);\n',
-     '        { extern void p4_sec(int, int); p4_sec(1, 1); }\n        mdlSetAttachedModelMatrices((Model*)model, &matrix);\n        { extern void p4_sec(int, int); p4_sec(1, 0); }\n'),
+     '        { extern void p4_sec(int, int); p4_sec(1, 1); }\n        { extern int p4_tick_lite(int); if (!p4_tick_lite(1)) mdlSetAttachedModelMatrices((Model*)model, &matrix); }\n        { extern void p4_sec(int, int); p4_sec(1, 0); }\n'),
     ('                previousLayer = mdlAdvanceLayer(model + animationLayer * 0xA4 + 0xEC,\n                                             previousLayer, tick);\n',
      '                { extern void p4_sec(int, int); p4_sec(2, 1); }\n'
      '                { MdlLayerState *p4l = (MdlLayerState *)(model + animationLayer * 0xA4 + 0xEC); extern void p4_anim_lazy_scope(void *, void *);\n'
      '                  p4_anim_lazy_scope(p4l->hierarchy ? (void *)((RpHAnimHierarchy *)p4l->hierarchy)->currentAnim : 0, (void *)p4l->rebaseInput); }\n'
-     '                previousLayer = mdlAdvanceLayer(model + animationLayer * 0xA4 + 0xEC,\n                                             previousLayer, tick);\n'
+     '                { extern int p4_anim_freeze; if (!(p4_anim_freeze & 1))\n'
+     '                previousLayer = mdlAdvanceLayer(model + animationLayer * 0xA4 + 0xEC,\n                                             previousLayer, tick); }\n'
      '                { extern void p4_anim_lazy_scope(void *, void *); p4_anim_lazy_scope(0, 0); }\n'
      '                { extern void p4_sec(int, int); p4_sec(2, 0); }\n'),
     ('        mdlAdvanceAnimControl(model + 0x23C, model + 0xEC);\n',
      '        { extern void p4_sec(int, int); p4_sec(3, 1); }\n        { extern void p4_anim_lazy_materials(int); p4_anim_lazy_materials(1); }\n'
-     '        mdlAdvanceAnimControl(model + 0x23C, model + 0xEC);\n'
+     '        { extern int p4_anim_freeze; if (!(p4_anim_freeze & 4)) mdlAdvanceAnimControl(model + 0x23C, model + 0xEC); }\n'
      '        { extern void p4_anim_lazy_materials(int); p4_anim_lazy_materials(0); }\n        { extern void p4_sec(int, int); p4_sec(3, 0); }\n'),
     ('                mdlEffectListBuildTransforms(*(u8** *)&((Model *)model)->effects, model);\n',
-     '                { extern void p4_sec(int, int); p4_sec(4, 1); }\n                mdlEffectListBuildTransforms(*(u8** *)&((Model *)model)->effects, model);\n                { extern void p4_sec(int, int); p4_sec(4, 0); }\n'),
+     '                { extern void p4_sec(int, int); p4_sec(4, 1); }\n                { extern int p4_tick_lite(int); if (!p4_tick_lite(2)) mdlEffectListBuildTransforms(*(u8** *)&((Model *)model)->effects, model); }\n                { extern void p4_sec(int, int); p4_sec(4, 0); }\n'),
     ('        mdlTickMotionState(model + 0x2D0);\n',
      '        { extern void p4_sec(int, int); p4_sec(5, 1); }\n        mdlTickMotionState(model + 0x2D0);\n        { extern void p4_sec(int, int); p4_sec(5, 0); }\n'),
+]
+# b279: section 19 (aadv): mdlAdvanceModel as mdlQueueModelForDraw calls it, inclusive; qmodel minus aadv is the queue itself
+FIXES["src/Graphics/Model/mdlManager.c"] += [
+    ('        mdlAdvanceModel(model, (flags & 1) == 0);\n',
+     '        { extern void p4_sec(int, int); p4_sec(19, 1); mdlAdvanceModel(model, (flags & 1) == 0); p4_sec(19, 0); }\n'),
+    # b283: one statement, it is the body of `if ((flags & 4) == 0)`. b279-b282 had three: the advance ran for every
+    # model, flag 4 too (models the game advances elsewhere), and their animation ran twice as fast.
+]
+# b278 p4_tick_lite (port/rwsky.c): in a tick frameskip leaves undrawn, mdlAdvanceModel skips what the next drawn tick
+# sets again from scratch: bit 1 the root frame and attached model matrices, 2 the effect transforms, 4 the child models'
+# indexed matrix copies. Clocks, layers, motion and attachment delays still run every tick.
+FIXES["src/Graphics/Model/mdlManager.c"] += [
+    ('                        mdlEffectListBuildTransforms((u8**)attachments->primaryDraw, model);\n',
+     '                        { extern int p4_tick_lite(int); if (!p4_tick_lite(2)) mdlEffectListBuildTransforms((u8**)attachments->primaryDraw, model); }\n'),
+    ('                            mdlCopyIndexedMatrix(model, childFrame, childMatrix);\n',
+     '                            { extern int p4_tick_lite(int); if (!p4_tick_lite(4)) mdlCopyIndexedMatrix(model, childFrame, childMatrix); }\n'),
 ]
 # Profiler (b182): mdlUpdateDrawState is the character shadow pass (OT node 28, ~4 Mcycles a frame of its own in a
 # battle): time its parts, and check whether the flattened pose is the normal one times the shear (port/rwsky.c
@@ -261,24 +401,70 @@ FIXES["src/Graphics/Model/mdlManager.c"] += [
      'static s32 p4_mdlUpdateHierarchyPose(u8 *hierarchyData, u8 *layerState, u8 *controllerState, void *parentTransform);\n'
      's32 mdlUpdateHierarchyPose(u8 *hierarchyData, u8 *layerState, u8 *controllerState, void *parentTransform)\n'
      '{ extern void p4_anim_lazy_pause(void *, int); s32 p4r; void *p4cur = ((RpHAnimHierarchy *)hierarchyData)->currentAnim;\n'
+     '  extern int p4_anim_freeze; if (p4_anim_freeze & 2) return 1;\n'
      '  extern void p4_look_check(void *, void *, void *, int);\n'
      '  p4_anim_lazy_pause(p4cur, 1); p4_look_check(hierarchyData, controllerState, parentTransform, 0);\n'
      '  p4r = p4_mdlUpdateHierarchyPose(hierarchyData, layerState, controllerState, parentTransform);\n'
      '  p4_look_check(hierarchyData, controllerState, parentTransform, 1); p4_anim_lazy_pause(p4cur, 0); return p4r; }\n'
      'static s32 p4_mdlUpdateHierarchyPose(u8 *hierarchyData, u8 *layerState, u8 *controllerState, void *parentTransform)\n\n{\n    RwMatrix *parentMatrix;\n'),
 ]
-# b237: consume ordinary-node runs in a small native loop. The original head case and
-# directional-blend tail still run exactly once, with the same parent-stack pointers.
+# b269: the parts of mdlAdvanceModel no section timed yet (Heaven b258: ~2.5 M cycles of qmodel outside every
+# section): 16 ascale (mdlHasActiveMode + mdlCopyScale), 17 ahandle (the attachment handle switch), 18 achild (the
+# child models: weapons through mdlCopyIndexedMatrix and a recursive mdlAdvanceModel; inclusive).
 FIXES["src/Graphics/Model/mdlManager.c"] += [
-    ('    for (nodeIndex = 0; nodeIndex < hierarchy->numNodes; nodeIndex = nodeIndex + 1) {\n      if (func_003954b0 == applyKeyFrame) {\n',
-     '    for (nodeIndex = 0; nodeIndex < hierarchy->numNodes; nodeIndex = nodeIndex + 1) {\n'
-     '      { extern int p4_pose_runs; extern int p4_pose_run(void *, int, void *, void *, void *, void *, void *, void *, void (*)(void *, void *));\n'
-     '        if (p4_pose_runs) {\n'
-     '          int p4n = p4_pose_run(hierarchy, nodeIndex, (void *)keyFrameAddress, outputMatrix, (void *)nodeInfoAddress, &nodeParentMatrix, &parentStackTop, &baseMatrix, applyKeyFrame);\n'
-     '          nodeIndex += p4n; keyFrameAddress += p4n * frameOrStride; outputMatrix += p4n * 16; nodeInfoAddress += p4n * 16;\n'
-     '          if (nodeIndex == hierarchy->numNodes) break;\n'
-     '        } }\n'
-     '      if (func_003954b0 == applyKeyFrame) {\n'),
+    ('        if (mdlHasActiveMode(model) != 0) {\n            mdlCopyScale(model, &((Model*)model)->scale);\n        }\n',
+     '        { extern void p4_sec(int, int); p4_sec(16, 1); }\n'
+     '        if (mdlHasActiveMode(model) != 0) {\n            mdlCopyScale(model, &((Model*)model)->scale);\n        }\n'
+     '        { extern void p4_sec(int, int); p4_sec(16, 0); }\n'),
+    ('        for (switchLayer = 0; switchLayer < 2; switchLayer++) {\n',
+     '        { extern void p4_sec(int, int); p4_sec(17, 1); }\n        for (switchLayer = 0; switchLayer < 2; switchLayer++) {\n'),
+    ('        if (tick != 0) {\n            draw = ((Model *)model)->effects;\n',
+     '        { extern void p4_sec(int, int); p4_sec(17, 0); }\n        if (tick != 0) {\n            draw = ((Model *)model)->effects;\n'),
+    ('        for (child = 0; child < 5; child++) {\n',
+     '        { extern void p4_sec(int, int); p4_sec(18, 1); }\n        for (child = 0; child < 5; child++) {\n'),
+    ('                        mdlAdvanceModel(*updateSlot, tick);\n                    }\n                }\n            }\n        }\n    }\n}\n',
+     '                        mdlAdvanceModel(*updateSlot, tick);\n                    }\n                }\n            }\n        }\n'
+     '        { extern void p4_sec(int, int); p4_sec(18, 0); }\n    }\n}\n'),
+]
+# b287 (Shuffle Time, docs/shuffle_time_perf.md): the effect tree walks call each child's kind callbacks, +0x08 advance
+# (mdlEffectCommitTreeFrame) and +0x0C draw (mdlEffectFlushTreeFrame). Timed into the hwot table keyed by callback
+# address | 1 (advance) or | 2 (draw); inclusive, nested trees count again. p4_fx_skip_draw (port/rwsky.c) may leave
+# the draw callback out in ticks frameskip does not draw.
+_FX_CALL = "(((MdlEffectPrimitiveRecord *)primitive)->instance.handle);\n"
+FIXES["src/Graphics/Model/mdlEffect_inferred_00484bb0.c"] = [
+    ('        (*(void (**)(s32))(D_00713480 + (((MdlEffectPrimitiveRecord *)primitive)->kind << 6) + 0x08))' + _FX_CALL,
+     '        { extern unsigned p4_ot_begin(void); extern void p4_ot_end(unsigned, unsigned);\n'
+     '          void (*p4fn)(s32) = *(void (**)(s32))(D_00713480 + (((MdlEffectPrimitiveRecord *)primitive)->kind << 6) + 0x08);\n'
+     '          unsigned p4t = p4_ot_begin(); p4fn' + _FX_CALL.rstrip('\n') + ' p4_ot_end(p4t, (unsigned)p4fn | 1); }\n'),
+    ('        (*(void (**)(s32))(D_00713480 + (((MdlEffectPrimitiveRecord *)primitive)->kind << 6) + 0x0C))' + _FX_CALL,
+     '        { extern unsigned p4_ot_begin(void); extern void p4_ot_end(unsigned, unsigned); extern int p4_fx_draw_skipped(void);\n'
+     '          void (*p4fn)(s32) = *(void (**)(s32))(D_00713480 + (((MdlEffectPrimitiveRecord *)primitive)->kind << 6) + 0x0C);\n'
+     '          if (!p4_fx_draw_skipped()) { unsigned p4t = p4_ot_begin(); p4fn' + _FX_CALL.rstrip('\n') + ' p4_ot_end(p4t, (unsigned)p4fn | 2); } }\n'),
+]
+# p4_fx_direct (port/fx_direct.h, 2026-11-15): effect atomics are marked where effGeometry.c makes them and unmarked when
+# RenderWare destroys an atomic, so the port can draw them on their own path.
+_FX_MARK = '{ extern void p4_fx_mark(void *); p4_fx_mark((void *)(%s)); }\n'
+FIXES["src/Graphics/Effect/effGeometry.c"] = [
+    ('    func_003c0210((RpAtomic *)atomic, (RpGeometry *)geometry, 0);\n',
+     '    func_003c0210((RpAtomic *)atomic, (RpGeometry *)geometry, 0);\n    ' + _FX_MARK % 'atomic'),
+    ('        func_003c0210(atomic, geometry, 0);\n',
+     '        func_003c0210(atomic, geometry, 0);\n        ' + _FX_MARK % 'atomic'),
+    ('    ((EffGeometryBlock *)block)->atomicData.signedValue = func_003a2340(resourceId & 0xFFFF, flags, 2);\n',
+     '    ((EffGeometryBlock *)block)->atomicData.signedValue = func_003a2340(resourceId & 0xFFFF, flags, 2);\n    '
+     + _FX_MARK % '((EffGeometryBlock *)block)->atomicData.signedValue'),
+    ('    s32 resource = ((EffGeometryBlock *)block)->atomicData.signedValue;\n    if (resource != 0) {\n',
+     '    s32 resource = ((EffGeometryBlock *)block)->atomicData.signedValue;\n'
+     '    { extern void p4_fx_unmark(void *); p4_fx_unmark((void *)resource); }\n    if (resource != 0) {\n'),
+]
+# p4_shuffle_force_bonus (2026-11-15, port/rwsky.c): 1 = the Arcana Chance roll always passes once the game's own
+# flags allow it, so the slow Arcana Chance screen of Shuffle Time can be measured on demand. 0: the retail roll.
+FIXES["src/Battle/btlShuffleResult.c"] = [
+    ('    if ((u8)chance < (u8)thresh) {\n',
+     '    if ((u8)chance < (u8)thresh || ({ extern int p4_shuffle_force_bonus; p4_shuffle_force_bonus; })) {\n'),
+]
+FIXES["src/promoted/code1_003c.c"] = [
+    ('    self = arg0;\n    func_003e3c20(D_0070AF70, self);\n',
+     '    self = arg0;\n    { extern void p4_fx_unmark(void *); p4_fx_unmark(self); }\n    func_003e3c20(D_0070AF70, self);\n'),
 ]
 RETAIL_LITERAL = re.compile(r"(\*\)\s*(?:\([^()\n]*\)\s*\)\s*)?\(?)(0x0{0,2}[5-9][0-9A-Fa-f]{5})\b")  # data and callback pointer casts move with the image
 TIMER_CONTROL = re.compile(r"\*\s*\(\s*(?:volatile\s+)?u32\s*\*\s*\)\s*0x100000[123]0")
@@ -288,7 +474,7 @@ EE_ONLY = re.compile(r"\$?\bvf\d|\$?\bvi\d|\$ACC|\$Q\b|\b(?:q?mtc2|q?mfc2|c[tf]c
 COMPILE = "--compile" in sys.argv
 PASSES = 20
 FLAGS = ["-std=gnu89", "-w", "-ffreestanding", "-fno-builtin", "-fms-extensions", "-fmax-errors=0",
-         "-Iinclude", "-Isrc", "-I.", "-DINCLUDE_ASM(F,N)=", "-DINCLUDE_RODATA(F,N)=", "-include", str(ROOT / "port" / "compat.h")]
+         "-Iinclude", "-Isrc", "-I.", f"-I{ROOT / 'port'}", "-DINCLUDE_ASM(F,N)=", "-DINCLUDE_RODATA(F,N)=", "-include", str(ROOT / "port" / "compat.h")]
 
 
 def drop_asm_bodies(text):
@@ -370,6 +556,8 @@ def trap_ee_asm(text):
 # struct return the output pointer arrived in a2 and the PSP faulted storing to 0x6B (an event effect after a bustup).
 QUAD_SETTERS = re.compile(r"\b(?:u_long128|s128|u128)(\s+\w*(?:Set|Store|Copy|InitParticleState|Get\w*Vec)\w*\s*\()")
 QUAD_SETTER_BODY = re.compile(r"\bvoid\s+\w*(?:Set|Store|Copy|InitParticleState|Get\w*Vec)\w*\s*\([^;{)]*\)\s*\{")
+QUAD_SETTER_RETURN = re.compile(r"\breturn\s+([^;]+);")
+QUAD_ASSIGNMENT = re.compile(r"(?<![=!<>])=(?!=)")
 
 
 # The quad loaders are defined to return a 128-bit value (a struct here: hidden first argument) and most callers say so,
@@ -387,6 +575,14 @@ def void_quad_setters(text):
     and return the quad only in passing: they become void."""
     if not QUAD_SETTERS.search(text):
         return text
+
+    def drop_value(match):
+        value = match[1]
+        # Some setters do their only store in the return expression (fix from MeMeNT0xMoRii's fork).
+        if QUAD_ASSIGNMENT.search(value):
+            return f"{{ {value}; return; }}"
+        return "return;"
+
     text = QUAD_SETTERS.sub(r"void\1", text)
     out, pos = [], 0
     for m in QUAD_SETTER_BODY.finditer(text):
@@ -394,7 +590,7 @@ def void_quad_setters(text):
         while depth:
             depth += {"{": 1, "}": -1}.get(text[i], 0)
             i += 1
-        out.append(text[pos:m.end()] + re.sub(r"\breturn\s+[^;]+;", "return;", text[m.end():i]))
+        out.append(text[pos:m.end()] + QUAD_SETTER_RETURN.sub(drop_value, text[m.end():i]))
         pos = i
     return "".join(out) + text[pos:]
 
@@ -407,7 +603,13 @@ REALLY_64_BIT = {"gsPackGifTag", "mdlEffectEmitValuePacket", "dpsub", "RunningSt
                  # b165: an s64 that carries two floats (x low, y high; callers pass *(s64 *)&vec2). Narrowed, y was
                  # lost: the minimap's player arrow drew at y ~0, above the map.
                  "mapSymbolMarkerDraw", "taskRecordSetPosition", "H_Dbprt_FmtAt", "sflDataDrawPersonaPanel",
-                 "sflDataDrawByteValuePanel", "sflDataDrawNumberValue", "sflDataDrawTitledIcon", "sflDataDrawLevelBadge"}
+                 "sflDataDrawByteValuePanel", "sflDataDrawNumberValue", "sflDataDrawTitledIcon", "sflDataDrawLevelBadge",
+                 # Item cursor and Persona layout pass packed screen coordinates by value (MeMeNT0xMoRii's fork).
+                 "radarDrawSpritePair", "shdPersonaDrawNamePlate", "shdPersonaDrawFramePair",
+                 "shdPersonaDrawExpRow", "shdPersonaDrawArcanaBadge", "shdPersonaDrawLevelDigits",
+                 "shdPersonaDrawPanelSprites", "radarDrawPalettePair", "radarDrawPaletteSet", "radarDrawItemCard",
+                 # Social Stats draw calls too (P4-052, MeMeNT0xMoRii's fork).
+                 "radarDrawNumber", "radarDrawSegment", "datGridEffectDrawStrip"}
 
 
 def narrow_parameters(text):
@@ -467,6 +669,69 @@ ASM_FIXES = {
 }
 
 
+def native_ui(text, rel):
+    """Retain the stock body as fallback; compact variants share its P4 calculations."""
+    names = {"src/frFontRaster.c": "frFontRasterDrawGlyph", "src/Kernel/sdkSpr.c": "sdkSpriteDraw"}
+    if rel not in names:
+        return text
+    name = names[rel]
+    match = re.search(rf"^(?:s32|void) {name}\([^;{{}}]*\)\s*\{{", text, re.M)
+    assert match, (rel, name)
+    end = text.index('\n}', match.end()) + 2
+    body = text[match.start():end]
+    clone = 'static ' + body.replace(name + '(', 'p4_native_' + name + '(', 1)
+    if name == 'frFontRasterDrawGlyph':
+        a, b = clone.index('    originX ='), clone.index('p4_font_cache_:')
+        geometry = clone[a:b].replace('    opacity = rgba & 0xFF;\n', '')
+        geometry = geometry.replace('    reciprocal = 1.0f / ((RwCamera *)(u32)kwlnGetCamera())->nearPlane;\n', '')
+        clone = clone[:a] + '    opacity = rgba & 0xFF;\n' + clone[b:]
+        clone = clone.replace('    if (p4_font_skip_) goto p4_font_cache_;\n', '')
+        clone = clone.replace('f32 vertices[64];', 'P4UiVertex vertices[4];')
+        clone = clone.replace('    memset(vertices, 0, 0x100);', geometry)
+        a, b = clone.index('    while (vertexIndex < 4)'), clone.index('p4_font_bind_:')
+        clone = clone[:a] + '''    while (vertexIndex < 4) {
+        P4UiVertex *v = &vertices[vertexIndex];
+        v->u.els.screen.x = corners[vertexIndex * 2];
+        v->u.els.screen.y = corners[vertexIndex * 2 + 1];
+        v->u.els.screen.z = depthZ;
+        v->u.els.u = texture.coordinates[vertexIndex * 2];
+        v->u.els.v = texture.coordinates[vertexIndex * 2 + 1];
+        p4_ui_colour(v, redShifted, greenShifted, blueShifted, opacity);
+        vertexIndex++;
+    }
+''' + clone[b:]
+        clone = clone.replace('D_00887310[0](4, vertices, 4);', 'p4_ui_quad_draw(vertices);')
+        dispatch = ('\n    if (p4_ui_font) return p4_native_frFontRasterDrawGlyph('
+                    'x, y, depth, glyph, palette, width, height, rgba);\n')
+    else:
+        initial = body[body.index('    if (setStates != 0)'):body.index('    rasterIndex =')]
+        sky = body[body.index('    if (setStates != 0)', body.index('    rasterIndex =')):body.index('    /* With a null initial raster')]
+        a = body.index('    if ((((SdkSpriteRecord *)sdkSpriteTableRecord(sample))->flags & 8) == 0)')
+        bind = body[a:body.index('    render =', a)]
+        state_only = '''void p4_calendar_sprite_state(void *pack, unsigned record)
+{
+    SdkSpriteSample temporary = {0};
+    u8 *sample = (u8 *)&temporary;
+    s32 setStates = 1, rasterIndex;
+    s32 (**states)(RwRenderState, void *);
+    temporary.packAddress = (u32)pack;
+    temporary.recordIndex = record;
+''' + initial + '    rasterIndex = ((SdkSpriteRecord *)sdkSpriteIndexedRecord(sample))->rasterIndex;\n' + sky + bind + '}\n\n'
+        clone = clone.replace('SdkSpriteVertex vertices[4];', 'P4UiVertex vertices[4];')
+        clone = clone.replace('SdkSpriteVertex *vertex =', 'P4UiVertex *vertex =')
+        clone = clone.replace('    reciprocalZ = 1.0f / ((RwCamera *)(u32)kwlnGetCamera())->nearPlane;\n', '')
+        clone = clone.replace('            vertex->u.els.reciprocalZ = reciprocalZ;\n', '')
+        clone = clone.replace('sdkSpriteVertexSetColor(', 'p4_ui_colour(')
+        clone = clone.replace('sdkSpritePositionQuad(', 'p4_ui_position(')
+        clone = clone.replace('render[0](4, vertices, 4);', 'p4_ui_quad_draw(vertices);')
+        dispatch = ("\n    if (p4_ui_sprite && SDK_SPRITE_RASTERS(sample)["
+                    "((SdkSpriteRecord *)sdkSpriteIndexedRecord(sample))->rasterIndex]) {\n"
+                    "        p4_native_sdkSpriteDraw(sample, setStates); return;\n    }\n")
+    header = f'#include "{(ROOT / "port/ui_quad.h").as_posix()}"\n'
+    original = body[:match.end() - match.start()] + dispatch + body[match.end() - match.start():]
+    return header + text[:match.start()] + (state_only if name == 'sdkSpriteDraw' else '') + clone + '\n\n' + original + text[end:]
+
+
 def shim(text, rel=""):
     for old, new in ASM_FIXES.get(rel, ()):
         assert old in text, (rel, old)
@@ -484,7 +749,7 @@ def shim(text, rel=""):
     for old, new in FIXES.get(rel, ()):
         assert old in text, (rel, old)
         text = text.replace(old, new)
-    return text
+    return native_ui(text, rel)
 
 
 def regime_flags():

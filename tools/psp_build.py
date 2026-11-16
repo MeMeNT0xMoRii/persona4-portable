@@ -32,6 +32,7 @@ WORKER_SCRIPTS = {'psp_census.py', 'psp_ptr_proof.py', 'psp_link.py',
 TOOLS = ('psp-gcc', 'psp-nm', 'psp-as', 'psp-ld', 'psp-objcopy', 'psp-objdump',
          'psp-size', 'psp-strip', 'psp-fixup-imports', 'psp-prxgen', 'mksfoex', 'pack-pbp')
 ARTIFACTS = {'EBOOT.PBP', 'p4.prx', 'p4.elf', 'p4data.bin', 'p4str.bin'}
+OPTIONAL_ARTIFACTS = {'p4strips.bin'}
 # Hash of canonical paths and file contents, independent of ZIP packaging.
 UPSTREAM_TREE_SHA256 = 'b1a5681e7b30280b558c2deb438b2815b414eee4e6a59da55e551778ead45bc0'
 _cancelled = threading.Event()
@@ -411,7 +412,7 @@ def validate_result(release, build):
     if manifest.get('build') != build or manifest.get('release') is not True:
         raise ValueError('The local build did not produce the expected release manifest.')
     hashes = manifest.get('artifact_sha256', {})
-    if set(hashes) != ARTIFACTS:
+    if not ARTIFACTS <= set(hashes) or set(hashes) - ARTIFACTS - OPTIONAL_ARTIFACTS:
         raise ValueError('The local build artifact manifest is incomplete.')
     for name, wanted in hashes.items():
         if digest(release / name) != wanted:

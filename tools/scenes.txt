@@ -1,0 +1,16 @@
+# Scene presets for the L+R+START menu (port/scene_menu.c) and tools/psp_scene.py.
+# Copy to ms0:/PSP/GAME/P4/scenes.txt. One per line:
+#   field FIELD ROOM ENTRY name
+#   floor STEP ENTRY name        (ENTRY 65535: the floor's default)
+#   event ID SUB name            (E<ID>_<SUB>; returns to the field it started from)
+#   battle ENCOUNTER name        (returns to the field it started from)
+#   day MONTH DAY SLOT name      (runs that day's story script from that time slot, as the game's debug
+#                                 date picker does; SLOT 0..5 = AM_A AM_B PM_A PM_B PM_C PM_D)
+# The menu's "Save this place" appends the current field or floor here on the PSP. The PSP logs
+# "SCENE now sequence S field F room R step N" at every scene change: take the numbers from there.
+# Encounter numbers below are from Izanagi's docs (ext/Izanagi/docs/renderer_port.md).
+battle 532 Fog tutorial battle (Zio audit)
+battle 512 Shadow Yosuke (stage f222_001)
+floor 110 65535 Heaven (seen b290: sequence 11, field 28 room 2, step 110)
+day 4 12 0 April 12, AM_A (example: any day works from the menu's Month/Day/Time slot rows)
+field 9 4 0 Junes West Entrance (rain 03/20: slow on the PSP, b326)
