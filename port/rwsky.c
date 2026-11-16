@@ -2183,6 +2183,12 @@ int func_003f5d90(int state, int *value)
 
 /* Pixels stay in CPU memory until a draw needs them: the PS2 raster formats are byte-for-byte the GE's, RGBA and low nibble first. */
 
+enum {
+    RASTER_LOCK_WRITE = 0x01, RASTER_LOCK_READ = 0x02,
+    PIXELS_LOCKED_READ = 0x02, PIXELS_LOCKED_WRITE = 0x04,
+    PALETTE_LOCKED_READ = 0x08, PALETTE_LOCKED_WRITE = 0x10,
+};
+
 /* rwSTANDARDRASTERLOCK: (&pixels, raster, level << 8 | mode) */
 int func_003fc5f0(unsigned char **pixels, Raster *r, int how)
 {
@@ -2191,14 +2197,21 @@ int func_003fc5f0(unsigned char **pixels, Raster *r, int how)
     unswizzle_raster(r);
     r->cpPixels = r->originalPixels;
     *pixels = r->cpPixels;
-    return r->cpPixels != 0;
+    if (!r->cpPixels)
+        return 0;
+    r->privateFlags |= (how & RASTER_LOCK_READ ? PIXELS_LOCKED_READ : 0) |
+                       (how & RASTER_LOCK_WRITE ? PIXELS_LOCKED_WRITE : 0);
+    return 1;
 }
 
 /* rwSTANDARDRASTERUNLOCK */
 int func_003fd230(void *out, Raster *r)
 {
     texture_generation++;
-    if (r->depth == 32) { /* PS2 alpha tops out at 0x80 */
+    int lock = r->privateFlags & (PIXELS_LOCKED_READ | PIXELS_LOCKED_WRITE);
+    r->privateFlags &= ~(PIXELS_LOCKED_READ | PIXELS_LOCKED_WRITE);
+    /* A read-only unlock leaves GE alpha alone. Native uploads call unlock directly. */
+    if (r->depth == 32 && lock != PIXELS_LOCKED_READ) {
         unsigned char *p = r->originalPixels + 3;
         for (int i = r->width * r->height; i > 0; i--, p += 4)
             *p = *p >= 0x80 ? 0xff : *p * 2;
@@ -2214,12 +2227,20 @@ int func_003fd460(unsigned char **palette, Raster *r, int how)
     pipe_texture_wait();
     texture_generation++;
     *palette = r->palette;
-    return r->palette != 0;
+    if (!r->palette)
+        return 0;
+    r->privateFlags |= (how & RASTER_LOCK_READ ? PALETTE_LOCKED_READ : 0) |
+                       (how & RASTER_LOCK_WRITE ? PALETTE_LOCKED_WRITE : 0);
+    return 1;
 }
 
 int func_003fd520(void *out, Raster *r)
 {
     texture_generation++;
+    int lock = r->privateFlags & (PALETTE_LOCKED_READ | PALETTE_LOCKED_WRITE);
+    r->privateFlags &= ~(PALETTE_LOCKED_READ | PALETTE_LOCKED_WRITE);
+    if (lock == PALETTE_LOCKED_READ)
+        return 1;
     unsigned *entry = (unsigned *)r->palette;
     int count = 1 << r->depth;
     if (count == 256) /* PS2 CSM1 order: the middle two groups of every 32 are swapped */
