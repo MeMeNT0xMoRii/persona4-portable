@@ -2507,18 +2507,24 @@ static void capture_feedback_half(void)
 
 /* The bound texture's smallest alpha for draw_tested: 255 without a texture, 0 when not known. */
 static unsigned bound_alpha_min, bound_alpha_max = 255;
-static void bind_raster_body(Raster *r, int wrap);
-static void bind_raster(Raster *r, int wrap)
+static void bind_raster_body(Raster *r, int wrap_u, int wrap_v);
+static void bind_raster_axes(Raster *r, int wrap_u, int wrap_v)
 {
     unsigned kept = kept_textures;
     prof_begin(PROF_TBIND);
-    bind_raster_body(r, wrap);
+    bind_raster_body(r, wrap_u, wrap_v);
     prof_end(PROF_TBIND);
     textures_bound += kept_textures == kept;
 }
-static void bind_raster_body(Raster *r, int wrap)
+static void bind_raster(Raster *r, int wrap)
+{
+    bind_raster_axes(r, wrap, wrap);
+}
+
+static void bind_raster_body(Raster *r, int wrap_u, int wrap_v)
 {
     if (r != &display_raster && gu_mesh_mode) {
+        int wrap = wrap_u | wrap_v << 8;
         const void *pixels = r ? r->originalPixels : 0, *palette = r ? r->palette : 0;
         if (gs.tex_known && gs.tex_raster == r && gs.tex_wrap == wrap && gs.tex_pixels == pixels && gs.tex_palette == palette &&
             gs.tex_generation == texture_generation) {
@@ -2553,7 +2559,7 @@ static void bind_raster_body(Raster *r, int wrap)
             sceGuTexImage(0, 512, 512, STRIDE, (void *)(0x04000000 + HALF_VRAM));
             sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGB);
             sceGuTexFilter(filter, filter);
-            sceGuTexWrap(wrap, wrap);
+            sceGuTexWrap(wrap_u, wrap_v);
             texture_w = SCREEN_W;
             texture_h = SCREEN_H;
             return;
@@ -2562,7 +2568,7 @@ static void bind_raster_body(Raster *r, int wrap)
             sceGuTexImage(0, 256, 256, 256, (void *)(0x04000000 + HALF_VRAM));
             sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGB);
             sceGuTexFilter(GU_LINEAR, GU_LINEAR);
-            sceGuTexWrap(wrap, wrap);
+            sceGuTexWrap(wrap_u, wrap_v);
             texture_w = HALF_W;
             texture_h = HALF_H;
             return;
@@ -2570,7 +2576,7 @@ static void bind_raster_body(Raster *r, int wrap)
         sceGuTexImage(0, 512, 512, 512, feedback_pixels);
         sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGB);
         sceGuTexFilter(filter, filter);
-        sceGuTexWrap(wrap, wrap);
+        sceGuTexWrap(wrap_u, wrap_v);
         texture_w = SCREEN_W;
         texture_h = SCREEN_H;
         return;
@@ -2583,7 +2589,7 @@ static void bind_raster_body(Raster *r, int wrap)
         sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
         sceGuTexFilter(GU_LINEAR, GU_LINEAR);
         sceGuTexLevelMode(GU_TEXTURE_AUTO, 0);
-        sceGuTexWrap(wrap, wrap);
+        sceGuTexWrap(wrap_u, wrap_v);
         texture_w = drawn->w;
         texture_h = drawn->h;
         return;
@@ -2615,7 +2621,7 @@ static void bind_raster_body(Raster *r, int wrap)
     sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
     sceGuTexFilter(levels > 1 ? GU_LINEAR_MIPMAP_NEAREST : GU_LINEAR, GU_LINEAR);
     sceGuTexLevelMode(GU_TEXTURE_AUTO, 0);
-    sceGuTexWrap(wrap, wrap);
+    sceGuTexWrap(wrap_u, wrap_v);
     texture_w = r->width;
     texture_h = r->height;
 }
@@ -10292,6 +10298,21 @@ static void draw_ptank_quads(const char *ps2, int count, const Vertex3D *vertice
         sceGuDepthMask(GU_FALSE);
 }
 
+static int ptank_wrap(int size, unsigned address)
+{
+    /* The GE repeats over the power-of-two texture size. Clamp padded axes. */
+    return address == 1 && size > 0 && size <= 512 && !(size & (size - 1)) ? GU_REPEAT : GU_CLAMP;
+}
+
+static void bind_ptank_texture(void **texture)
+{
+    Raster *r = texture ? *texture : NULL;
+    /* RwTexture::filterAddressing, as read by _rpPTankSkySetupRenderStateAddress. */
+    unsigned mode = r ? *(const unsigned *)((const char *)texture + 0x50) : 0;
+    bind_raster_axes(r, ptank_wrap(r ? r->width : 0, mode >> 8 & 15),
+                     ptank_wrap(r ? r->height : 0, mode >> 12 & 15));
+}
+
 /* Build quads from position billboards or per-particle matrices such as the
    field rain trails. Four-corner colour and UV clusters still need support. */
 static void draw_ptank_body(void *atomic, char *tank, Geometry *g, void *frame);
@@ -10356,8 +10377,7 @@ static void draw_ptank_body(void *atomic, char *tank, Geometry *g, void *frame)
     ScePspFMatrix4 identity;
     gumLoadIdentity(&identity);
     sceGuSetMatrix(GU_MODEL, &identity);
-    void **texture = material ? material->texture : 0;
-    bind_raster(texture ? *texture : 0, GU_CLAMP);
+    bind_ptank_texture(material ? material->texture : NULL);
 
     const Matrix *view = (const Matrix *)((char *)current_camera + CAMERA_VIEW);
     V3 right, up;
