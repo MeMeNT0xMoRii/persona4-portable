@@ -59,14 +59,19 @@ was higher than the reference.
 
 ## Validation and open issues
 
-- **PPSSPP 1.20.4, synthetic images.** Software and OpenGL yielded identical
-  readbacks in the raster A/B. Full-size feedback matches the requested point
-  or linear output at all 2,880 sampled pixels per case. Home22 differed at
-  2,874 pixels when point filtering was requested. The tested reduced-copy
-  strips match home22. In RGBA8888, T8 and T4, three read cycles preserve all
-  tested texture bytes and all 256 rendered RGB pixels per format. Home22
-  changed 253, 256 and 256 pixels respectively. Direct native upload and
-  write-lock controls match. The probe uses linear test rasters.
+- **PPSSPP 1.20.4, synthetic images.** Software and OpenGL were configured
+  independently. A GE copy to RAM reads back completed pixels in both.
+  With the retail triangle-strip primitive, full-size feedback matches
+  the specified point or linear reference at all 2,880 pixels per case.
+  Home22 differs from point by 2,874 pixels in Software and 2,868 in OpenGL.
+  The sprite strips also match their respective filter references. In
+  OpenGL the fractional-UV sprite strips and the triangle strips give
+  different RGB samples in both builds. The retail transition uses the
+  triangle-strip path. Reduced-copy sprites match home22 on both backends.
+  For RGBA8888, T8 and T4, three reads preserve all tested texture bytes
+  and all 256 rendered RGB pixels per format. Home22 changed 253, 256 and
+  256 pixels respectively. Direct native uploads and write-lock controls
+  match. The probe uses linear test rasters.
 - **PPSSPP, existing synthetic regressions.** Particle depth/blend samples,
   soft alpha mask output and the dungeon fog fixture match home22 byte for
   byte. The 2D depth-mask smoke test passes. The linked release starts,
