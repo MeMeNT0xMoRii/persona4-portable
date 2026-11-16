@@ -1798,7 +1798,8 @@ unsigned RpSkyRenderStateGet(int state, void *value)
 
 /* fpRenderStateSet / fpRenderStateGet: remembered until Im2D needs them. */
 #define MAX_STATE 64
-enum { RS_ZTEST = 6, RS_ZWRITE = 8, RS_FOG_ENABLE = 14, RS_FOG_COLOR = 15, RS_FOG_TYPE = 16, RS_CULLMODE = 20 };
+enum { RS_ZTEST = 6, RS_ZWRITE = 8, RS_TEXTURE_FILTER = 9, RS_FOG_ENABLE = 14, RS_FOG_COLOR = 15, RS_FOG_TYPE = 16, RS_CULLMODE = 20 };
+enum { RW_FILTER_NEAREST = 1, RW_FILTER_LINEAR = 2 };
 static int render_state[MAX_STATE];
 static unsigned pixel_mask;
 
@@ -2524,10 +2525,13 @@ static void bind_raster_body(Raster *r, int wrap)
         }
         sceGuEnable(GU_TEXTURE_2D);
         sceGuTexMode(GU_PSM_8888, 0, 0, 0);
+        /* The original screen effect requests point filtering for the unscaled copy
+           and linear filtering for the zoom layers. Keep the reduced copy's linear upscale. */
+        int filter = render_state[RS_TEXTURE_FILTER] == RW_FILTER_NEAREST ? GU_NEAREST : GU_LINEAR;
         if (feedback_half_now == 1) {
             sceGuTexImage(0, 512, 512, STRIDE, (void *)(0x04000000 + HALF_VRAM));
             sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGB);
-            sceGuTexFilter(GU_LINEAR, GU_LINEAR);
+            sceGuTexFilter(filter, filter);
             sceGuTexWrap(wrap, wrap);
             texture_w = SCREEN_W;
             texture_h = SCREEN_H;
@@ -2544,7 +2548,7 @@ static void bind_raster_body(Raster *r, int wrap)
         }
         sceGuTexImage(0, 512, 512, 512, feedback_pixels);
         sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGB);
-        sceGuTexFilter(GU_LINEAR, GU_LINEAR);
+        sceGuTexFilter(filter, filter);
         sceGuTexWrap(wrap, wrap);
         texture_w = SCREEN_W;
         texture_h = SCREEN_H;
@@ -3300,7 +3304,7 @@ void p4_draw_texture_tint(unsigned rgba, float x, float y, float mask_x, float m
     render_state[RS_ZTEST] = 0;
     render_state[RS_ZWRITE] = 0;
     render_state[14] = 0;
-    render_state[9] = 2;
+    render_state[RS_TEXTURE_FILTER] = RW_FILTER_LINEAR;
     render_state[12] = 1;
     render_state[1] = 0;
     pixel_mask = 0;
