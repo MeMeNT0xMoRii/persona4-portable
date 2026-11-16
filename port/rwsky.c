@@ -9986,6 +9986,46 @@ static int skin_call_key(const SkinBatch *b, const Material *m, int modulate, co
     return 1;
 }
 
+static inline void write_bone_row(unsigned *commands, V3 row)
+{
+    unsigned bits[3];
+    memcpy(bits, &row, sizeof bits);
+    commands[0] = 43u << 24 | bits[0] >> 8;
+    commands[1] = 43u << 24 | bits[1] >> 8;
+    commands[2] = 43u << 24 | bits[2] >> 8;
+}
+
+static inline void submit_skin_bone(int slot, const Matrix *bone, const float *pack)
+{
+    V3 right = bone->right, up = bone->up, at = bone->at, pos = bone->pos;
+    if (pack) {
+        /* p = centre + s q / 32768. Translate with the original axes, then scale them. */
+        pos = (V3){ pos.x + pack[0] * right.x + pack[1] * up.x + pack[2] * at.x,
+                    pos.y + pack[0] * right.y + pack[1] * up.y + pack[2] * at.y,
+                    pos.z + pack[0] * right.z + pack[1] * up.z + pack[2] * at.z };
+        float s = pack[3];
+        right = (V3){ right.x * s, right.y * s, right.z * s };
+        up = (V3){ up.x * s, up.y * s, up.z * s };
+        at = (V3){ at.x * s, at.y * s, at.z * s };
+    }
+    if (p4_bone_direct) {
+        /* BONE_MATRIX_NUMBER followed by four rows of 24-bit floats, as in sceGuBoneMatrix. */
+        unsigned *commands = gu_list->current;
+        commands[0] = 42u << 24 | (unsigned)(slot * 12);
+        write_bone_row(commands + 1, right);
+        write_bone_row(commands + 4, up);
+        write_bone_row(commands + 7, at);
+        write_bone_row(commands + 10, pos);
+        gu_list->current = commands + 13;
+    } else {
+        ScePspFMatrix4 out = {
+            { right.x, right.y, right.z, 0 }, { up.x, up.y, up.z, 0 },
+            { at.x, at.y, at.z, 0 }, { pos.x, pos.y, pos.z, 1 },
+        };
+        sceGuBoneMatrix(slot, &out);
+    }
+}
+
 static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy *hierarchy, const Matrix *model, int lit, int modulate)
 {
     prof_begin(PROF_SBONES);
@@ -10086,41 +10126,13 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
             cpu |= bone_out[batch->palette[k]];
         prof_begin(PROF_SMAT);
         for (int k = 0; k < batch->bones && !cpu; k++) {
-            const Matrix *bm = &bones[batch->palette[k]];
-            if (p4_bone_direct && slot_bone[k] == batch->palette[k])
-                continue;
-            Matrix folded;
-            if (e->packed) { /* p = centre + s q / 32768 (skin_layout): rotation x s, translation + rotation . centre */
-                const float *c = e->pack, s = e->pack[3];
-                folded = *bm;
-                folded.right = (V3){ bm->right.x * s, bm->right.y * s, bm->right.z * s };
-                folded.up = (V3){ bm->up.x * s, bm->up.y * s, bm->up.z * s };
-                folded.at = (V3){ bm->at.x * s, bm->at.y * s, bm->at.z * s };
-                folded.pos = (V3){ bm->pos.x + c[0] * bm->right.x + c[1] * bm->up.x + c[2] * bm->at.x,
-                                   bm->pos.y + c[0] * bm->right.y + c[1] * bm->up.y + c[2] * bm->at.y,
-                                   bm->pos.z + c[0] * bm->right.z + c[1] * bm->up.z + c[2] * bm->at.z };
-                bm = &folded;
-            }
+            int bone = batch->palette[k];
             if (p4_bone_direct) {
-                /* BONE_MATRIX_NUMBER then 12 x BONE_MATRIX_DATA (float >> 8), as sceGuBoneMatrix sends them; b123
-                   Heaven: sceGuBoneMatrix cost ~1450 cycles a matrix, 1.78 Mcycles a frame. A slot that already holds
-                   this bone (same character, earlier batch) keeps it. */
-                slot_bone[k] = batch->palette[k];
-                const AliasWord *f = (const AliasWord *)bm;
-                unsigned *c = gu_list->current;
-                c[0] = 42u << 24 | (unsigned)(k * 12);
-                for (int row = 0; row < 4; row++)
-                    for (int col = 0; col < 3; col++)
-                        c[1 + row * 3 + col] = 43u << 24 | f[row * 4 + col] >> 8;
-                gu_list->current = c + 13;
-                bones_sent++;
-                continue;
+                if (slot_bone[k] == bone)
+                    continue;
+                slot_bone[k] = bone;
             }
-            ScePspFMatrix4 out = {
-                { bm->right.x, bm->right.y, bm->right.z, 0 }, { bm->up.x, bm->up.y, bm->up.z, 0 },
-                { bm->at.x, bm->at.y, bm->at.z, 0 }, { bm->pos.x, bm->pos.y, bm->pos.z, 1 },
-            };
-            sceGuBoneMatrix(k, &out);
+            submit_skin_bone(k, &bones[bone], e->packed ? e->pack : NULL);
             bones_sent++;
         }
         prof_end(PROF_SMAT);
