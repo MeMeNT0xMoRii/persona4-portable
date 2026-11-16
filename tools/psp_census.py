@@ -106,6 +106,14 @@ FIXES = {
          "            p4_draw_cri_logo(fullImage);\n"
          "        }"),
     ],
+    # Keep the 4:3 shape of the fusion list's 16x16 indicators, at their original column centers.
+    "src/Event/y_fclCmbBall.c": [
+        ("    position.x += packetIndex * 19;",
+         "    const f32 halfWidth = 8.0f * (4.0f * 272.0f / (3.0f * 480.0f));\n"
+         "    position.x += packetIndex * 19;"),
+        ("->x = position.x;", "->x = position.x + 8.0f - halfWidth;"),
+        ("->x = 16.0f + position.x;", "->x = position.x + 8.0f + halfWidth;"),
+    ],
     # Retail sign-extends the requested room's low halfword before comparing it.
     # After argument narrowing a 48-bit shift on roomId (s32) is undefined.
     "src/Kernel/h_malloc_inferred_001441e0.c": [

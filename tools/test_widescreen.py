@@ -10,10 +10,46 @@ from psp_census import DECOMP, shim
 
 
 class Widescreen(unittest.TestCase):
-    def test_cri_logo_keeps_original_active_rectangle(self):
+    def run_c_harness(self, harness):
         gcc = shutil.which('gcc')
         if not gcc:
             self.skipTest('host gcc is unavailable')
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary)
+            (path / 'check.c').write_text(harness)
+            subprocess.run([gcc, '-std=c99', '-O2', str(path / 'check.c'), '-o', str(path / 'check')], check=True)
+            subprocess.run([str(path / 'check')], check=True)
+
+    def test_fusion_indicators_keep_centers_and_original_aspect(self):
+        rel = 'src/Event/y_fclCmbBall.c'
+        original = (DECOMP / rel).read_text()
+        adapted = shim(original, rel)
+        for line in ('position.x += packetIndex * 19;', 'position.x += 12.0f;'):
+            self.assertEqual(original.count(line), adapted.count(line))
+        self.assertEqual(adapted.count('->x = position.x + 8.0f - halfWidth;'), 2)
+        self.assertEqual(adapted.count('->x = position.x + 8.0f + halfWidth;'), 2)
+        self.assertEqual(original.count('->y = 16.0f + position.y;'), adapted.count('->y = 16.0f + position.y;'))
+        half_width = re.search(r'const f32 halfWidth = .*?;', adapted)[0]
+        left, right = (re.search(rf'->x = (position.x .*? {sign} halfWidth);', adapted)[1]
+                       for sign in (r'\-', r'\+'))
+        self.run_c_harness(r'''
+#include <assert.h>
+#include <math.h>
+typedef float f32;
+int main(void) {
+''' + half_width + r'''
+    float xs[] = {30, 49, 68, 99, 118, 137};
+    for (int i = 0; i < 6; i++) {
+        struct { float x; } position = {xs[i]};
+        float left = (''' + left + r''') * 480 / 640;
+        float right = (''' + right + r''') * 480 / 640;
+        assert(fabsf((left + right) * .5f - (position.x + 8) * 480 / 640) < .0001f);
+        assert(fabsf((right - left) / (16.0f * 272 / 448) - 4.0f * 448 / (3 * 640)) < .0001f);
+    }
+}
+''')
+
+    def test_cri_logo_keeps_original_active_rectangle(self):
         core = Path(__file__).resolve().parents[1] / 'port/rwsky.c'
         source = core.read_text()
         definitions = re.findall(r'^#define SCREEN_[WH] \d+$', source, re.M)
@@ -51,11 +87,7 @@ int main(void) {
         self.assertIn('p4_draw_cri_logo(fullImage);', adapted)
         atlus = next(line for line in retail.splitlines() if 'insetImage, 0);' in line)
         self.assertIn(atlus, adapted)
-        with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary)
-            (path / 'check.c').write_text(harness)
-            subprocess.run([gcc, '-std=c99', '-O2', str(path / 'check.c'), '-o', str(path / 'check')], check=True)
-            subprocess.run([str(path / 'check')], check=True)
+        self.run_c_harness(harness)
 
     def test_font_anchor_width_and_advance(self):
         gcc = shutil.which('gcc')
