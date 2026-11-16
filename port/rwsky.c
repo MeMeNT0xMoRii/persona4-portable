@@ -2916,6 +2916,7 @@ static void draw_2d_tested(int prim, int count, const GuVertex *vertices, int al
         sceGuEnable(GU_ALPHA_TEST);
         sceGuAlphaFunc(gs_alpha_method[method], ref, 0xff);
         sceGuDrawArray(prim, vtype, count, 0, vertices);
+        vtype = 0; /* the passing-fragment draw already selected this format */
     }
     if (fail && (fail != 2 || depth_write)) {
         /* The command menu and results screen use 0x32801 to write clipping rectangles into depth only. */
@@ -3145,10 +3146,12 @@ static void draw_effect_mask(int prim, int count, const GuVertex *vertices)
     } else {
         /* Bit writes would combine alpha from overlapping fragments. */
         sceGuEnable(GU_ALPHA_TEST);
+        int vtype = GU_2D_FORMAT;
         for (int opacity = 0; opacity <= 255; opacity += 85) {
             sceGuStencilFunc(GU_ALWAYS, opacity, 0xff);
             sceGuAlphaFunc(GU_GEQUAL, opacity ? opacity - 42 : 0, 0xff);
-            sceGuDrawArray(prim, GU_2D_FORMAT, count, 0, vertices);
+            sceGuDrawArray(prim, vtype, count, 0, vertices);
+            vtype = 0;
         }
     }
     sceGuDisable(GU_ALPHA_TEST);
@@ -3974,7 +3977,8 @@ static void draw_tested(int prim, int vtype, int count, const void *indices, con
             if (afail == 3)
                 st_pixel_mask(pixel_mask | 0xff000000);
         }
-        gu_draw(prim, vtype, count, indices, vertices);
+        /* The first pass left the same layout in the GE and in work_vtype. */
+        gu_draw(prim, 0, count, indices, vertices);
         st_pixel_mask(pixel_mask);
         st_depth_mask(render_state[RS_ZWRITE] ? GU_FALSE : GU_TRUE);
     }
