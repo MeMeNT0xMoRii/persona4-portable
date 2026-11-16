@@ -6,18 +6,33 @@
 enum { CLIP_MAX_OUT = 9 }; /* a quad cut by one plane has at most 5 corners: 3 triangles */
 
 /* quad: 4 corners in order around the edge; depth[i]: view distance of each; keeps depth >= near.
-   Writes triangles to out, returns the vertex count (0, 6 or up to 9). */
+   Writes triangles to a separate out buffer and returns the vertex count (0 to 9). */
 static int clip_quad_near(const Vertex3D quad[4], const float depth[4], float near, Vertex3D *out)
 {
+    const float d[4] = { depth[0] - near, depth[1] - near, depth[2] - near, depth[3] - near };
+    unsigned inside = (d[0] >= 0) | (d[1] >= 0) << 1 | (d[2] >= 0) << 2 | (d[3] >= 0) << 3;
+    if (!inside)
+        return 0;
+    if (inside == 15) {
+        /* The unchanged near-plane fan, straight into the GE vertex buffer. */
+        out[0] = quad[0];
+        out[1] = quad[1];
+        out[2] = quad[2];
+        out[3] = quad[0];
+        out[4] = quad[2];
+        out[5] = quad[3];
+        return 6;
+    }
     Vertex3D poly[5];
     int n = 0;
     for (int i = 0; i < 4; i++) {
-        const Vertex3D *a = &quad[i], *b = &quad[(i + 1) & 3];
-        float da = depth[i] - near, db = depth[(i + 1) & 3] - near;
-        if (da >= 0)
+        int j = (i + 1) & 3;
+        const Vertex3D *a = &quad[i], *b = &quad[j];
+        unsigned keep = inside >> i & 1;
+        if (keep)
             poly[n++] = *a;
-        if ((da >= 0) != (db >= 0)) {
-            float t = da / (da - db);
+        if (keep != (inside >> j & 1)) {
+            float t = d[i] / (d[i] - d[j]);
             Vertex3D *v = &poly[n++];
             v->u = a->u + (b->u - a->u) * t;
             v->v = a->v + (b->v - a->v) * t;
