@@ -10,6 +10,53 @@ from psp_census import DECOMP, shim
 
 
 class Widescreen(unittest.TestCase):
+    def test_cri_logo_keeps_original_active_rectangle(self):
+        gcc = shutil.which('gcc')
+        if not gcc:
+            self.skipTest('host gcc is unavailable')
+        core = Path(__file__).resolve().parents[1] / 'port/rwsky.c'
+        source = core.read_text()
+        definitions = re.findall(r'^#define SCREEN_[WH] \d+$', source, re.M)
+        definitions += re.findall(r'^typedef struct \{ [^\n]+ \} (?:V3|Matrix);$', source, re.M)
+        logo = re.search(r'^void p4_draw_cri_logo\(.*?^\}', source, re.M | re.S)[0]
+        harness = '\n'.join(definitions) + '\n' + logo + r'''
+#include <assert.h>
+#include <math.h>
+
+int sflDataDrawTexturedQuad(int x, int y, float z, int width, int height, int rgb,
+                          int alpha, int mode, short center_x, short center_y,
+                          Matrix *matrix, int texture, float (*uv)[2]) {
+    assert(x == 0 && y == 0 && z == 0 && center_x == 0 && center_y == 0);
+    assert(width == 640 && height == 448 && rgb == 0xffffff && alpha == 255 && mode == 1);
+    assert(texture == 123 && matrix->flags == 0);
+    float left = matrix->pos.x * SCREEN_W / width;
+    float right = (matrix->pos.x + matrix->right.x * width) * SCREEN_W / width;
+    assert(fabsf(right - left - 4.0f * SCREEN_H / 3.0f) < .0001f);
+    assert(fabsf(left + right - SCREEN_W) < .0001f);
+    assert(matrix->up.y == 1 && matrix->at.z == 1 && matrix->pos.y == 0);
+    for (int corner = 0; corner < 4; ++corner) {
+        assert(uv[corner][0] * 1024 == ((corner & 1) ? width : 0));
+        assert(uv[corner][1] * 512 == ((corner & 2) ? height : 0));
+    }
+    return 1;
+}
+
+int main(void) {
+    p4_draw_cri_logo(123);
+}
+'''
+        rel = 'src/promoted/code1_0012.c'
+        retail = (DECOMP / rel).read_text()
+        adapted = shim(retail, rel)
+        self.assertIn('p4_draw_cri_logo(fullImage);', adapted)
+        atlus = next(line for line in retail.splitlines() if 'insetImage, 0);' in line)
+        self.assertIn(atlus, adapted)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary)
+            (path / 'check.c').write_text(harness)
+            subprocess.run([gcc, '-std=c99', '-O2', str(path / 'check.c'), '-o', str(path / 'check')], check=True)
+            subprocess.run([str(path / 'check')], check=True)
+
     def test_font_anchor_width_and_advance(self):
         gcc = shutil.which('gcc')
         if not gcc:

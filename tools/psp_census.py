@@ -98,6 +98,14 @@ FIXES = {
     "src/unplaced/unplaced_inferred_00222210.c": [
         ("256.0f * scale[0],  512.0f * scale[1]", "192.0f * scale[0],  512.0f * scale[1]"),
     ],
+    # The CRI splash has a 640x448 active picture in a 1024x512 atlas.
+    "src/promoted/code1_0012.c": [
+        ("        sflDataDrawTexturedQuad(0, 0, 0.0f, 0x400, 0x200, 0xFFFFFF, 0xFF, 1, 0, 0, 0, fullImage, 0);",
+         "        {\n"
+         "            extern void p4_draw_cri_logo(s32 texture);\n"
+         "            p4_draw_cri_logo(fullImage);\n"
+         "        }"),
+    ],
     # Retail sign-extends the requested room's low halfword before comparing it.
     # After argument narrowing a 48-bit shift on roomId (s32) is undefined.
     "src/Kernel/h_malloc_inferred_001441e0.c": [

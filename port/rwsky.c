@@ -3427,6 +3427,25 @@ int SkyIm2DRenderIndexedPrimitive(int prim, Vertex2D *v, int n, unsigned short *
 /* Atomics, without RenderWare's PS2 pipelines: the game's geometry is never native, its arrays are usable as they are. */
 typedef struct { float x, y, z; } V3;
 typedef struct { V3 right; unsigned flags; V3 up; unsigned pad1; V3 at; unsigned pad2; V3 pos; unsigned pad3; } Matrix;
+
+void p4_draw_cri_logo(int texture)
+{
+    extern int sflDataDrawTexturedQuad(int x, int y, float z, int width, int height, int rgb,
+                                       int alpha, int mode, short center_x, short center_y,
+                                       Matrix *matrix, int texture, float (*uv)[2]);
+    enum { ACTIVE_W = 640, ACTIVE_H = 448, ATLAS_W = 1024, ATLAS_H = 512 };
+    const float width_scale = 4.0f * SCREEN_H / (3.0f * SCREEN_W);
+    Matrix matrix = {
+        .right = { width_scale, 0, 0 }, .up = { 0, 1, 0 }, .at = { 0, 0, 1 },
+        .pos = { ACTIVE_W * 0.5f * (1.0f - width_scale), 0, 0 },
+    };
+    /* Crop to the portion the original viewport displayed before centering its 4:3 picture. */
+    float uv[4][2] = {
+        { 0, 0 }, { (float)ACTIVE_W / ATLAS_W, 0 },
+        { 0, (float)ACTIVE_H / ATLAS_H }, { (float)ACTIVE_W / ATLAS_W, (float)ACTIVE_H / ATLAS_H },
+    };
+    sflDataDrawTexturedQuad(0, 0, 0, ACTIVE_W, ACTIVE_H, 0xffffff, 255, 1, 0, 0, &matrix, texture, uv);
+}
 typedef struct { void *parentGeom; float sphere[4]; V3 *verts; V3 *normals; } MorphTarget;
 typedef struct { void *texture; unsigned colour; void *pipeline; float ambient, specular, diffuse; } Material;
 typedef struct { V3 ambient, diffuse, direction; } SceneLight;
