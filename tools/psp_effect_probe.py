@@ -30,6 +30,10 @@ def build(pspdev, output, renderer):
         functions.append("static void draw_ptank_quads(const char *ps2, int emitted, const Vertex3D *vertices)\n"
                          "{\n    (void)ps2;\n" + draw + "\n}")
     (output / "effect_helpers.h").write_text("\n\n".join(functions) + "\n")
+    build_program(pspdev, output, ROOT / "tools/psp_effect_probe.c", "P4 Effect Probe")
+
+
+def build_program(pspdev, output, probe, title):
     sdk = pspdev / "psp/sdk"
 
     def run(program, *args):
@@ -37,11 +41,11 @@ def build(pspdev, output, renderer):
 
     run("psp-gcc", "-G0", "-O2", "-Wall", "-Wextra", f"-I{sdk / 'include'}", f"-L{sdk / 'lib'}",
         f"-I{output}", f"-specs={sdk / 'lib/prxspecs'}", f"-Wl,-q,-T{sdk / 'lib/linkfile.prx'}",
-        ROOT / "tools/psp_effect_probe.c", sdk / "lib/prxexports.o", "-lpspgu", "-lpspge", "-lpspdisplay",
+        probe, sdk / "lib/prxexports.o", "-lpspgu", "-lpspge", "-lpspdisplay", "-lpsppower",
         "-o", "probe.elf")
     run("psp-fixup-imports", "probe.elf")
     run("psp-prxgen", "probe.elf", "probe.prx")
-    run("mksfoex", "P4 Effect Probe", "param.sfo")
+    run("mksfoex", title, "param.sfo")
     run("pack-pbp", "EBOOT.PBP", "param.sfo", "NULL", "NULL", "NULL", "NULL", "NULL", "probe.prx", "NULL")
 
 

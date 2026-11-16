@@ -3093,10 +3093,22 @@ static void draw_effect_mask(int prim, int count, const GuVertex *vertices)
         sceGuDrawArray(prim, GU_2D_FORMAT, count, 0, vertices);
         sceGuEnable(GU_ALPHA_TEST);
         sceGuStencilFunc(GU_ALWAYS, 0xff, 0xff);
-        for (unsigned bit = 1; bit <= 0x80; bit <<= 1) {
+        /* This mask's texture uses MODULATE, so a uniform vertex alpha
+           bounds the fragment alpha. Varying alpha uses all eight bits. */
+        unsigned alpha_limit = vertices[0].colour >> 24;
+        if (alpha_limit < 0x80) {
+            for (int i = 1; i < count; i++) {
+                if (vertices[i].colour >> 24 != alpha_limit) {
+                    alpha_limit = 0xff;
+                    break;
+                }
+            }
+        }
+        for (unsigned bit = 1; bit <= alpha_limit; bit <<= 1) {
             sceGuPixelMask(~(bit << 24));
             sceGuAlphaFunc(GU_NOTEQUAL, 0, bit);
-            sceGuDrawArray(prim, GU_2D_FORMAT, count, 0, vertices);
+            /* The clear draw already selected this vertex format. */
+            sceGuDrawArray(prim, 0, count, 0, vertices);
         }
         sceGuPixelMask(0x00ffffff);
     } else {
