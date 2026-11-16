@@ -45,6 +45,15 @@ FIXES = {
         ("*(u32 *)&((BtlUnit *)entry)->unk_4e);",
          "({ u32 tag_; __builtin_memcpy(&tag_, ((BtlUnit *)entry)->unk_4e, 4); tag_; }));"),
     ],
+    # The digit fade reads RGBA at sprite + 0x75. GCC ignores packed on the typedef name,
+    # leaving an unaligned lw on PSP. Apply the attribute to the struct, as the load needs alignment 1.
+    "src/nmCmdList_inferred_002ba080.c": [
+        ("    typedef struct {\n        u32 word;\n    } DigitStoredWord __attribute__((packed));",
+         "    typedef struct __attribute__((packed, may_alias)) {\n"
+         "        u32 word;\n"
+         "    } DigitStoredWord;\n"
+         "    _Static_assert(_Alignof(DigitStoredWord) == 1, \"digit color must be byte-aligned\");"),
+    ],
     # C equivalents of PCSX2's SLUS-21782 widescreen patch (pavachan / nemesis2000).
     "src/Event/Fcl/fclBankManager_inferred_00103510.c": [
         ("((FclBankScale *)((u8 *)D_00796728 + offset))->bits = 0x3f800000;",
@@ -94,6 +103,43 @@ FIXES = {
     "src/Kernel/h_malloc_inferred_001441e0.c": [
         ("->secondaryRoom != ((s64)(roomId << 0x30) >> 0x30)",
          "->secondaryRoom != (s16)roomId"),
+    ],
+    "src/Kernel/h_malloc_inferred_001400f0.c": [
+        ("extern void radarDrawSegment(s64 work, s64 value, s32 context, f32 depth, u8 option);",
+         "extern void radarDrawSegment(s64 work, s64 value, s32 context, f32 depth, s32 option);"),
+    ],
+    "src/unplaced/unplaced_inferred_002e78a0.c": [
+        ("s32 fclCombineMenuUpdate(u8 *task)\n{",
+         "s32 fclCombineMenuUpdate(u8 *task)\n{\n"
+         "    extern void p4_fusion_trace(const char *, unsigned, unsigned, int, int, int);\n"
+         "    extern void p4_fusion_visual_sample(int);\n"
+         "    extern u16 D_008C024E[];"),
+        ("    state = (u8)((FclCombineWork *)work)->f0;\n    if (state == 0xD8) {",
+         "    state = (u8)((FclCombineWork *)work)->f0;\n"
+         "    p4_fusion_visual_sample(state == 0x0D && ((FclCombineWork *)work)->f1 == 0xCA);\n"
+         "    if ((state == 1 || state == 2 || state == 8) && (D_008C024E[0] & 0x40)) {\n"
+         "        const FclCombineWork *menu = (const FclCombineWork *)work;\n"
+         "        p4_fusion_trace(\"confirm-rows\", state, (u8)menu->f1, menu->f128, menu->f11E, -1);\n"
+         "    }\n"
+         "    if (state == 0xD8) {"),
+    ],
+    "src/Event/Fcl/y_fclCombine.c": [
+        ("void fclCombineMenuFusion(u8 *task) {\n    KwlnTask *ownerTask",
+         "void fclCombineMenuFusion(u8 *task) {\n"
+         "    extern void p4_fusion_trace(const char *, unsigned, unsigned, int, int, int);\n"
+         "    KwlnTask *ownerTask"),
+        ("                    for (rosterIndex3 = 0; rosterIndex3 < (datPersonaRosterCapacity() & 0xFFFF); rosterIndex3++) {",
+         "                    p4_fusion_trace(\"ingredients\", 1, state,\n"
+         "                                    ((DatPersonaRecord *)yListSlotEntry(0, menuWork4->f128))->id,\n"
+         "                                    ((DatPersonaRecord *)yListSlotEntry(0, menuWork4->f11E))->id, -1);\n"
+         "                    for (rosterIndex3 = 0; rosterIndex3 < (datPersonaRosterCapacity() & 0xFFFF); rosterIndex3++) {"),
+        ("            personaRecord5 = ((u16 *)yListSlotEntry(menuWork4->f2F9, resultIndex));",
+         "            personaRecord5 = ((u16 *)yListSlotEntry(menuWork4->f2F9, resultIndex));\n"
+         "            p4_fusion_trace(\"preview-begin\", 1, state, menuWork4->f128, resultIndex, personaRecord5[1]);"),
+        ("            menuWork4->f1 = 0x2D;\n        }\n        break;\n    case 0x2D:",
+         "            menuWork4->f1 = 0x2D;\n"
+         "            p4_fusion_trace(\"preview-queued\", 1, state, menuWork4->f128, resultIndex, personaRecord5[1]);\n"
+         "        }\n        break;\n    case 0x2D:"),
     ],
     "src/Battle/btlShuffleCard.c": [
         ("    pscModelDraw(card);",
@@ -546,11 +592,12 @@ REALLY_64_BIT = {"gsPackGifTag", "mdlEffectEmitValuePacket", "dpsub", "RunningSt
                  # lost: the minimap's player arrow drew at y ~0, above the map.
                  "mapSymbolMarkerDraw", "taskRecordSetPosition", "H_Dbprt_FmtAt", "sflDataDrawPersonaPanel",
                  "sflDataDrawByteValuePanel", "sflDataDrawNumberValue", "sflDataDrawTitledIcon", "sflDataDrawLevelBadge",
-                 # Item cursor and Persona layout pass packed screen coordinates by value.
+                 # Item, Persona and Social Stats draw calls pass packed coordinates by value.
                  "radarDrawSpritePair", "shdPersonaDrawNamePlate", "shdPersonaDrawFramePair",
                  "shdPersonaDrawExpRow", "shdPersonaDrawArcanaBadge", "shdPersonaDrawLevelDigits",
                  "shdPersonaDrawPanelSprites",
-                 "radarDrawPalettePair", "radarDrawPaletteSet", "radarDrawItemCard"}
+                 "radarDrawPalettePair", "radarDrawPaletteSet", "radarDrawItemCard",
+                 "radarDrawNumber", "radarDrawSegment", "datGridEffectDrawStrip"}
 
 
 def narrow_parameters(text):

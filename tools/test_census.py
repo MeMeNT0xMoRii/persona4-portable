@@ -1,7 +1,8 @@
-"""Regression checks for retail address casts in the PSP source mirror."""
+"""Regression checks for the PSP source mirror."""
+import subprocess
 import unittest
 
-from psp_census import narrow_parameters, shim, trap_ee_asm, void_quad_setters
+from psp_census import GCC, narrow_parameters, shim, trap_ee_asm, void_quad_setters
 from psp_make_data import K
 
 
@@ -21,11 +22,29 @@ class AddressCasts(unittest.TestCase):
             "((s64)(roomId << 0x30) >> 0x30)", "(s16)roomId")
         self.assertEqual(shim(source, "src/Kernel/h_malloc_inferred_001441e0.c"), expected)
 
+    def test_digit_fade_color_word_supports_unaligned_reads(self):
+        if not GCC.is_file():
+            self.skipTest("PSP GCC is required for the alignment check")
+        source = """typedef unsigned int u32;
+u32 digit_color(const unsigned char *animation) {
+    typedef struct {
+        u32 word;
+    } DigitStoredWord __attribute__((packed));
+    _Static_assert(sizeof(DigitStoredWord) == 4 && _Alignof(DigitStoredWord) == 1,
+                   "digit color is a word at a byte-aligned address");
+    return ((const DigitStoredWord *)(animation + 0x75))->word;
+}
+"""
+        converted = shim(source, "src/nmCmdList_inferred_002ba080.c")
+        result = subprocess.run([str(GCC), "-x", "c", "-std=c11", "-Werror=attributes", "-fsyntax-only", "-"],
+                                input=converted, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_menu_positions_keep_both_coordinates(self):
         for function in ("radarDrawSpritePair", "shdPersonaDrawNamePlate", "shdPersonaDrawFramePair",
                          "shdPersonaDrawExpRow", "shdPersonaDrawArcanaBadge", "shdPersonaDrawLevelDigits",
                          "shdPersonaDrawPanelSprites", "radarDrawPalettePair", "radarDrawPaletteSet",
-                         "radarDrawItemCard"):
+                         "radarDrawItemCard", "radarDrawNumber", "radarDrawSegment", "datGridEffectDrawStrip"):
             with self.subTest(function=function):
                 prototype = f"void {function}(s64, f32);"
                 definition = f"void {function}(s64 position, f32 depth) {{}}"

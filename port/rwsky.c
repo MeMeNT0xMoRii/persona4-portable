@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <math.h>
 #include "swizzle.h"
@@ -606,6 +607,35 @@ static int flip_thread = -1;
 static unsigned gate_seq, texture_waits;
 static int gate_closed;
 extern int gu_object_stack_depth;
+
+/* Sample up to eight completed frames of the acquisition dialogue.
+   In pipeline mode, sample only after the flip thread has shown the buffer. */
+static struct FusionVisualFrame {
+    unsigned sample, clears, masks, feedback, additive, meshes;
+} fusion_visual, fusion_visual_shown;
+
+void p4_fusion_visual_sample(int acquisition_dialogue)
+{
+    static unsigned held_ticks;
+    if (!acquisition_dialogue)
+        held_ticks = 0;
+    else if (held_ticks < 21)
+        held_ticks++;
+    if (held_ticks >= 13 && held_ticks <= 20)
+        fusion_visual = (struct FusionVisualFrame){ .sample = held_ticks - 12 };
+}
+
+static void report_fusion_visual(struct FusionVisualFrame frame, const void *buffer)
+{
+    if (!frame.sample)
+        return;
+    const volatile unsigned *rgba = (const volatile unsigned *)(0x44000000u + (uintptr_t)buffer);
+    p4_log("FUSION visual %u bank=%u clear=%x mask=%u feedback=%u add=%u meshes=%u bgr=%06x,%06x,%06x,%06x\n",
+           frame.sample, (unsigned)(buffer != NULL), frame.clears, frame.masks, frame.feedback, frame.additive, frame.meshes,
+           rgba[117 * STRIDE + 76] & 0xffffff, rgba[117 * STRIDE + 170] & 0xffffff,
+           rgba[117 * STRIDE + 240] & 0xffffff, rgba[117 * STRIDE + 310] & 0xffffff);
+}
+
 static int flip_main(SceSize size, void *arg)
 {
     (void)size, (void)arg;
@@ -1360,6 +1390,8 @@ int func_003f7490(void *camera, unsigned *colour, int mask)
     if (p4_probe_2d == 3 && census2d_shown < 64)
         census2d_shown++, p4_log("census2d camera clear mask %d colour %08x\n", mask, *colour);
     int bits = (mask & 1 ? GU_COLOR_BUFFER_BIT | GU_STENCIL_BUFFER_BIT : 0) | (mask & 2 ? GU_DEPTH_BUFFER_BIT : 0);
+    if (fusion_visual.sample)
+        fusion_visual.clears |= mask;
     begin_frame();
     int timed = ge_time_begin();
     sceGuClearColor(*colour);
@@ -1411,6 +1443,7 @@ int p4_vsync_late = 1; /* 0: a frame slower than its vblank cap flips at once in
 int func_003f79b0(void *raster, void *device, int flags)
 {
     if (skip_frame && !in_frame) { /* a skipped frame: logic ran, nothing was drawn */
+        fusion_visual.sample = 0;
         skipped_frames++;
         skip_decide(skip_cap);
         return 1;
@@ -1467,6 +1500,9 @@ int func_003f79b0(void *raster, void *device, int flags)
                 break;
             }
         }
+        if (shown_seq == ge_queued)
+            report_fusion_visual(fusion_visual_shown, flip_fb);
+        fusion_visual_shown.sample = 0;
         gate_poll();
     } else {
         while (flip_seq != shown_seq) /* a frame the flip thread still has to show */
@@ -1481,6 +1517,8 @@ int func_003f79b0(void *raster, void *device, int flags)
             in_frame = 0;
         }
         sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
+        if (present_new_frame)
+            report_fusion_visual(fusion_visual, draw_buffer);
     }
     prof_end(PROF_SYNC);
 #ifdef P4_HW_PROFILE
@@ -1511,6 +1549,7 @@ int func_003f79b0(void *raster, void *device, int flags)
             ge_queued++;
             in_frame = 0;
             flip_fb = draw_buffer;
+            fusion_visual_shown = fusion_visual;
             flip_seq = ge_queued;
             flip_signal(FLIP_WORK);
             draw_buffer = other;
@@ -1535,6 +1574,7 @@ int func_003f79b0(void *raster, void *device, int flags)
         vertex_cap = POOL_VERTICES;
         index_cap = POOL_INDICES;
     }
+    fusion_visual.sample = 0;
 #ifdef P4_HW_PROFILE
     prof_end(PROF_FRAME);
     if (samples == 127)
@@ -1737,25 +1777,28 @@ int func_003f79b0(void *raster, void *device, int flags)
     return 1;
 }
 
-/* The game's raw GS words: 1 dither, 2 ALPHA_1, 3 ATEST_1, 4 fog far, 5 mip levels. */
+/* The game's Sky render states. Far fog receives a pointer to a float in the retail setter. */
+enum { SKY_FAR_FOG_PLANE = 4 };
 static unsigned sky_state[8];
 
-void RpSkyRenderStateSet(int state, unsigned value)
+void RpSkyRenderStateSet(int state, uintptr_t value)
 {
-    if (state >= 0 && state < 8)
+    if (state == SKY_FAR_FOG_PLANE && value)
+        memcpy(&sky_state[state], (const void *)value, sizeof sky_state[state]);
+    else if (state >= 0 && state < 8)
         sky_state[state] = value;
 }
 
-unsigned RpSkyRenderStateGet(int state, unsigned *value)
+unsigned RpSkyRenderStateGet(int state, void *value)
 {
     if (state >= 0 && state < 8 && value)
-        *value = sky_state[state];
+        memcpy(value, &sky_state[state], sizeof sky_state[state]);
     return 1;
 }
 
 /* fpRenderStateSet / fpRenderStateGet: remembered until Im2D needs them. */
 #define MAX_STATE 64
-enum { RS_ZTEST = 6, RS_ZWRITE = 8, RS_CULLMODE = 20 };
+enum { RS_ZTEST = 6, RS_ZWRITE = 8, RS_FOG_ENABLE = 14, RS_FOG_COLOR = 15, RS_FOG_TYPE = 16, RS_CULLMODE = 20 };
 static int render_state[MAX_STATE];
 static unsigned pixel_mask;
 
@@ -1767,6 +1810,7 @@ static unsigned pixel_mask;
 int p4_state_cache = 1; /* 0: every state sent every time, as b77 */
 int p4_draw_batch = 8;  /* mesh draws between stall-address updates; 1: every draw, as b77 */
 static int gu_mesh_mode;
+static int gu_fog_active;
 static struct {
     unsigned enabled, known; /* one bit per GU state */
     int alpha_known, alpha_func, alpha_ref;
@@ -1830,8 +1874,10 @@ static void gu_dirty(void)
     }
     if (gu_mesh_mode && gs.alpha_known && (gs.alpha_func != GU_GREATER || gs.alpha_ref != 8))
         sceGuAlphaFunc(GU_GREATER, 8, 0xff); /* what draw_tested leaves outside mesh mode */
-    if (gu_mesh_mode && (gs.known & gs.enabled & 1u << GU_FOG))
-        sceGuDisable(GU_FOG); /* fog is the 3D meshes' only */
+    if (gu_fog_active) {
+        sceGuDisable(GU_FOG);
+        gu_fog_active = 0;
+    }
     gu_mesh_mode = 0;
 }
 static void gu_mesh_begin(void)
@@ -2462,6 +2508,8 @@ static void bind_raster_body(Raster *r, int wrap)
     }
     bound_alpha_min = 0, bound_alpha_max = 255;
     if (r == &display_raster) {
+        if (fusion_visual.sample)
+            fusion_visual.feedback++;
         gs.tex_known = 0;
         /* Sample this frame's scene before filtering; the front buffer would accumulate the previous frame's blur. */
         if (!feedback_captured) {
@@ -2986,6 +3034,8 @@ int p4_draw_tv_ring(const float (*outer)[2], int outer_count, const float (*inne
 static void bind_crossfade_capture(void)
 {
     /* The capture pass samples the completed display buffer into a camera texture. */
+    if (fusion_visual.sample)
+        fusion_visual.feedback++;
     unsigned displayed = (unsigned)draw_buffer ^ (STRIDE * SCREEN_H * 4);
     sceGuEnable(GU_TEXTURE_2D);
     sceGuTexMode(GU_PSM_8888, 0, 0, 0);
@@ -3027,11 +3077,11 @@ static void draw_calendar_date(int prim, int count, const GuVertex *out, int alp
     int left = 88 * target_sx;
     int right = 178 * target_sx;
     if (calendar_date_clip == 1) {
-        sceGuScissor(left, 0, right, target_h);
+        sceGuScissor(left, 0, right - left, target_h);
     } else {
         sceGuScissor(0, 0, left, target_h);
         draw_2d_tested(prim, count, out, alpha_writer);
-        sceGuScissor(right, 0, target_w, target_h);
+        sceGuScissor(right, 0, target_w - right, target_h);
     }
     draw_2d_tested(prim, count, out, alpha_writer);
     sceGuScissor(0, 0, target_w, target_h);
@@ -3083,6 +3133,10 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
         st_depth_func(GU_GREATER);
     }
     int alpha_writer = pixel_mask == 0x00ffffff && render_state[1] && (Raster *)render_state[1] != &display_raster;
+    if (fusion_visual.sample) {
+        fusion_visual.masks += alpha_writer;
+        fusion_visual.additive += (sky_state[2] & 0xff) == BLEND_ADD || (sky_state[2] & 0xff) == 0x58;
+    }
     if (system_cursor_mask && !rtt_target) {
         /* The System menu clears destination alpha, then marks its slider.
            The retail label pass tests that bit to recolour the selected text. */
@@ -3302,7 +3356,7 @@ typedef struct {
     MorphTarget *morphTarget;
 } Geometry;
 
-enum { CAMERA_VIEW = 0x20, CAMERA_NEAR = 0x80, CAMERA_FAR = 0x84, ATOMIC_FRAME = 4, ATOMIC_GEOMETRY = 0x18 };
+enum { CAMERA_VIEW = 0x20, CAMERA_NEAR = 0x80, CAMERA_FAR = 0x84, CAMERA_FOG = 0x88, ATOMIC_FRAME = 4, ATOMIC_GEOMETRY = 0x18 };
 enum { GEOMETRY_NATIVE = 0x01000000, MESH_TRISTRIP = 1, MESH_PRIM_MASK = 0xf };
 
 #include "clip.h"
@@ -5447,7 +5501,7 @@ static struct {
     const void *header, *position, *uv, *prelit, *normals, *camera;
     unsigned *from, *end;
     int render[MAX_STATE];
-    unsigned sky[8], camera_view[18], material[REPLAY_MESHES][3];
+    unsigned sky[8], camera_view[19], material[REPLAY_MESHES][3];
     SceneLight light;
 } replay;
 static unsigned replay_draws, replay_records, replay_refusals[6];
@@ -5475,7 +5529,7 @@ static void replay_census(const unsigned *w, const unsigned *end, int depth)
     }
 }
 static unsigned char gs_before[sizeof gs], persist_gs_mark[sizeof gs];
-static int replay_inputs(MeshHeader *header, const Matrix *model, unsigned material[REPLAY_MESHES][3], unsigned view[18])
+static int replay_inputs(MeshHeader *header, const Matrix *model, unsigned material[REPLAY_MESHES][3], unsigned view[19])
 {
     if (!model || header->numMeshes > REPLAY_MESHES || p4_mesh_frustum || p4_probe_depth_mode)
         return 0;
@@ -5487,8 +5541,7 @@ static int replay_inputs(MeshHeader *header, const Matrix *model, unsigned mater
         memcpy(&material[i][2], &mesh->material->diffuse, 4);
     }
     memcpy(view, (char *)current_camera + CAMERA_VIEW, 16 * 4);
-    memcpy(view + 16, (char *)current_camera + CAMERA_NEAR, 4);
-    memcpy(view + 17, (char *)current_camera + CAMERA_FAR, 4);
+    memcpy(view + 16, (char *)current_camera + CAMERA_NEAR, 3 * sizeof *view); /* near, far, fog */
     return 1;
 }
 static int replay_unguarded(const Matrix *model, const float *sphere)
@@ -5507,7 +5560,7 @@ static int replay_try(MeshHeader *header, const V3 *position, float (*uv)[2], co
     if (replay.header != header || replay.position != position || replay.uv != uv || replay.prelit != preLit || replay.count != count ||
         replay.modulate != modulate || replay.normals != normals || replay.camera != current_camera || replay.tex_generation != texture_generation)
         return 0;
-    unsigned material[REPLAY_MESHES][3], view[18];
+    unsigned material[REPLAY_MESHES][3], view[19];
     if (!replay_inputs(header, model, material, view))
         return 0;
     int why = 0;
@@ -5584,7 +5637,7 @@ typedef struct {
     unsigned tex_generation, pixel, bits, ring_min, skip_until, alpha_min, alpha_max, stamp; /* stamp: last frame used */
     float tw, th, sphere[4], model[12];
     int render[MAX_STATE];
-    unsigned sky[8], view[18], material[REPLAY_MESHES][3];
+    unsigned sky[8], view[19], material[REPLAY_MESHES][3];
     const void *mat[PERSIST_MESHES][4]; /* material, raster, its pixels, its palette */
     struct { MeshCache *slot; unsigned key, built; const void *v; } slot[PERSIST_MESHES];
     SceneLight light;
@@ -5649,7 +5702,7 @@ static int persist_try(MeshHeader *header, const V3 *position, float (*uv)[2], c
         why = 3;
     else {
         float m[12];
-        unsigned material[REPLAY_MESHES][3], view[18];
+        unsigned material[REPLAY_MESHES][3], view[19];
         const void *mat[PERSIST_MESHES][4];
         persist_model(m, model);
         if (memcmp(m, e->model, sizeof m) || memcmp(sphere, e->sphere, sizeof e->sphere))
@@ -5815,31 +5868,44 @@ static void draw_meshes(MeshHeader *header, const V3 *position, float (*uv)[2], 
     prof_end(PROF_MESH);
 }
 
-/* RenderWare fog (rwRENDERSTATEFOGENABLE 14, FOGCOLOR 15 as A8R8G8B8, FOGTYPE 16): linear from the camera's fog
-   plane to its far plane. The GE fogs per vertex from view depth; RenderWare's view looks down +z and the GE's
-   coefficient is (z + fog1) * fog2 with 1 = clear, hence the negated distances. Heaven: on for the clouds, 3000 to
-   22870, colour 0. */
-int p4_fog = 0; /* 1: the game's fog on 3D meshes (experiment) */
-static struct { int known; float start, end; unsigned colour; } fog_sent;
+/* RenderWare uses the camera's fog start and either the Sky fog end or the far clip plane.
+   The GE's clear-colour weight is (viewZ + FOG1) * FOG2. View depth grows toward the far plane. */
+enum { GE_FOG1 = 0xcd, GE_FOG2 = 0xce, GE_FOG_COLOR = 0xcf };
+int p4_fog = 1;
+static struct { int known; float end, slope; unsigned colour; } fog_sent;
 static void bind_fog(void)
 {
-    int on = p4_fog && render_state[14] && render_state[16] == 1;
+    int on = p4_fog && current_camera && render_state[RS_FOG_ENABLE] && render_state[RS_FOG_TYPE] == 1;
+    float end = 0.0f, slope = 0.0f;
+    if (on) {
+        const char *camera = current_camera;
+        memcpy(&end, &sky_state[SKY_FAR_FOG_PLANE], sizeof end);
+        if (end == 0.0f)
+            end = *(const float *)(camera + CAMERA_FAR);
+        float span = end - *(const float *)(camera + CAMERA_FOG);
+        if (isfinite(span) && span > 0.0f)
+            slope = -1.0f / span;
+        on = isfinite(slope) && slope < 0.0f;
+    }
+    gu_fog_active = on;
     st_enable(GU_FOG, on);
     if (!on)
         return;
-    float start = *(float *)((char *)current_camera + 0x88), end = *(float *)((char *)current_camera + CAMERA_FAR);
-    unsigned c = render_state[15], colour = (c & 0xff) << 16 | (c & 0xff00) | (c >> 16 & 0xff);
-    if (start >= end)
-        start = end - 1;
-    if (gu_mesh_mode && fog_sent.known && fog_sent.start == start && fog_sent.end == end && fog_sent.colour == colour)
+    unsigned c = render_state[RS_FOG_COLOR];
+    unsigned colour = (c & 0xff) << 16 | (c & 0xff00) | (c >> 16 & 0xff);
+    if (gu_mesh_mode && fog_sent.known && fog_sent.end == end && fog_sent.slope == slope && fog_sent.colour == colour)
         return;
-    fog_sent.known = gu_mesh_mode, fog_sent.start = start, fog_sent.end = end, fog_sent.colour = colour;
-    sceGuFog(-start, -end, colour);
+    fog_sent.known = gu_mesh_mode, fog_sent.end = end, fog_sent.slope = slope, fog_sent.colour = colour;
+    sceGuSendCommandf(GE_FOG1, -end);
+    sceGuSendCommandf(GE_FOG2, slope);
+    sceGuSendCommandi(GE_FOG_COLOR, colour);
 }
 
 /* The state of every 3D mesh draw: depth, alpha test, blend, camera, the model matrix (0: the world). */
 static SceneLight mesh_state(const Matrix *model, int lit)
 {
+    if (fusion_visual.sample)
+        fusion_visual.meshes++;
     prof_begin(PROF_LIGHTS);
     SceneLight light = lit ? scene_lights() : (SceneLight){0};
     prof_end(PROF_LIGHTS);
@@ -10120,6 +10186,20 @@ static int gu_factor(int rw, unsigned *fix)
     }
 }
 
+static void draw_ptank_quads(const char *ps2, int count, const Vertex3D *vertices)
+{
+    unsigned test = ps2 ? *(const unsigned *)(ps2 + PS2_TEST) : 0;
+    /* TEST_1 with alpha NEVER and FB_ONLY draws colour for every fragment
+       that passes depth, including when the scene has depth writes enabled. */
+    int colour_only = render_state[RS_ZWRITE] && (test & 0x300f) == 0x1001;
+    if (colour_only)
+        sceGuDepthMask(GU_TRUE);
+    sceGuDrawArray(GU_TRIANGLES, GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
+                   count, 0, vertices);
+    if (colour_only)
+        sceGuDepthMask(GU_FALSE);
+}
+
 /* Build quads from position billboards or per-particle matrices such as the
    field rain trails. Four-corner colour and UV clusters still need support. */
 static void draw_ptank_body(void *atomic, char *tank, Geometry *g, void *frame);
@@ -10247,7 +10327,7 @@ static void draw_ptank_body(void *atomic, char *tank, Geometry *g, void *frame)
     if (!emitted)
         return;
     sceKernelDcacheWritebackRange(vertices, emitted * sizeof *vertices);
-    sceGuDrawArray(GU_TRIANGLES, GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D, emitted, 0, vertices);
+    draw_ptank_quads(ps2, emitted, vertices);
     static int traced_matrix_draw;
     if (matrix_particles && !traced_matrix_draw) {
         traced_matrix_draw = 1;

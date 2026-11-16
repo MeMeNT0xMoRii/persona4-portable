@@ -66,6 +66,16 @@ static void log_commit(const char *a, int n, const char *b, int m)
 #endif
 }
 
+/* A reset can lose the queued log tail. Commit these few fusion checkpoints directly. */
+void p4_fusion_trace(const char *stage, unsigned mode, unsigned state, int first, int second, int result)
+{
+    char line[160];
+    int n = snprintf(line, sizeof line, "b%d FUSION %u ms %s mode=%02x state=%02x first=%d second=%d result=%d\n",
+                     BUILD, sceKernelGetSystemTimeLow() / 1000u, stage, mode, state, first, second, result);
+    if (n > 0 && n < (int)sizeof line)
+        log_commit(line, n, 0, 0);
+}
+
 /* Writes everything in the ring up to the head seen on entry; only the writer (or a sync caller) moves the tail. */
 static void log_drain(void)
 {
@@ -414,7 +424,7 @@ int main(int argc, char **argv)
     SceIoStat fps_stat;
     snprintf(fps_marker, sizeof fps_marker, "%sFPS", p4_game_dir);
     p4_fps_overlay = sceIoGetstat(fps_marker, &fps_stat) >= 0;
-    p4_log("Persona4 PORTABLE b249-xmb-home16: HOME exit callback ready\n");
+    p4_log("Persona4 PORTABLE b249-xmb-home20: HOME exit callback ready\n");
     p4_log("game directory %s\n", p4_game_dir);
 #ifdef P4_HW_PROFILE
     extern char p4_image[];

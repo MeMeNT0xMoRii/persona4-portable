@@ -1,6 +1,6 @@
 # PSP hardware playtest backlog
 
-Updated 2026-11-15. The [home4](build_b176_xmb_home4.md) playthrough on
+Updated 2026-11-16. The [home4](build_b176_xmb_home4.md) playthrough on
 PSP Go passed the first visit to Yukiko's Castle, Shadow Chie and the
 Fool Social Link. The tester saved at Dojima Residence on 04/17 evening
 and exited successfully. This was the sixth reported successful HOME exit
@@ -17,11 +17,17 @@ replay and the 04/17 evening save for ongoing play.
 
 ## Current build and verification
 
-The [b249-xmb-home16 hardware diagnostic](build_b249_xmb_home16.md) is on
-`playthrough/b249-home16`. It corrects the Shuffle Time faces in the
-tested emulator replay. Fusion and Shuffle Time still require PSP Go
-acceptance. Its rollback is the [home15 build](build_b249_xmb_home15.md)
-on `playthrough/b249-home15`. The home15 rollback remains the
+The [b249-xmb-home20 test build](build_b249_xmb_home20.md) restores the
+color-only depth behavior for a known group of particle states. Its base,
+[home19](build_b249_xmb_home19.md), restores linear dungeon fog and samples
+the rendered frames during the fusion acquisition dialogue. The PSP Go tester
+reached the Apsaras acquisition in [home18](build_b249_xmb_home18.md) and
+confirmed the Social Stats layout and day-change display in
+[home17](build_b249_xmb_home17.md). Home20 is ready for a device replay of
+the skill effects, fog and acquisition scene. Home19 is the rollback package. Earlier
+packages include [home16](build_b249_xmb_home16.md) on
+`playthrough/b249-home16`, followed by [home15](build_b249_xmb_home15.md) on
+`playthrough/b249-home15`. The home15 rollback remains the
 [home14 test build](build_b249_xmb_home14.md) on
 `playthrough/b249-home14`. The `playthrough/b176-xmb-home` branch
 remains at the [home12 build](build_b249_xmb_home12.md).
@@ -38,11 +44,11 @@ System-menu stripe appearance remain separate reports.
 
 | Platform | Current evidence |
 | --- | --- |
-| Host | Home16 linked and verified the PSP imports. The scoped Shuffle culling, home13 field-shadow dispatch, Town Map, disc and HOME tests passed. Full discovery reported 74 passed, two skipped and two inherited harness errors. |
-| PPSSPP | Home16 shows the Town Map terrain, travels to Shopping District South, and completes the 1F Shuffle Time selection and Slime reward. Home15 completed the slot 10 and slot 15 fusion combinations described in the home16 notes. Apsaras saved on home15 and appeared in the Persona list after loading on home16. |
-| PS2 | Play! ran the original US disc and reopened Town Map from slot 9. A published PS2 capture shows illustrations and cracked blank faces at the Shuffle prompt. A matched Castle corridor and Garu cut-in remain open. |
-| PSP Go (PSP-N1000) | Home9 confirmed System, Item, Persona, save/load, HOME in a normal battle, Shadow models and sound, heads and FPS display. Home13 no longer showed black strips in the tester's field retest. Home15 at 333 MHz confirmed the Town Map repair. The tester reproduced a crash when choosing the second Persona for fusion and recorded the remaining Shuffle Time card issue, white corridor background and Garu cut-in for follow-up. |
-| PSP-3000 | Home16 hardware replay is pending. |
+| Host | Home20 compiled and linked. Its address audit, PSP import check and fog-state test passed. Six MIPS CPU fixtures of the packaged home20 code kept the digit colors and reached the fusion preview. Full host discovery reported 75 passes, two skips and the three baseline harness errors. |
+| PPSSPP | Home20 reproduced the particle depth correction and matched home19 in the normal-particle, mask-ramp and 16-point fog controls. Home17 reopened the Town Map after travelling to Shopping District South, displayed filled day-change numerals and reached the Apsaras acquisition in Normal Spread. Home16 completed the 1F Shuffle Time selection and Slime reward. |
+| PS2 | Play! ran the original US disc for the Town Map and Social Stats from slot 9 and the 04/17 → 04/18 day change from slot 8. The tester's Anbernic captures show distance fog in Yukiko's Castle and Yomotsu Hirasaka Path 8. A published PS2 capture shows illustrations and cracked blank faces at the Shuffle prompt. The Garu cut-in comparison remains open. |
+| PSP Go (PSP-N1000) | Home9 confirmed System, Item, Persona, save/load, HOME in a normal battle, Shadow models and sound, heads and FPS display. Home13 no longer showed black strips in the tester's field retest. Home15 at 333 MHz confirmed the Town Map repair. The tester confirmed the Social Stats layout and day-change display on home17 and reached the Apsaras acquisition on home18. The acquisition lighting and home19 dungeon appearance still need a device replay. |
+| PSP-3000 | Home20 hardware replay is pending. |
 
 ## Earlier hardware reports
 
@@ -93,7 +99,8 @@ for current priorities, environment and replay coverage.
    the lower part of the 16:9 picture with the Garu label above. Match that
    animation phase on US PS2 before changing its coordinates.
 
-P4-057 and P4-032 block a full New Game playthrough. Check P4-051 again from
+The home18 report clears the observed fusion crash for the replayed Normal
+Spread. Shuffle Time still needs the P4-032 hardware check. Check P4-051 again from
 slot 9 by opening and reopening the Town Map and walking Shopping District
 South after travel. Keep the home15 raster decode and the home13 field-shadow
 dispatch covered by the existing fixtures.
@@ -103,7 +110,7 @@ dispatch covered by the existing fixtures.
 | P4-001 | CRI logo immediately after Atlus at startup | Large white rectangle instead of the logo | The 1024 × 512 indexed texture exceeded the PSP texture limit. PPSSPP showed the rectangle on home4 and the CRIWARE logo on home5. Check the next PSP cold boot. |
 | P4-002 | Igor's introduction and card animation | White screen flashes | Report; timing needs a replay or video. |
 | P4-003 | HOME/PS button during gameplay | No visible response or normal exit in b165 | Resolved in the tester's b176-xmb-home1 follow-up: HOME now works. Separate cancel/confirm and save-in-flight scenarios were not individually described. |
-| P4-004 | Calendar/day transition, including 04/15 to 04/16 | Background briefly disappears, with large overlapping weather icons and changing background tiles | Slot 4 reproduces the overlap on home6. With home7 on PPSSPP, the forecast graphics stay in their cells and the selected date is legible through the 04/14 → 04/15 change. Check background, further dates and PSP. Home9 on Go still showed an intermittently obscured incoming date digit. Home10 adds complementary clipping for the selected and grey glyphs. Replay slots 8 and 4. |
+| P4-004 | Calendar/day transition | The incoming number can briefly look hollow or almost transparent. Earlier builds also showed weather and background defects. | Reproduced on home16 PPSSPP from slot 8 for 04/17 → 04/18. The matching US PS2 sequence keeps the outer grey numerals filled. Home17 corrects the GU scissor widths and restores the fill throughout the replayed animation. The corrected host test fails on home16 and passes on home17. The tester confirmed the home17 day-change display on PSP Go. |
 | P4-005 | First TV-world eerie-room visit, Yosuke's bathroom scene | Camera angle/foreground occlusion looks wrong | Reproduced on 04/14: foreground wall surfaces obscure part of the room and characters. Earlier photo shows Chie's “Like I care…” dialogue. Compare the same camera cut with US PS2. |
 | P4-006 | Question-mark emotion on characters | Symbol appears at floor level | Photos from 04/14 and 04/15 show the question mark below Teddie. The 04/13 after-school clip shows it at floor height near Chie at 7.1–7.6 s, with an exclamation mark above Yosuke at 3.0–3.3 s. The 04/15 and 04/16 reports add !? on the TV plaza and a question mark on Yosuke’s school route. On 04/17 it recurs at the police station, before the castle, around Chie’s awakening and at dinner with Nanako and Dojima. Home6 restores the model-effect position and rotation writes. Replay the same frames to verify the reported question marks. |
 | P4-007 | TV-world entry and return on 04/14 and 04/15 | Green tint or patch in the nested-TV transition | home4 shows green edges or a bright green centre on 04/14 and 04/15 entry and return, and again entering on 04/17. The visits proceeded. The b176 movie hang is tracked separately. Home8 shows a shared opening and coloured edges during 04/17 entry in PPSSPP. The return transition needs a replay. |
@@ -121,7 +128,7 @@ dispatch covered by the existing fixtures.
 | P4-019 | Move installation into CAT_Ports and launch from normal XMB | Early exit loading data from fixed paths in home1 | Resolved for the tested PSP-3000 setup in b176-xmb-home2. The tester confirmed XMB launch and gameplay. The log confirms the categorized directory, successful boot data reads and 13,072 indexed files. |
 | P4-020 | Dojima's house, 04/17 early morning, talking to Nanako | Tall triangular surface beside the protagonist | Reproduced on home4 in the early-morning Nanako scene. Photo and clips show the surface in front of the protagonist. Compare foreground objects at the same camera position. |
 | P4-021 | Yukiko's Castle Gate, 04/17 daytime, approach the entrance | Red-and-black pattern appears over the side background as the camera moves closer | Improved on home3. The tester reports the outside wall looked correct during the home4 replay. Keep for regression checks. |
-| P4-022 | Yukiko's Castle 1F, walk down the long hallway | Bright white area at the far end | Seen in `IMG_7239.mp4` on home13 and again in `IMG_7249.mp4` on PSP Go with home15. Detail becomes visible at close range. A matched US PS2 comparison and renderer cause remain open. |
+| P4-022 | Yukiko's Castle and Yomotsu Hirasaka Path 8, look down a long hallway | Hard edges where distant geometry should fade into fog | Earlier Castle reports in `IMG_7239.mp4` and `IMG_7249.mp4`. PSP Go clips `IMG_7260.mp4` and `IMG_7262.mp4` show the difference from original-game clips `IMG_7261.mp4` and `IMG_7266.mp4`. The port's fog switch defaulted to off. Home19 restores the linear fog and passes the GE fixture. Replay both corridors on PSP Go. |
 | P4-023 | Yukiko's Castle 1F, flying Shadow outside combat | Only purple hand or arm shapes are visible in the reported encounter | The home6 hardware report confirms the body and face are visible. Audio is P4-044. |
 | P4-024 | Yukiko's Castle 1F, treasure chest on the red carpet | Chest shows disconnected red panels | The 04/17 home4 photo shows missing surfaces again. PPSSPP with home5 shows the red panels while the chest opens and awards a Soul Drop. Save slot 7 provides the route to the chest. Check material data and texture assignment. |
 | P4-025 | Yukiko's Castle 2F, walk around the room before Chie's awakening | Large bright panels appear at the sides near windows as the camera moves | Visible at about 2.7 s and 5.7 s in the earlier clip. Improved on home3. The tester reports the wall looked correct near Shadow Chie’s door on home4. |
@@ -151,12 +158,13 @@ dispatch covered by the existing fixtures.
 | P4-049 | Save and load menus | The yellow/orange slot dials show no numbers | The tester confirmed the digits in both menus on home6. The load confirmation was visible in PPSSPP. Writing and reloading a new slot still needs a PSP check. |
 | P4-050 | Equip category and weapon screens | Misaligned highlight and panels, suspect bands | Home10 preserves both coordinates in the three affected draw helpers. Home14 PPSSPP displayed the character list, Accessory selection, and Golf Club highlight and Square help in Weapon. Multi-item scrolling and matched PS2 framing remain open. |
 | P4-051 | 04/18 Town Map from Yasogami High School or with Central Shopping District selected | Part of the 3D town scene is missing or distorted | Fixed on home15 PPSSPP and confirmed by the PSP Go tester at 333 MHz. The native raster reader used to blank the retail version-1 1024×1024 map atlas. Home15 decodes the original indices and palette at 512×512. Home16 PPSSPP reopened the map after travel and switched destinations. Home16 device acceptance remains open. |
-| P4-052 | Status → Social Stats | Long orange diagonals behind the graph | Home9 Go photo. Check an original US PS2 capture before changing the background. |
-| P4-053 | Castle battle, Zio on Lying Hablerie and other skills | Circular or saturated bursts | Home9 Go clip identifies Zio. Match the original effect phase to determine which bursts differ. |
+| P4-052 | Status → Social Stats | Orange lines extend away from the graph and the orange circles are displaced | Reproduced on home16 in PPSSPP. Using slot 9 on US PS2 and PPSSPP, the home17 coordinate fix restores the five circle positions and connecting pentagon. The tester confirmed the home17 layout on PSP Go. |
+| P4-053 | Castle battle, Zio on Lying Hablerie and other skills | Circular or saturated bursts | Home9 Go clip identifies Zio. Home20 fixes depth writes for a confirmed `FB_ONLY` PTank state and checks its four blend modes in PPSSPP. The recorded burst and stepped light masks still need a matched scene. |
 | P4-054 | 04/18 Classroom Building 2F, walk while the camera tracks the player | Dark wedges across the floor | PSP Go `IMG_7236.mp4`. The home13 PSP Go field retest no longer showed the strips. Preserve the home13 shadow dispatch and replay from slot 9 on later builds. |
 | P4-055 | Enter Yukiko's Castle from the TV-world Entrance Hall | One reported crash, followed by a successful entry | Home13 PSP Go at 333 MHz. The report does not include a crash log. Repeat from slot 10 across boots, first entry and re-entry. The short-disc-read fix is a verified loader correction with an unconfirmed relationship to this incident. |
 | P4-056 | System menu over Yukiko's Castle | Vertical coloured stripe appearance | `IMG_7238.jpeg` on PSP Go. Home14 PPSSPP shows the band and correct selected text at the TV hub. US PS2 retail draws a full-height, palette-coloured stripe layer. A matching frame is needed to assess the reported differences in width, colour or placement. |
-| P4-057 | Velvet Room, choose the second Persona in normal fusion | Game crashes before the fusion can be completed | P0 open. Home15 at 333 MHz on PSP Go, from slot 10, an endgame save and a New Game+ save. Home15 PPSSPP reached Apsaras with slot 10 and Power with slot 15. Home16 PPSSPP reloaded and displayed Apsaras from the post-fusion save. Capture the failing pair and a device log, then test acquisition, Compendium and save/reload on hardware. |
+| P4-057 | Velvet Room, choose the second Persona in normal fusion | Game crashes before the fusion can be completed | The home17 PSP Go log ends after accepting Izanagi and Ukobach. Home18 fixes two unaligned color loads in the digit fade. The tester reached the Apsaras acquisition on home18 PSP Go in `IMG_7259.mp4`. Home19 preserves the preview in six CPU fixtures. Home15 PPSSPP completed Apsaras and Power. Home16 PPSSPP reloaded the Apsaras save. |
+| P4-058 | Velvet Room, leave the newly fused Persona's acquisition dialogue open | The light halo and shading around Apsaras alternate between bright and dim | PSP Go `IMG_7259.mp4`. The difference recurs across successive frames while the dialogue remains stable. Home19 logs pixel samples and draw counts for the completed frames. Cause and hardware measurements remain open. |
 
 The left stripe band in the castle System Menu photo `IMG_7238.jpeg`
 corresponds to a palette-coloured UI layer in the US PS2 executable. The

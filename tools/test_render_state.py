@@ -8,6 +8,101 @@ from pathlib import Path
 
 
 class RenderState(unittest.TestCase):
+    def test_linear_fog_uses_game_planes_and_clears_for_other_passes(self):
+        gcc = shutil.which('gcc')
+        if not gcc:
+            self.skipTest('host gcc is unavailable')
+        source = (Path(__file__).resolve().parents[1] / 'port/rwsky.c').read_text()
+        functions = [re.search(rf'^(?:static )?(?:unsigned|void) {name}\([^\n;]*\)\n\{{.*?^\}}',
+                               source, re.M | re.S)[0]
+                     for name in ('RpSkyRenderStateSet', 'RpSkyRenderStateGet', 'bind_fog', 'gu_dirty')]
+        harness = r'''
+#include <assert.h>
+#include <math.h>
+#include <stdint.h>
+#include <string.h>
+enum { SKY_FAR_FOG_PLANE = 4, RS_FOG_ENABLE = 14, RS_FOG_COLOR = 15, RS_FOG_TYPE = 16 };
+enum { CAMERA_FAR = 0x84, CAMERA_FOG = 0x88, GU_FOG = 7, GU_GREATER = 5 };
+enum { GE_FOG1 = 0xcd, GE_FOG2 = 0xce, GE_FOG_COLOR = 0xcf };
+static float camera[40], origin, slope;
+static void *current_camera = camera;
+static int render_state[64], active, sent, p4_fog = 1;
+static int gu_fog_active, gu_mesh_mode, exp_scissor_on, SCREEN_W, SCREEN_H;
+static unsigned sky_state[8], colour;
+static struct { int known; float end, slope; unsigned colour; } fog_sent;
+static struct { int alpha_known, alpha_func, alpha_ref; } gs;
+static void st_enable(int state, int yes) { assert(state == GU_FOG); active = yes; }
+static void sceGuDisable(int state) { st_enable(state, 0); }
+static void sceGuSendCommandf(int command, float value) {
+    assert(isfinite(value));
+    if (command == GE_FOG1) origin = value;
+    else { assert(command == GE_FOG2); slope = value; }
+    ++sent;
+}
+static void sceGuSendCommandi(int command, int value) {
+    assert(command == GE_FOG_COLOR);
+    colour = value;
+    ++sent;
+}
+static void stall_flush(void) {}
+static void sceGuScissor(int x, int y, int w, int h) { assert(0); }
+static void sceGuAlphaFunc(int mode, int ref, int mask) { assert(0); }
+'''
+        checks = r'''
+int main(void) {
+    camera[CAMERA_FOG / 4] = 300;
+    camera[CAMERA_FAR / 4] = 1500;
+    render_state[RS_FOG_TYPE] = 1;
+    render_state[RS_FOG_COLOR] = 0x804ca0ec;
+    bind_fog();
+    assert(!active && !sent);
+    render_state[RS_FOG_ENABLE] = 1;
+    bind_fog();
+    assert(active && gu_fog_active && sent == 3 && colour == 0xeca04c);
+    assert(fabsf((300 + origin) * slope - 1) < 0.00001f);
+    assert(fabsf((900 + origin) * slope - 0.5f) < 0.00001f);
+    assert((1500 + origin) * slope == 0);
+    gu_dirty();
+    assert(!active && !gu_fog_active);
+    float end = 1000, readback = 0;
+    unsigned bits;
+    RpSkyRenderStateSet(SKY_FAR_FOG_PLANE, (uintptr_t)&end);
+    end = 0;
+    RpSkyRenderStateGet(SKY_FAR_FOG_PLANE, &bits);
+    memcpy(&readback, &bits, sizeof readback);
+    assert(readback == 1000);
+    gu_mesh_mode = 1;
+    bind_fog();
+    assert(active && sent == 6 && origin == -1000);
+    assert(fabsf((650 + origin) * slope - 0.5f) < 0.00001f);
+    bind_fog();
+    assert(sent == 6);
+    camera[CAMERA_FOG / 4] = 600;
+    bind_fog();
+    assert(sent == 9 && fabsf((800 + origin) * slope - 0.5f) < 0.00001f);
+    gu_dirty();
+    assert(!active && !gu_mesh_mode && !gu_fog_active);
+    camera[CAMERA_FOG / 4] = NAN;
+    bind_fog();
+    assert(!active && sent == 9);
+    camera[CAMERA_FOG / 4] = 1000;
+    bind_fog();
+    assert(!active && sent == 9);
+    RpSkyRenderStateSet(SKY_FAR_FOG_PLANE, (uintptr_t)&end);
+    bind_fog();
+    assert(active && origin == -1500 && sent == 12);
+    render_state[RS_FOG_TYPE] = 2;
+    bind_fog();
+    assert(!active && sent == 12);
+}
+'''
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary)
+            code = path / 'check.c'
+            code.write_text(harness + '\n'.join(functions) + checks)
+            subprocess.run([gcc, '-O2', str(code), '-o', str(path / 'check')], check=True)
+            subprocess.run([str(path / 'check')], check=True)
+
     def test_nonindexed_im3d_is_scoped_to_shuffle_time(self):
         gcc = shutil.which('gcc')
         if not gcc:
@@ -166,8 +261,9 @@ static float target_sx = 0.75f;
 static int left, right, draws;
 static int coverage[480];
 static void sceGuScissor(int x, int y, int w, int h) {
-    assert(y == 0 && h == target_h && 0 <= x && x < w && w <= target_w);
-    left = x, right = w;
+    assert(y == 0 && h == target_h && x >= 0 && w > 0 && x + w <= target_w);
+    left = x;
+    right = x + w;
 }
 static void draw_2d_tested(int prim, int count, const GuVertex *v, int alpha_writer) {
     ++draws;

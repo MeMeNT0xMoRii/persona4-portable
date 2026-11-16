@@ -1,5 +1,22 @@
 # PSP performance: current status and plan (updated 2026-11-14, build 249)
 
+## Home19 follow-up
+
+The home17 PSP Go log at the TV entrance reports 111 skin batches, 498 bone-matrix
+uploads, four particle-tank draws and eight additional mesh alpha passes per render
+output in three steady windows. Texture waits and skin cache builds were zero in
+those windows. The next transition window recorded 11 texture waits and four skin
+cache builds, with the longest build taking 76 ms. These are workload counters and
+transition measurements. A home19 device profile is pending.
+
+Use `python tools/bench_swizzle.py` to time the current texture decode and swizzle
+kernels on the host. The standalone [effect probe](visual_issues.md#particle-depth-and-light-masks-p4-053)
+also times 24 draw calls with full or one-sixteenth screen coverage. PPSSPP 1.20.4
+reported practically identical guest times for both coverages. Pass timings on
+hardware need the serial GE probe, while pipelined `hwperf` measures presentation.
+When using `psp_probe_ab.py`, check the actual initial values of `p4_fog`,
+`p4_cull_cover` and `p4_anim_far`. The script's fixed restore table predates home19.
+
 This is the **current** plan for the PSP performance work. Older plans live in
 [next_steps_b112.md](next_steps_b112.md) and [hw_test_plan_b97.md](hw_test_plan_b97.md). Use them as a record of
 measured facts and earlier decisions, not as work still to do.
