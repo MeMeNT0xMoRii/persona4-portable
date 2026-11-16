@@ -1,8 +1,13 @@
 #include <pspkernel.h>
 #include <pspgu.h>
 #include <pspdisplay.h>
+#include <psppower.h>
 #include <math.h>
 #include <stdio.h>
+
+#ifndef P4_PROBE_DEPTH_ONLY
+#define P4_PROBE_DEPTH_ONLY 0
+#endif
 
 PSP_MODULE_INFO("P4 Effect Probe", PSP_MODULE_USER, 1, 0);
 PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER | PSP_THREAD_ATTR_VFPU);
@@ -17,11 +22,24 @@ static unsigned mask_texture[64 * 8] __attribute__((aligned(64)));
 static unsigned precision_texture[MASK_W * MASK_H] __attribute__((aligned(64)));
 static unsigned blend_unusual[8], blend_unusual_n;
 static int p4_blend_fix, render_state[64];
+static unsigned bound_alpha_min, bound_alpha_max;
 static float camera[40];
 static void *current_camera = camera;
-static volatile const unsigned *pixels = (volatile const unsigned *)0x44000000;
+static unsigned pixels[STRIDE * HEIGHT] __attribute__((aligned(64)));
 
 #include "effect_helpers.h"
+
+static void submit_ptank(const char *ps2, int count, const Vertex3D *vertices)
+{
+#ifdef P4_PROBE_PTANK_SPLIT
+    if (ptank_split_depth(ps2)) {
+        const PtankDrawRun run = {count, ptank_depth_mode(vertices[0].colour >> 24)};
+        draw_ptank_split(1, &run, vertices);
+        return;
+    }
+#endif
+    draw_ptank_quads(ps2, count, vertices);
+}
 
 static void make_quad(Vertex3D *out, float x, float y, float w, float h, float depth, unsigned colour)
 {
@@ -39,7 +57,7 @@ static void quad(const char *ps2, int x, int y, int w, float depth, unsigned col
 {
     Vertex3D *vertices = sceGuGetMemory(6 * sizeof *vertices);
     make_quad(vertices, x, y, w, 56, depth, colour);
-    draw_ptank_quads(ps2, 6, vertices);
+    submit_ptank(ps2, 6, vertices);
 }
 
 static void depth_tiles(void)
@@ -195,6 +213,73 @@ static void report_mask_precision(FILE *result)
     }
 }
 
+static void finish_readback(void)
+{
+    sceGuCopyImage(GU_PSM_8888, 0, 0, WIDTH, HEIGHT, STRIDE, (void *)0x04000000,
+                   0, 0, STRIDE, pixels);
+    sceGuTexSync();
+    sceGuFinish();
+    sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
+    sceKernelDcacheInvalidateRange(pixels, sizeof pixels);
+}
+
+static void ptank_mixed_depth(FILE *result)
+{
+    static const unsigned test[] = {0x717fb, 0x71801, 0x717fb, 0x717fb};
+    static const unsigned alpha[] = {0, 1, 64, 128, 252, 253, 254, 255};
+    for (int y = 0; y < 8; y++)
+        for (int x = 0; x < 8; x++)
+            mask_texture[y * 8 + x] = alpha[x] << 24 | 0xffffff;
+    sceKernelDcacheWritebackRange(mask_texture, 8 * 8 * sizeof *mask_texture);
+    bound_alpha_min = 0;
+    bound_alpha_max = 255;
+
+    sceGuClear(GU_COLOR_BUFFER_BIT | GU_DEPTH_BUFFER_BIT);
+    sceGuEnable(GU_DEPTH_TEST);
+    sceGuEnable(GU_ALPHA_TEST);
+    sceGuAlphaFunc(GU_GREATER, 0, 0xff);
+    sceGuEnable(GU_BLEND);
+    set_blend(0x44);
+    sceGuTexMode(GU_PSM_8888, 0, 0, 0);
+    sceGuTexImage(0, 8, 8, 8, mask_texture);
+    sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
+    sceGuTexFilter(GU_NEAREST, GU_NEAREST);
+    sceGuTexWrap(GU_CLAMP, GU_CLAMP);
+    sceGuTexScale(1, 1);
+    sceGuTexOffset(0, 0);
+    for (unsigned row = 0; row < sizeof test / sizeof *test; row++) {
+        unsigned ps2[PS2_TEST / 4 + 1] = { [PS2_TEST / 4] = test[row] };
+        int y = 24 + 60 * row;
+        Vertex3D *vertices = sceGuGetMemory(12 * sizeof *vertices);
+        make_quad(vertices, 32, y, 192, 56, 200, 0xff0000ff);
+        make_quad(vertices + 6, 32, y, 192, 56, 400, 0xffff0000);
+        vertices[1].u = vertices[2].u = vertices[4].u = 1;
+        for (int i = 6; i < 12; i++)
+            vertices[i].u = 7.5f / 8;
+        render_state[RS_ZWRITE] = row != 2;
+        sceGuDepthMask(!render_state[RS_ZWRITE]);
+        sceGuEnable(GU_TEXTURE_2D);
+        if (row == 3) {
+#ifdef P4_PROBE_PTANK_SPLIT
+            const PtankDrawRun runs[2] = {{6, PTANK_DEPTH_MIXED}, {6, PTANK_DEPTH_MIXED}};
+            draw_ptank_split(2, runs, vertices);
+#else
+            draw_ptank_quads((const char *)ps2, 12, vertices);
+#endif
+        } else {
+            submit_ptank((const char *)ps2, 6, vertices);
+            sceGuDisable(GU_TEXTURE_2D);
+            draw_ptank_quads(NULL, 6, vertices + 6);
+        }
+    }
+    finish_readback();
+    for (unsigned row = 0; row < sizeof test / sizeof *test; row++) {
+        for (int stripe = 0; stripe < 8; stripe++)
+            fprintf(result, "%06x%c", pixels[(44 + 60 * row) * STRIDE + 44 + 24 * stripe] & 0xffffff,
+                    stripe == 7 ? '\n' : ' ');
+    }
+}
+
 static void init_gu(void)
 {
     sceGuInit();
@@ -261,15 +346,61 @@ static void time_layers(FILE *result)
     }
 }
 
+static void measure_ptank_lists(FILE *result)
+{
+    enum { PARTICLES = 115, SAMPLES = 256 };
+    static Vertex3D vertices[PARTICLES * 6] __attribute__((aligned(64)));
+    static const int sizes[] = {1, 5, PARTICLES};
+    const unsigned ps2[PS2_TEST / 4 + 1] = { [PS2_TEST / 4] = 0x717fb };
+    render_state[RS_ZWRITE] = 1;
+    fputs("particles\talpha\tlist_bytes\tmean_guest_submit_us\n", result);
+    for (unsigned i = 0; i < sizeof sizes / sizeof *sizes; i++) {
+        for (int mixed = 0; mixed <= 1; mixed++) {
+            int n = sizes[i], bytes = 0;
+            unsigned elapsed = 0;
+            for (int j = 0; j < n; j++)
+                make_quad(vertices + j * 6, 32, 32, 48, 64, 200, mixed ? 0xff000080 : 0x80000080);
+#ifdef P4_PROBE_PTANK_SPLIT
+            PtankDrawRun runs[PARTICLES];
+            for (int j = 0; j < n; j++)
+                runs[j] = (PtankDrawRun){6, PTANK_DEPTH_MIXED};
+#endif
+            for (int sample = 0; sample < SAMPLES; sample++) {
+                sceGuStart(GU_CALL, commands);
+                unsigned start = sceKernelGetSystemTimeLow();
+#ifdef P4_PROBE_PTANK_SPLIT
+                if (mixed)
+                    draw_ptank_split(n, runs, vertices);
+                else
+#endif
+                    submit_ptank((const char *)ps2, n * 6, vertices);
+                elapsed += sceKernelGetSystemTimeLow() - start;
+                bytes = sceGuFinish();
+            }
+            fprintf(result, "%d\t%s\t%d\t%.3f\n", n, mixed ? "mixed" : "below_ref", bytes,
+                    (double)elapsed / SAMPLES);
+        }
+    }
+}
+
 int main(void)
 {
+    scePowerSetClockFrequency(333, 333, 166);
     init_gu();
+    if (P4_PROBE_DEPTH_ONLY) {
+        FILE *depth = fopen("ms0:/p4-ptank-alpha-depth.txt", "w");
+        if (depth) {
+            ptank_mixed_depth(depth);
+            fclose(depth);
+        }
+        sceKernelSleepThread();
+        return 0;
+    }
     depth_tiles();
     blend_tiles();
     mask_ramp();
     mask_precision();
-    sceGuFinish();
-    sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
+    finish_readback();
     sceDisplaySetFrameBuf((void *)0x04000000, STRIDE, PSP_DISPLAY_PIXEL_FORMAT_8888, PSP_DISPLAY_SETBUF_IMMEDIATE);
     sceGuDisplay(GU_TRUE);
     FILE *result = fopen("ms0:/p4-effect-probe.txt", "w");
@@ -287,9 +418,20 @@ int main(void)
         report_mask_precision(result);
         fclose(result);
     }
+    result = fopen("ms0:/p4-ptank-alpha-depth.txt", "w");
+    if (result) {
+        sceGuStart(GU_DIRECT, commands);
+        ptank_mixed_depth(result);
+        fclose(result);
+    }
     result = fopen("ms0:/p4-effect-timing.tsv", "w");
     if (result) {
         time_layers(result);
+        fclose(result);
+    }
+    result = fopen("ms0:/p4-ptank-split-cost.tsv", "w");
+    if (result) {
+        measure_ptank_lists(result);
         fclose(result);
     }
     sceKernelSleepThread();

@@ -15,7 +15,7 @@ def extract(source, name):
     return re.search(rf"^static (?:void|int) {name}\([^\n]*\)\n\{{.*?^\}}", source, re.M | re.S)
 
 
-def build(pspdev, output, renderer):
+def build(pspdev, output, renderer, depth_only=False):
     source = renderer.read_text()
     names = ("blend_factor", "set_blend", "camera_projection", "mask_diagonal_side", "effect_mask_quad",
              "draw_effect_mask")
@@ -29,17 +29,24 @@ def build(pspdev, output, renderer):
         draw = re.search(r"^    sceGuDrawArray\(GU_TRIANGLES, .*emitted, 0, vertices\);$", body, re.M)[0]
         functions.append("static void draw_ptank_quads(const char *ps2, int emitted, const Vertex3D *vertices)\n"
                          "{\n    (void)ps2;\n" + draw + "\n}")
+    if extract(source, "draw_ptank_split"):
+        functions.append("#define P4_PROBE_PTANK_SPLIT 1")
+        functions.append(re.search(r"^enum \{ PTANK_ALPHA_REF = .*?^typedef struct .* PtankDrawRun;$",
+                                   source, re.M | re.S)[0])
+        functions.extend(extract(source, name)[0] for name in ("ptank_depth_mode", "draw_ptank_split"))
     (output / "effect_helpers.h").write_text("\n\n".join(functions) + "\n")
-    build_program(pspdev, output, ROOT / "tools/psp_effect_probe.c", "P4 Effect Probe")
+    defines = ("P4_PROBE_DEPTH_ONLY=1",) if depth_only else ()
+    build_program(pspdev, output, ROOT / "tools/psp_effect_probe.c", "P4 Effect Probe", defines)
 
 
-def build_program(pspdev, output, probe, title):
+def build_program(pspdev, output, probe, title, defines=()):
     sdk = pspdev / "psp/sdk"
 
     def run(program, *args):
         subprocess.run([pspdev / "bin" / program, *args], cwd=output, check=True)
 
-    run("psp-gcc", "-G0", "-O2", "-Wall", "-Wextra", f"-I{sdk / 'include'}", f"-L{sdk / 'lib'}",
+    run("psp-gcc", "-G0", "-O2", "-Wall", "-Wextra", *(f"-D{name}" for name in defines),
+        f"-I{sdk / 'include'}", f"-L{sdk / 'lib'}",
         f"-I{output}", f"-specs={sdk / 'lib/prxspecs'}", f"-Wl,-q,-T{sdk / 'lib/linkfile.prx'}",
         probe, sdk / "lib/prxexports.o", "-lpspgu", "-lpspge", "-lpspdisplay", "-lpsppower",
         "-o", "probe.elf")
@@ -54,13 +61,14 @@ def main():
     parser.add_argument("output", type=Path)
     parser.add_argument("--renderer", type=Path, default=ROOT / "port/rwsky.c",
                         help="renderer source to extract (defaults to the current checkout)")
+    parser.add_argument("--depth-only", action="store_true", help="read back the depth fixture in the first display list")
     args = parser.parse_args()
     pspdev = os.environ.get("PSPDEV")
     if not pspdev:
         parser.error("set PSPDEV to the native PSPSDK toolchain")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    build(Path(pspdev).resolve(), output, args.renderer)
+    build(Path(pspdev).resolve(), output, args.renderer, args.depth_only)
 
 
 if __name__ == "__main__":

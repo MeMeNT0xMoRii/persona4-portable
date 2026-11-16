@@ -10321,6 +10321,47 @@ static void draw_ptank_quads(const char *ps2, int count, const Vertex3D *vertice
         sceGuDepthMask(GU_FALSE);
 }
 
+enum { PTANK_ALPHA_REF = 0x7f * 2 };
+
+static int ptank_split_depth(const char *ps2)
+{
+    /* GeometryBlockSetPartState(0): fragments below AREF blend without updating Z. */
+    return ps2 && render_state[RS_ZWRITE] && (*(const unsigned *)(ps2 + PS2_TEST) & 0xffff) == 0x17fb;
+}
+
+enum { PTANK_DEPTH_FULL, PTANK_DEPTH_READ_ONLY, PTANK_DEPTH_MIXED };
+typedef struct { int count, mode; } PtankDrawRun;
+
+static int ptank_depth_mode(unsigned alpha)
+{
+    /* Modulation cannot increase alpha. The truncated product is a lower bound. */
+    if (alpha < PTANK_ALPHA_REF || bound_alpha_max < PTANK_ALPHA_REF)
+        return PTANK_DEPTH_READ_ONLY;
+    if ((alpha * bound_alpha_min >> 8) >= PTANK_ALPHA_REF)
+        return PTANK_DEPTH_FULL;
+    return PTANK_DEPTH_MIXED;
+}
+
+static void draw_ptank_split(int runs, const PtankDrawRun *run, const Vertex3D *vertices)
+{
+    int format = GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D;
+    for (int i = 0; i < runs; i++) {
+        int count = run[i].count, mode = run[i].mode;
+        sceGuDepthMask(mode == PTANK_DEPTH_READ_ONLY);
+        sceGuAlphaFunc(mode == PTANK_DEPTH_MIXED ? GU_GEQUAL : GU_ALWAYS, PTANK_ALPHA_REF, 0xff);
+        sceGuDrawArray(GU_TRIANGLES, format, count, 0, vertices);
+        format = 0;
+        if (mode == PTANK_DEPTH_MIXED) {
+            sceGuDepthMask(GU_TRUE);
+            sceGuAlphaFunc(GU_LESS, PTANK_ALPHA_REF, 0xff);
+            sceGuDrawArray(GU_TRIANGLES, format, count, 0, vertices);
+        }
+        vertices += count;
+    }
+    sceGuAlphaFunc(GU_GREATER, 0, 0xff);
+    sceGuDepthMask(GU_FALSE);
+}
+
 static int ptank_wrap(int size, unsigned address)
 {
     /* The GE repeats over the power-of-two texture size. Clamp padded axes. */
@@ -10420,6 +10461,9 @@ static void draw_ptank_body(void *atomic, char *tank, Geometry *g, void *frame)
     if (!cuv[0] && !cuv[1] && !cuv[2] && !cuv[3])
         cuv = whole;
     Vertex3D *out = vertex_pool + vertex_used;
+    int split_depth = ptank_split_depth(ps2);
+    PtankDrawRun run[split_depth ? count : 1];
+    int runs = 0;
     for (int i = 0; i < count; i++) {
         const unsigned char *particle = placement->data + i * placement->stride;
         V3 centre, x, y;
@@ -10454,7 +10498,17 @@ static void draw_ptank_body(void *atomic, char *tank, Geometry *g, void *frame)
             quad[k].z = centre.z + x.z * sx + y.z * sy;
             depth[k] = quad[k].x * view->right.z + quad[k].y * view->up.z + quad[k].z * view->at.z + view->pos.z;
         }
-        out += clip_quad_near(quad, depth, near, out);
+        int written = clip_quad_near(quad, depth, near, out);
+        if (split_depth && written) {
+            int mode = ptank_depth_mode(tint >> 24);
+            /* Different particles may overlap. Keep each mixed quad's two
+               passes adjacent so later particles still see the right depth. */
+            if (mode != PTANK_DEPTH_MIXED && runs && run[runs - 1].mode == mode)
+                run[runs - 1].count += written;
+            else
+                run[runs++] = (PtankDrawRun){written, mode};
+        }
+        out += written;
     }
     Vertex3D *vertices = vertex_pool + vertex_used;
     int emitted = out - vertices;
@@ -10462,7 +10516,10 @@ static void draw_ptank_body(void *atomic, char *tank, Geometry *g, void *frame)
     if (!emitted)
         return;
     sceKernelDcacheWritebackRange(vertices, emitted * sizeof *vertices);
-    draw_ptank_quads(ps2, emitted, vertices);
+    if (split_depth)
+        draw_ptank_split(runs, run, vertices);
+    else
+        draw_ptank_quads(ps2, emitted, vertices);
     static int traced_matrix_draw;
     if (matrix_particles && !traced_matrix_draw) {
         traced_matrix_draw = 1;
