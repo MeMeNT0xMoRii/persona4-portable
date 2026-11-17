@@ -5530,10 +5530,19 @@ static void call_key(const unsigned *w, int n, unsigned h[2])
     h[0] = 2166136261u, h[1] = 0x9e3779b9u;
     for (int i = 0; i < n; i++)
         call_mix(h, w[i]);
-    const unsigned *s = (const unsigned *)&gs;
-    for (unsigned i = 0; i < sizeof gs / 4; i++)
-        if (i < CALL_CAM0 / 4 || i >= CALL_CAM1 / 4)
-            call_mix(h, s[i]);
+    /* Same words in the same order. Keep the camera gap out of the hot
+       loop shared by mesh and skin CALL hits. Read the state as bytes. */
+    const unsigned char *s = (const unsigned char *)&gs;
+    for (unsigned i = 0; i < CALL_CAM0; i += sizeof(unsigned)) {
+        unsigned word;
+        memcpy(&word, s + i, sizeof word);
+        call_mix(h, word);
+    }
+    for (unsigned i = CALL_CAM1; i < sizeof gs; i += sizeof(unsigned)) {
+        unsigned word;
+        memcpy(&word, s + i, sizeof word);
+        call_mix(h, word);
+    }
 }
 /* the record with this key, or 0 with *slot the one to record into (empty, else the longest unused) */
 static GeCall *call_find(GeCall c[2], const unsigned h[2], GeCall **slot)
