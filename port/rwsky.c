@@ -7876,6 +7876,11 @@ int p4r_003d5840(void *interpolator, void *animation);
 int func_003d5840(void *interpolator, void *animation) /* SetCurrentAnim */
 {
     lazy_obsolete_now(interpolator);
+    /* b338: SetCurrentAnim restarts at zero. A deferred AddAnimTime
+       step belongs to the previous playback, even when restarting it. */
+    AnimState *state = anim_by_interp(interpolator);
+    if (state)
+        state->pending = 0;
     return p4r_003d5840(interpolator, animation);
 }
 int p4r_003d5e90(void *out, void *in1, void *in2, float alpha);
