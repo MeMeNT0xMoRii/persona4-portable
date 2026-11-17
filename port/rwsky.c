@@ -6561,28 +6561,32 @@ int p4_hanim_update(unsigned *h);
    this). Callers reach the original as p4r_00397c40. */
 int p4_frameskip_bones = 0; /* Events can read the updated bones even when the render frame is skipped. */
 int p4_pose_plain = 0; /* b153 experiment: 1 = the look-at pose (mdlUpdateHierarchyPose) replaced by the plain bone update */
-/* b154: the hierarchy scale hook (mdlInstallHierarchyScaleHook, layer flag 0x10) scales one node's matrix by a vector
-   from the layer. Logged for each new layer and whenever a component is near 0 or huge. */
+/* The hierarchy scale hook reports the first layers and a bounded number of
+   outliers. A full table must not log ordinary scales again on every tick. */
 void p4_scale_hook_note(void *layer, int node, const float *scale, float model_scale, float aspect, int speed_zero)
 {
     static void *seen[16];
     static unsigned odd_logged;
-    int known = 0;
-    for (int i = 0; i < 16; i++)
-        known |= seen[i] == layer;
+    void **slot = NULL;
+    for (unsigned i = 0; i < sizeof seen / sizeof *seen; i++) {
+        if (seen[i] == layer)
+            break;
+        if (!seen[i]) {
+            slot = &seen[i];
+            break;
+        }
+    }
+    if (!slot && odd_logged >= 32)
+        return;
     int odd = 0;
     for (int k = 0; k < 3; k++) {
         float a = scale[k] < 0 ? -scale[k] : scale[k];
         odd |= !(a > 0.05f && a < 20.0f);
     }
-    if (known && !(odd && odd_logged < 32))
+    if (!slot && !odd)
         return;
-    if (!known)
-        for (int i = 0; i < 16; i++)
-            if (!seen[i]) {
-                seen[i] = layer;
-                break;
-            }
+    if (slot)
+        *slot = layer;
     odd_logged += odd;
     p4_log("TRACE scale hook layer %p node %d scale %d %d %d /1000 model %d aspect %d /1000 speed0 %d%s\n", layer, node,
            (int)(scale[0] * 1000), (int)(scale[1] * 1000), (int)(scale[2] * 1000), (int)(model_scale * 1000), (int)(aspect * 1000),
