@@ -403,6 +403,10 @@ def download_ffmpeg(cache=None):
 def extract_upstream(archive, destination):
     with zipfile.ZipFile(archive) as source:
         for path, entry in archive_files(source):
+            # Historical probe evidence has long filenames and is unused by the
+            # build. Keep it in archive validation, but out of the Windows cache.
+            if path.parts[:2] == ('docs', 'probe_archive'):
+                continue
             target = destination.joinpath(*path.parts)
             target.parent.mkdir(parents=True, exist_ok=True)
             with source.open(entry) as src, target.open('wb') as out:

@@ -112,6 +112,18 @@ class SourceBuildTests(unittest.TestCase):
             builder.extract_upstream(self.archive, self.folder / 'workspace')
         self.assertFalse((self.folder / 'outside').exists())
 
+    def test_extract_skips_only_unused_probe_evidence(self):
+        top = f'Persona4-Decompilation-{builder.UPSTREAM_COMMIT}'
+        with zipfile.ZipFile(self.archive, 'w') as archive:
+            archive.writestr(f'{top}/docs/probe_archive/' + 'x' * 120 + '.c', 'probe')
+            archive.writestr(f'{top}/docs/sky2/source.json', '{}')
+            archive.writestr(f'{top}/src/example.c', 'source')
+        destination = self.folder / 'workspace'
+        builder.extract_upstream(self.archive, destination)
+        self.assertFalse((destination / 'docs/probe_archive').exists())
+        self.assertEqual((destination / 'docs/sky2/source.json').read_text(), '{}')
+        self.assertEqual((destination / 'src/example.c').read_text(), 'source')
+
     def test_build_only_installs_consistent_files_without_media_or_complete_marker(self):
         release = self.folder / 'release'; release_fixture(release)
         with patch('psp_prepare.inspect_disc', return_value=([], None, None)), \
