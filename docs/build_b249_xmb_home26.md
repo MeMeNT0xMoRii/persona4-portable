@@ -1,0 +1,18 @@
+# b249-xmb-home26 PSP Go test build
+
+Base [home25](https://github.com/MeMeNT0xMoRii/persona4-portable/commit/413e06a327351f5eb32c63ea1433e30b645c2041) was rebuilt with PSPDEV GCC 15.2.0, the pinned decompilation at `363eab8a966d60a9773b45f330f2344329ec4f0a` and the verified US retail executable `SLUS_217.82`. All three rebuilt home25 runtime hashes matched its archived manifest. This update replaces the three launch files in an existing installation.
+
+| Change | Verified result |
+| --- | --- |
+| Movie-to-game display handoff | After movie playback, the renderer selects the bank opposite the current display. Serial rendering presents only completed frames and advances the bank only after a successful display call. Synthetic PPSSPP tests using the actual display query detected a write to the presented bank in 2 of 4 baseline cases and 0 of 4 updated cases. A host test covers empty frames, failed presents and invalid display-query results. |
+| CRIWARE | The retail quad transforms direction vectors and applies translation through its screen-coordinate arguments. Anchoring around 320 before the 640-to-480 conversion moves the tested center from 181.33 to 240 pixels. Source UVs and the width of 362.67 pixels are identical. |
+| Hierarchy scale diagnostics | After the first 16 animation-layer addresses fill the trace table, ordinary calls no longer format duplicate lines. The first observations and up to 32 outlier messages are retained. In an isolated 12,288-call PPSSPP probe at 333 MHz guest clock, the saturated-table median fell from 88.335 ms to 6.563 ms. The 16-address control measured 7.203 and 5.548 ms. This probe measures CPU code and an in-memory log ring. |
+| Build identity | The startup line identifies b249-xmb-home26. The release uses the existing clock setting of 333 MHz. |
+
+All 821 generated game object hashes match home25. The compile census covered 1,416 units. The release link validated 19 PSP import libraries. The address audit checked 5,857 rebase entries and 168 switch targets without mismatches.
+
+In PPSSPP 1.20.4 Software and OpenGL the packaged build loaded both data files and checked 2,476 string entries before requesting the first font asset. The prepared gameplay archives were unavailable. The two synthetic renderer runs each compared 22 effect samples, 1,024 alpha-mask samples and 32 particle-depth samples. The results matched home25 byte for byte within each backend. Host discovery reported 79 passes, two skips and the same three fixture errors as home25. Those errors cover the Windows VAG encoder and two older renderer fixtures. The targeted display, logo, scale diagnostics, fog, Town Map atlas, save lifecycle and fusion indicator host checks passed.
+
+The fusion trace shows a repeating brightness difference that coincides with alternating feedback and additive draws. The source of the missing draw on alternate frames is open. Skill light artifacts, obstructing foreground objects, fog stripes, the fusion-list placeholders and the sporadic shutdown or scene-change failures need matched replays. The proven buffer-handoff correction is a candidate for some transition flashes. The cause of each photographed flash and its behavior on a PSP Go remain open.
+
+On PSP Go, test the early Zio battle, Velvet Room acquisition dialogue, entrance through the TV and return to title, then save/load and HOME exit. Check the centered CRIWARE logo and compare performance at 333 MHz using the same save, enemies and camera. The main build has no active hardware profiler. The existing separate diagnostic build supports `hwperf` and serial GE probes for controlled captures.
