@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a PSP fixture for particle depth and the existing effect alpha mask."""
+"""Build synthetic PSP fixtures for effects and renderer A/B checks."""
 
 import argparse
 import os
@@ -39,7 +39,7 @@ def build(pspdev, output, renderer, depth_only=False):
     build_program(pspdev, output, ROOT / "tools/psp_effect_probe.c", "P4 Effect Probe", defines)
 
 
-def build_program(pspdev, output, probe, title, defines=()):
+def build_program(pspdev, output, probe, title, defines=(), *, cflags=(), libraries=()):
     sdk = pspdev / "psp/sdk"
 
     def run(program, *args):
@@ -48,8 +48,9 @@ def build_program(pspdev, output, probe, title, defines=()):
     run("psp-gcc", "-G0", "-O2", "-Wall", "-Wextra", *(f"-D{name}" for name in defines),
         f"-I{sdk / 'include'}", f"-L{sdk / 'lib'}",
         f"-I{output}", f"-specs={sdk / 'lib/prxspecs'}", f"-Wl,-q,-T{sdk / 'lib/linkfile.prx'}",
+        *cflags,
         probe, sdk / "lib/prxexports.o", "-lpspgu", "-lpspge", "-lpspdisplay", "-lpsppower",
-        "-o", "probe.elf")
+        *libraries, "-o", "probe.elf")
     run("psp-fixup-imports", "probe.elf")
     run("psp-prxgen", "probe.elf", "probe.prx")
     run("mksfoex", title, "param.sfo")
@@ -61,14 +62,25 @@ def main():
     parser.add_argument("output", type=Path)
     parser.add_argument("--renderer", type=Path, default=ROOT / "port/rwsky.c",
                         help="renderer source to extract (defaults to the current checkout)")
-    parser.add_argument("--depth-only", action="store_true", help="read back the depth fixture in the first display list")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--depth-only", action="store_true", help="read back the depth fixture in the first display list")
+    modes.add_argument("--renderer-perf", action="store_true",
+                       help="build the renderer command, framebuffer and CPU submission probe")
     args = parser.parse_args()
     pspdev = os.environ.get("PSPDEV")
     if not pspdev:
         parser.error("set PSPDEV to the native PSPSDK toolchain")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    build(Path(pspdev).resolve(), output, args.renderer, args.depth_only)
+    sdk = Path(pspdev).resolve()
+    if args.renderer_perf:
+        build_program(sdk, output, ROOT / "tools/psp_renderer_probe.c", "P4 Renderer Probe",
+                      (f'P4_PROBE_RENDERER="{args.renderer.resolve().as_posix()}"',),
+                      cflags=("-ffunction-sections", "-fdata-sections", "-D_PSP_FW_VERSION=600",
+                              "-Wl,--gc-sections,--wrap=sceGuGetMemory,--wrap=sceGeListUpdateStallAddr"),
+                      libraries=("-lpspctrl", "-lpspgum", "-lm"))
+    else:
+        build(sdk, output, args.renderer, args.depth_only)
 
 
 if __name__ == "__main__":
