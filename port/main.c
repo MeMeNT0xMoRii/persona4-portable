@@ -425,6 +425,9 @@ int main(int argc, char **argv)
     snprintf(fps_marker, sizeof fps_marker, "%sFPS", p4_game_dir);
     p4_fps_overlay = sceIoGetstat(fps_marker, &fps_stat) >= 0;
     p4_log("Persona4 PORTABLE b249-xmb-home26: HOME exit callback ready\n");
+#ifdef P4_GE_DUMP
+    p4_log("v0.27-dev GE dump diagnostic: serial renderer\n");
+#endif
     p4_log("game directory %s\n", p4_game_dir);
 #ifdef P4_HW_PROFILE
     extern char p4_image[];

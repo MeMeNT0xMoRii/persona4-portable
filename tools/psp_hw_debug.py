@@ -29,6 +29,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=ROOT / "build" / "psplink_diag")
     parser.add_argument("--release", action="store_true", help="Build an XMB release without hardware profiling")
+    parser.add_argument("--ge-dump", action="store_true", help="Build a serial GE-frame capture diagnostic for PPSSPP replay")
     args = parser.parse_args()
     sdkroot = Path(os.environ["PSPDEV"])
     binpath, sdk = sdkroot / "bin", sdkroot / "psp" / "sdk"
@@ -52,6 +53,8 @@ def main():
              f"-I{sdk / 'include'}", f"-I{ROOT / 'port'}"]
     if not args.release:
         flags.append("-DP4_HW_PROFILE=1")
+    if args.ge_dump:
+        flags.append("-DP4_GE_DUMP=1")
     source_hashes = {}
     for name in PORT:
         source_path = ROOT / "port" / f"{name}.c"
@@ -105,6 +108,8 @@ def main():
     (out / "p4str.bin").write_bytes(struct.pack(f"<{len(strings)}I", *strings))
     assert (out / "p4str.bin").read_bytes() == (base / "p4str.bin").read_bytes()
     title = TITLE if args.release else f"{TITLE} HW Debug b{build_number}"
+    if args.ge_dump:
+        title = f"{TITLE} GE Dump"
     pack_eboot(ROOT, out, binpath, run, out / "p4.prx", title=title)
     print(run(binpath / "psp-size.exe", elf).strip())
     destination.mkdir(parents=True, exist_ok=True)
@@ -114,7 +119,8 @@ def main():
         source_hashes[str(path.relative_to(ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()
     for name in (*ARTWORK, "tools/psp_xmb.py"):
         source_hashes[name] = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
-    manifest = {"build": build_number, "release": args.release, "source_sha256": source_hashes,
+    manifest = {"build": build_number, "release": args.release and not args.ge_dump, "ge_dump": args.ge_dump,
+                "source_sha256": source_hashes,
                 "object_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in original_objects}, "artifact_sha256": {
         name: hashlib.sha256((destination / name).read_bytes()).hexdigest()
         for name in ("p4.elf", "p4.prx", "EBOOT.PBP", data_name, "p4str.bin")}}

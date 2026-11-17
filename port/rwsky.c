@@ -453,7 +453,12 @@ enum { TYPE_ZBUFFER = 1, TYPE_CAMERA = 2, TYPE_MASK = 7, DONT_ALLOCATE = 0x80 };
    shown once its list is done, so the picture is one frame later than the game state. b72: CPU 59 ms then GE 16 ms
    one after the other. 0: build, finish, wait, show, as b75. Default 1 since b98: b97 on the PSP, Heaven 117 -> 101 ms,
    Dojima's room 74 -> 57 ms, no flicker. */
+#ifdef P4_GE_DUMP
+#include "ge_dump.h"
+int p4_pipeline = 0; /* Start serial so capture never switches a live pipeline. */
+#else
 int p4_pipeline = 1;
+#endif
 static unsigned list_store[2][64 * 1024] __attribute__((aligned(64)));
 static unsigned *list = list_store[0];
 static void *draw_buffer;
@@ -1516,7 +1521,20 @@ int func_003f79b0(void *raster, void *device, int flags)
             ge_queued++;
             in_frame = 0;
         }
+#ifdef P4_GE_DUMP
+        int ge_done = sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
+        if (present_new_frame && gd_stage == GD_CAPTURING) {
+            if (ge_done == PSP_GE_LIST_DONE) {
+                gd_record((unsigned)gu_list->start, (unsigned)gu_list->current, (unsigned)draw_buffer);
+                skip_last_us = sceKernelGetSystemTimeLow();
+            } else {
+                p4_log("GE dump: frame did not finish (%d)\n", ge_done);
+            }
+            gd_cancel();
+        }
+#else
         sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
+#endif
         if (present_new_frame)
             report_fusion_visual(fusion_visual, draw_buffer);
     }
@@ -1588,7 +1606,12 @@ int func_003f79b0(void *raster, void *device, int flags)
     {
         SceCtrlData pad;
         const unsigned combo = PSP_CTRL_LTRIGGER | PSP_CTRL_RTRIGGER | PSP_CTRL_SELECT;
-        if (sceCtrlPeekBufferPositive(&pad, 1) > 0 && (pad.Buttons & combo) == combo) {
+        int read = sceCtrlPeekBufferPositive(&pad, 1) > 0;
+#ifdef P4_GE_DUMP
+        if (read && !p4_pipeline)
+            gd_poll(pad.Buttons);
+#endif
+        if (read && (pad.Buttons & combo) == combo) {
             p4_log("FREEZE frame %d list %x\n", frames, (unsigned)list);
             do {
                 sceDisplayWaitVblankStart();
@@ -2704,6 +2727,10 @@ static void bind_blend(void)
 static void begin_frame(void)
 {
     if (!in_frame) {
+#ifdef P4_GE_DUMP
+        if (gd_stage == GD_ARMED)
+            gd_begin();
+#endif
         gu_dirty(); /* a new list */
         in_frame = 1;
         sceGuStart(GU_DIRECT, list);
@@ -11046,6 +11073,9 @@ void frFontRasterUploadGlyph(unsigned char *entry, unsigned char *bitmap, int pa
  * Cache entries are disposable, but must not be freed while that list reads them. */
 int p4_video_renderer_begin(void)
 {
+#ifdef P4_GE_DUMP
+    gd_cancel();
+#endif
     if (in_frame) func_003f79b0(NULL, NULL, 0);
     unsigned begin = sceKernelGetSystemTimeLow();
     while (flip_thread >= 0 && (int)(shown_seq - ge_queued) < 0) {
