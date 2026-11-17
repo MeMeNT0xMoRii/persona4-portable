@@ -3178,16 +3178,13 @@ static void draw_effect_mask(int prim, int count, const GuVertex *vertices)
         sceGuDrawArray(prim, GU_2D_FORMAT, count, 0, vertices);
         sceGuEnable(GU_ALPHA_TEST);
         sceGuStencilFunc(GU_ALWAYS, 0xff, 0xff);
-        /* This mask's texture uses MODULATE, so a uniform vertex alpha
-           bounds the fragment alpha. Varying alpha uses all eight bits. */
+        /* MODULATE cannot increase the interpolated vertex alpha. Track its
+           maximum even across a gradient. Values >= 128 still need all bits. */
         unsigned alpha_limit = vertices[0].colour >> 24;
-        if (alpha_limit < 0x80) {
-            for (int i = 1; i < count; i++) {
-                if (vertices[i].colour >> 24 != alpha_limit) {
-                    alpha_limit = 0xff;
-                    break;
-                }
-            }
+        for (int i = 1; i < count && alpha_limit < 0x80; i++) {
+            unsigned alpha = vertices[i].colour >> 24;
+            if (alpha > alpha_limit)
+                alpha_limit = alpha;
         }
         for (unsigned bit = 1; bit <= alpha_limit; bit <<= 1) {
             sceGuPixelMask(~(bit << 24));
