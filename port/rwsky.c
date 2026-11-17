@@ -1835,6 +1835,10 @@ static unsigned pixel_mask;
    particles, present) calls gu_dirty() first, which ends the mode; mesh_state() starts it again with nothing known. */
 int p4_state_cache = 1; /* 0: every state sent every time, as b77 */
 int p4_draw_batch = 8;  /* mesh draws between stall-address updates; 1: every draw, as b77 */
+/* Adjacent ordinary Im2D quads may keep the fixed state after the previous draw. */
+int p4_ui_state_cache = 1;
+static const unsigned *ui_state_end;
+static int ui_state_blend;
 static int gu_mesh_mode;
 static int gu_fog_active;
 static struct {
@@ -1893,6 +1897,7 @@ int p4_exp_scissor = 0; /* experiment: 1 = 3D meshes drawn into a 16x16 corner (
 static int exp_scissor_on;
 static void gu_dirty(void)
 {
+    ui_state_end = NULL;
     stall_flush();
     if (exp_scissor_on) {
         sceGuScissor(0, 0, SCREEN_W, SCREEN_H);
@@ -2928,13 +2933,19 @@ void p4_calendar_date_clip(int mode)
     calendar_date_clip = calendar_depth_pass ? mode : 0;
 }
 
+static int alpha_test_2d_passthrough(unsigned test, int depth_write)
+{
+    return !p4_gs_alpha_test || !(test & 1) || ((test >> 1) & 7) == 1 ||
+           (((test >> 12) & 3) == 1 && !depth_write);
+}
+
 static void draw_2d_tested(int prim, int count, const GuVertex *vertices, int alpha_writer)
 {
     unsigned at = sky_state[3];
     int method = (at >> 1) & 7, fail = (at >> 12) & 3;
     int depth_write = render_state[RS_ZWRITE] != 0;
     int vtype = GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_2D;
-    if (alpha_writer || !p4_gs_alpha_test || !(at & 1) || method == 1 || (fail == 1 && !depth_write)) {
+    if (alpha_writer || alpha_test_2d_passthrough(at, depth_write)) {
         sceGuDrawArray(prim, vtype, count, 0, vertices);
         return;
     }
@@ -3205,6 +3216,20 @@ static void draw_calendar_date(int prim, int count, const GuVertex *out, int alp
     sceGuScissor(0, 0, target_w, target_h);
 }
 
+/* Keep only the fixed state of adjacent, ordinary textured strips. Texture
+   binding stays per draw, including palette loads and texture-cache flushes. */
+static int ui_state_eligible(int prim, int count, const unsigned short *indices)
+{
+    unsigned test = sky_state[3], blend = sky_state[2];
+    return p4_ui_state_cache && prim == 4 && count == 4 && !indices &&
+           !p4_probe_2d && !p4_exp_ge_time && !rtt_target &&
+           !calendar_depth_pass && !calendar_date_clip && !system_cursor_mask &&
+           !render_state[RS_ZTEST] && !render_state[RS_ZWRITE] && !pixel_mask &&
+           !(test & (1u << 14)) && alpha_test_2d_passthrough(test, 0) &&
+           render_state[1] && (Raster *)render_state[1] != &display_raster &&
+           (!blend || blend == BLEND_NORMAL);
+}
+
 static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *indices, int count)
 {
     if (p4_probe_2d && count > 0)
@@ -3238,11 +3263,17 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
             }
         }
     }
-    gu_dirty(); /* raw sceGu below: the mesh state cache no longer holds */
+    int plain_ui = ui_state_eligible(prim, count, indices);
+    int blend_enabled = render_state[12] || sky_state[2];
+    int reuse_ui = plain_ui && in_frame && !gu_mesh_mode && !draws_since_stall &&
+                   ui_state_end == gu_list->current && ui_state_blend == blend_enabled;
+    if (!reuse_ui)
+        gu_dirty(); /* raw sceGu below: the mesh state cache no longer holds */
     if (count <= 0 || prim < 1 || prim > 6)
         return 1;
     begin_frame();
-    bind_depth();
+    if (!reuse_ui)
+        bind_depth();
     if (calendar_date_clip) {
         st_enable(GU_DEPTH_TEST, 0);
         st_depth_mask(GU_TRUE);
@@ -3280,16 +3311,19 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     int effect_mask = p4_effect_mask && !rtt_target && alpha_writer && sky_state[3] == 0x31001;
     /* mcDrawSlotDial clears destination alpha through the digit textures using its own alpha tests. */
     int slot_cutout = alpha_writer && (sky_state[3] == 0x50009 || sky_state[3] == 0x50805);
-    bind_mask(slot_cutout ? 0 : byte_colour(vertices[indices ? indices[0] : 0].a));
-    sceGuDisable(GU_CLIP_PLANES);
-    sceGuDisable(GU_ALPHA_TEST);
+    if (!reuse_ui) {
+        bind_mask(slot_cutout ? 0 : byte_colour(vertices[indices ? indices[0] : 0].a));
+        sceGuDisable(GU_CLIP_PLANES);
+        sceGuDisable(GU_ALPHA_TEST);
+    }
     int crossfade = p4_crossfade_capture && rtt_target && sky_state[2] == 0x2024 &&
                     (Raster *)render_state[1] == &display_raster;
     if (crossfade) {
         bind_crossfade_capture();
     } else {
         bind_texture();
-        bind_blend();
+        if (!reuse_ui)
+            bind_blend();
     }
     /* An alpha-only write (RGB masked) of a texture: the PS2 stores each pixel's alpha, the PSP's stencil takes one
        value per draw. Keep that value off the pixels the texture leaves transparent, so the title's light blobs
@@ -3344,6 +3378,10 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
         draw_2d_tested(GU_SPRITES, n, strips, 0);
     } else {
         draw_2d_tested(gu_prim[prim], count, out, test_alpha_writer);
+    }
+    if (plain_ui) {
+        ui_state_end = gu_list->current;
+        ui_state_blend = blend_enabled;
     }
     return 1;
 }

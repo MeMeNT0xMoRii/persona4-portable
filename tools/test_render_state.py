@@ -28,6 +28,7 @@ static float camera[40], origin, slope;
 static void *current_camera = camera;
 static int render_state[64], active, sent, p4_fog = 1;
 static int gu_fog_active, gu_mesh_mode, exp_scissor_on, SCREEN_W, SCREEN_H;
+static const unsigned *ui_state_end;
 static unsigned sky_state[8], colour;
 static struct { int known; float end, slope; unsigned colour; } fog_sent;
 static struct { int alpha_known, alpha_func, alpha_ref; } gs;
@@ -299,6 +300,7 @@ int main(void) {
         root = Path(__file__).resolve().parent.parent
         source = (root / 'port/rwsky.c').read_text()
         tables = re.findall(r'^static const int gs_alpha_.*?;', source, re.M)
+        predicate = re.search(r'^static int alpha_test_2d_passthrough\(.*?^\}', source, re.M | re.S)[0]
         draw = re.search(r'^static void draw_2d_tested\(.*?^\}', source, re.M | re.S)[0]
         harness = r'''
 #include <assert.h>
@@ -359,7 +361,7 @@ int main(void) {
 '''
         with tempfile.TemporaryDirectory(dir=root / 'build') as temporary:
             path = Path(temporary)
-            (path / 'check.c').write_text(harness + '\n'.join(tables) + '\n' + draw + checks)
+            (path / 'check.c').write_text(harness + '\n'.join([*tables, predicate, draw]) + checks)
             subprocess.run([gcc, '-O2', str(path / 'check.c'), '-o', str(path / 'check.exe')], check=True, capture_output=True)
             subprocess.run([str(path / 'check.exe')], check=True)
 
