@@ -35,7 +35,10 @@ def main():
     binpath, sdk = sdkroot / "bin", sdkroot / "psp" / "sdk"
     base = ROOT / "build" / "psp"
     destination = args.out.resolve()
-    build_number = int(re.search(r"^#define BUILD (\d+)$", (ROOT / "port/main.c").read_text(), re.M)[1])
+    entry_source = (ROOT / "port/main.c").read_text()
+    build_number = int(re.search(r"^#define BUILD (\d+)$", entry_source, re.M)[1])
+    build_label = re.search(r'^#define P4_BUILD_ID "([^"]+)"$', entry_source, re.M)
+    build_id = build_label[1] if build_label else None
     out = Path(tempfile.mkdtemp(prefix="p3f-hwdbg-"))
     print(f"Staging network objects in {out}", flush=True)
     stage = out / "objects"
@@ -107,7 +110,7 @@ def main():
     (out / data_name).write_bytes(data)
     (out / "p4str.bin").write_bytes(struct.pack(f"<{len(strings)}I", *strings))
     assert (out / "p4str.bin").read_bytes() == (base / "p4str.bin").read_bytes()
-    title = TITLE if args.release else f"{TITLE} HW Debug b{build_number}"
+    title = (build_id or TITLE) if args.release else f"{TITLE} HW Debug b{build_number}"
     if args.ge_dump:
         title = f"{TITLE} GE Dump"
     pack_eboot(ROOT, out, binpath, run, out / "p4.prx", title=title)
@@ -119,7 +122,8 @@ def main():
         source_hashes[str(path.relative_to(ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()
     for name in (*ARTWORK, "tools/psp_xmb.py"):
         source_hashes[name] = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
-    manifest = {"build": build_number, "release": args.release and not args.ge_dump, "ge_dump": args.ge_dump,
+    manifest = {"build": build_number, "build_id": build_id,
+                "release": args.release and not args.ge_dump, "ge_dump": args.ge_dump,
                 "source_sha256": source_hashes,
                 "object_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in original_objects}, "artifact_sha256": {
         name: hashlib.sha256((destination / name).read_bytes()).hexdigest()
