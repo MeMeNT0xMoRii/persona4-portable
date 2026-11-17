@@ -3001,6 +3001,21 @@ int p4_video_renderer_begin(void)
     return 0;
 }
 
+/* b340 (issue #12): the last resort of main.c's malloc wrappers for a big block (F023_003.P01 wanted 1.89 MB with
+   12 MB free in pieces): every mesh and skin cache entry freed with the GE idle, as before a movie. Only on the
+   drawing thread. Returns the bytes freed. */
+void p4_video_renderer_end(void);
+unsigned p4_heap_release_all(void)
+{
+    if (cache_thread < 0 || sceKernelGetThreadId() != cache_thread)
+        return 0;
+    unsigned before = cache_bytes + skin_ge_bytes;
+    if (p4_video_renderer_begin() < 0)
+        return 0;
+    p4_video_renderer_end();
+    return before;
+}
+
 void p4_video_renderer_end(void)
 {
     fps_window_valid = fps_frames = fps_tenths = 0;

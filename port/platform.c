@@ -33,7 +33,7 @@ void func_00440b68(const char *fmt, ...)
     p4_log("game: %s\n", text);
     /* b277: "#### REQ CDVD = ##field/pack/f044_000.p00##" starts a field load (files.c's ADXF hook does not see
        these): the mesh cache gives its entries back at the next frame (rwsky.c), before the new scene's big blocks */
-    if (strstr(text, "REQ CDVD") && strstr(text, "field/pack/") && strstr(text, ".p00")) {
+    if (strstr(text, "REQ CDVD") && strstr(text, "field/pack/") && strstr(text, ".p0")) { /* b340: every part */
         extern int p4_cache_flush_on_load;
         extern volatile int p4_cache_flush_pending;
         if (p4_cache_flush_on_load)

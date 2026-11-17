@@ -400,6 +400,10 @@ def download_ffmpeg(cache=None):
 def extract_upstream(archive, destination):
     with zipfile.ZipFile(archive) as source:
         for path, entry in archive_files(source):
+            # Probe evidence nothing reads; its 124-character names pass Windows' 260-character MAX_PATH under the
+            # default build cache (%LOCALAPPDATA%\Persona4PSP\builds\<hash>\work\ext\...).
+            if path.parts[:2] == ('docs', 'probe_archive'):
+                continue
             target = destination.joinpath(*path.parts)
             target.parent.mkdir(parents=True, exist_ok=True)
             with source.open(entry) as src, target.open('wb') as out:

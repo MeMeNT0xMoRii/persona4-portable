@@ -15,7 +15,7 @@ PSP_MAIN_THREAD_STACK_SIZE_KB(1024);
 PSP_HEAP_SIZE_KB(-1); /* the heap is claimed before main */
 PSP_HEAP_THRESHOLD_SIZE_KB(4096); /* left free: thread stacks */
 
-#define BUILD 339
+#define BUILD 340
 #define P4_IMAGE_SIZE 0x40B000 /* retail 0x52da00..0x938a00: data and bss */
 #include "paths.h"
 #define GAME_DIR "ms0:/PSP/GAME/P4/" /* only until p4_paths_init: the log before it */
@@ -225,6 +225,10 @@ static unsigned heap_release(unsigned n)
     unsigned free_before = a.fordblks + p4_heap_unclaimed(), big_before = heap_largest();
     unsigned freed = p4_anim_tracks_release();
     freed += p4_mesh_cache_release();
+    if (n >= 1u << 20 && heap_largest() < n + 65536) { /* b340 (issue #12): still no run that size: every cache */
+        extern unsigned p4_heap_release_all(void);
+        freed += p4_heap_release_all();
+    }
     struct mallinfo b = mallinfo();
     p4_log("heap short: request %u, free %u largest %u; released %u, now free %u largest %u, arena %u\n", n, free_before,
            big_before, freed, b.fordblks + p4_heap_unclaimed(), heap_largest(), (unsigned)b.arena);

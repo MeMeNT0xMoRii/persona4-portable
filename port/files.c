@@ -115,7 +115,8 @@ Handle *func_004c85a0(const char *name, int mode)
     {
         extern int p4_cache_flush_on_load;
         size_t len = strlen(base);
-        if (p4_cache_flush_on_load && len > 4 && !strcmp(base + len - 4, ".p00")) {
+        /* b340: every part (.p00, .p01, ...), any case: issue #12 failed on F023_003.P01 */
+        if (p4_cache_flush_on_load && len > 4 && base[len - 4] == '.' && (base[len - 3] | 0x20) == 'p' && base[len - 2] == '0') {
             extern volatile int p4_cache_flush_pending; /* b276: released on the drawing thread at its next frame */
             p4_cache_flush_pending = 1;
         }
