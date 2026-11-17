@@ -1562,10 +1562,12 @@ int func_003f79b0(void *raster, void *device, int flags)
         vertex_cap = POOL_VERTICES / 2;
         index_cap = POOL_INDICES / 2;
     } else {
-        if (sceDisplaySetFrameBuf((void *)(0x04000000 + (unsigned)draw_buffer), STRIDE,
-                                 PSP_DISPLAY_PIXEL_FORMAT_8888, PSP_DISPLAY_SETBUF_IMMEDIATE) >= 0 && present_new_frame)
+        if (present_new_frame &&
+            sceDisplaySetFrameBuf((void *)(0x04000000 + (unsigned)draw_buffer), STRIDE,
+                                  PSP_DISPLAY_PIXEL_FORMAT_8888, PSP_DISPLAY_SETBUF_IMMEDIATE) >= 0) {
             fps_presented();
-        draw_buffer = other;
+            draw_buffer = other;
+        }
         flip_seq = shown_seq = ge_queued;
         pipe_set = 0;
         list = list_store[0];
@@ -11061,6 +11063,17 @@ int p4_video_renderer_begin(void)
 
 void p4_video_renderer_end(void)
 {
+    /* Movies present directly from both GE framebuffer banks. Resume in the
+       bank the display is not reading, regardless of the final movie parity. */
+    void *front;
+    int stride, format;
+    if (sceDisplayGetFrameBuf(&front, &stride, &format, PSP_DISPLAY_SETBUF_IMMEDIATE) >= 0 &&
+        stride == STRIDE && format == PSP_DISPLAY_PIXEL_FORMAT_8888) {
+        const uintptr_t first = 0x04000000, bank_size = STRIDE * SCREEN_H * 4;
+        uintptr_t address = (uintptr_t)front & ~(uintptr_t)0x40000000;
+        if (address == first || address == first + bank_size)
+            draw_buffer = (void *)(address == first ? bank_size : 0);
+    }
     fps_window_valid = fps_frames = fps_tenths = 0;
     skip_frame = skip_run = 0;
     skip_debt_us = 0;
