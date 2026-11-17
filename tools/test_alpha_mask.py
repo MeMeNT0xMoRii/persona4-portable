@@ -14,6 +14,8 @@ class AlphaMaskTest(unittest.TestCase):
         source = r'''
 #include <assert.h>
 #include <string.h>
+#include <math.h>
+#include "alpha_policy.h"
 enum {GU_TRIANGLES,GU_TRIANGLE_STRIP,GU_TRIANGLE_FAN,GU_STENCIL_TEST,GU_ALPHA_TEST,
       GU_KEEP,GU_REPLACE,GU_ALWAYS,GU_EQUAL};
 enum {GU_TEXTURE_32BITF=1,GU_COLOR_8888=2,GU_VERTEX_32BITF=4,GU_TRANSFORM_2D=8,
@@ -36,6 +38,7 @@ static void sceGuDrawArray(int prim,int type,int n,const void *ix,const void *pv
     /* The second triangle covers only even pixels, with opposite alpha.
      * Fragment alpha is deliberately independent of stencil REPLACE. */
     for(unsigned x=0;x<256;x++){
+        if(render_state[RS_ZTEST] && x>=192)continue; /* depth-failing fragments keep stencil */
         unsigned tri=(unsigned)v[0].x;
         if(tri && (x&1))continue;
         unsigned a=render_state[1] ? (tri?255-x:x) : v[0].colour>>24;
@@ -58,6 +61,11 @@ int main(void){
     assert(draw_2d_alpha_mask(GU_TRIANGLES,6,v)&&calls==18);
     for(unsigned x=0;x<256;x++)assert(framebuffer[x]==(((x&1?x:255-x)<<24)|0x123456));
     assert(mask==pixel_mask&&!enabled[GU_ALPHA_TEST]);
+    calls=0;render_state[RS_ZTEST]=1;sky_state[3]=0x31001; /* enemy appearance: NEVER + FB_ONLY */
+    for(unsigned x=0;x<256;x++)framebuffer[x]=0xa5123456;
+    assert(draw_2d_alpha_mask(GU_TRIANGLES,6,v)&&calls==18);
+    for(unsigned x=0;x<256;x++)assert(framebuffer[x]==((x>=192?0xa5:(x&1?x:255-x))<<24|0x123456));
+    render_state[RS_ZTEST]=0;sky_state[3]=0x717fb;
     calls=0;for(int i=0;i<6;i++)v[i].colour=0;
     assert(draw_2d_alpha_mask(GU_TRIANGLES,3,v)&&calls==1);
     for(int x=0;x<256;x++)assert(framebuffer[x]==0x123456); /* alpha zero really clears */
@@ -65,7 +73,6 @@ int main(void){
     assert(draw_2d_alpha_mask(GU_TRIANGLES,3,v)&&calls==1);
     for(int x=0;x<256;x++)assert(framebuffer[x]==0x73123456);
     unsigned before=calls;
-    render_state[RS_ZTEST]=1;assert(!draw_2d_alpha_mask(GU_TRIANGLES,3,v));render_state[RS_ZTEST]=0;
     render_state[RS_ZWRITE]=1;assert(!draw_2d_alpha_mask(GU_TRIANGLES,3,v));render_state[RS_ZWRITE]=0;
     sky_state[3]|=0x4000;assert(!draw_2d_alpha_mask(GU_TRIANGLES,3,v));sky_state[3]=0x735fb;
     assert(!draw_2d_alpha_mask(GU_TRIANGLES,3,v));sky_state[3]=0x717fb;

@@ -29,7 +29,7 @@ static int list_room(void){return list_available;}
 static int p4_shadow_fade=1;
 #define SKIPPING skip_frame
 static int p4_probe_2d,p4_2d_nan_drop=1,p4_alpha_pixel,p4_2d_alpha_masks,p4_alpha_write_test;
-static int p4_feedback_sprites=1,p4_dst_alpha_many,cache_frame,p4_dst_alpha_passes;
+static unsigned alpha_mask_low;static int p4_feedback_sprites=1,p4_alpha_mask_coarse=32,p4_dst_alpha_many,cache_frame,p4_dst_alpha_passes;
 static unsigned nan_2d_dropped,sky_state[8],pixel_mask,dst_small_now,dst_small_last,dst_small_frame,dst_alpha_skipped,gs_alpha_splits;
 static long long render_state[32];
 static Raster display_raster,texture,target;
@@ -97,7 +97,16 @@ int main(void) {
         reset();draw(4,v,0,4);Snapshot reference=snapshot();
         reset();p4_ui_quad_draw(compact);Snapshot direct=snapshot();assert(!memcmp(&reference,&direct,sizeof reference));cases++;
     }
-    puts("8192 draw configurations: generic/native GE vertices, states, guards, list capacity and shadow fades match");
+    skip_frame=p4_probe_flags=p4_probe_2d=gate_closed=0;list_available=1;rtt_target=0;
+    p4_dst_alpha_passes=p4_2d_alpha_masks=mask_early=1;p4_dst_alpha_many=8;
+    pixel_mask=0x00ffffff;render_state[1]=(long long)&texture;
+    for(int i=0;i<4;i++){v[i].x=(i&1)*100;v[i].y=(i>>1)*100;}
+    reset();dst_small_last=20;draw(4,v,0,4);assert(!dst_alpha_skipped && allocs==1);
+    p4_2d_alpha_masks=0;
+    reset();dst_small_last=20;draw(4,v,0,4);assert(dst_alpha_skipped==1 && !allocs);
+    p4_2d_alpha_masks=1;pixel_mask=0;render_state[1]=(long long)&display_raster;
+    reset();dst_small_last=20;draw(4,v,0,4);assert(dst_alpha_skipped==1 && !allocs);
+    puts("8192 draw configurations and crowded alpha-mask retention passed");
 }
 '''
         self.check_c(code)

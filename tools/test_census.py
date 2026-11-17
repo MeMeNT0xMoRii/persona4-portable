@@ -6,6 +6,20 @@ from psp_make_data import K
 
 
 class AddressCasts(unittest.TestCase):
+    def test_noise_pair_keeps_complete_fallback(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        rel = 'src/Graphics/Effect/effDistortParticle.c'
+        source = (root / 'ext/Persona4-Decompilation' / rel).read_text()
+        converted = shim(source, rel)
+        self.assertEqual(converted.count('if (p4_cloud_draw('), 1)
+        self.assertIn('memcpy(p4_mask, quad, sizeof p4_mask);', converted)
+        mask = converted.index('[0](4, p4_mask, 4);')
+        noise = converted.index('[0](4, quad, 4);', mask)
+        self.assertLess(mask, noise)
+        self.assertIn('mdlEffectEmitTagPair();', converted[mask:noise])
+        self.assertIn('case 1:', converted[noise:])
+
     def test_script_integer_result_matches_canonical_header(self):
         self.assertEqual(shim('extern s64 scrGetParamInt();'), 'extern s32 scrGetParamInt();')
         self.assertEqual(shim('s64 actual_wide_result(void);'), 's64 actual_wide_result(void);')

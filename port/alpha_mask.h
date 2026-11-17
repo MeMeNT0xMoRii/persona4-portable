@@ -1,6 +1,9 @@
 /* PSP writes framebuffer alpha through stencil, never fragment output.
  * Reconstruct each bit of textured/interpolated alpha with the GE alpha test.
- * Restricted to main-screen masks without depth/DATE or ATEST rejection. */
+ * Restricted to main-screen masks without depth writes/DATE or ATEST rejection. */
+
+/* Lowest alpha bit reconstructed: crowded frames keep only the high bits (fewer passes, coarser soft edges). */
+static unsigned alpha_mask_low = 1;
 
 /* Clear the covered pixels' alpha, then write each bit up to limit. The first draw selects the vertex format. */
 static void alpha_mask_bits(int prim, int type, int count, const GuVertex *v, unsigned limit)
@@ -9,7 +12,7 @@ static void alpha_mask_bits(int prim, int type, int count, const GuVertex *v, un
     sceGuAlphaFunc(GU_ALWAYS, 0, 0xff);
     sceGuStencilFunc(GU_ALWAYS, 0, 0xff);
     sceGuDrawArray(prim, type, count, 0, v);
-    for (unsigned bit = 1; bit <= limit && bit <= 128; bit <<= 1) {
+    for (unsigned bit = alpha_mask_low; bit <= limit && bit <= 128; bit <<= 1) {
         sceGuPixelMask(0x00ffffff | ((~bit & 0xffu) << 24));
         sceGuAlphaFunc(GU_EQUAL, bit, bit);
         sceGuStencilFunc(GU_ALWAYS, bit, 0xff);
@@ -45,7 +48,7 @@ static int draw_2d_alpha_mask(int prim, int count, const GuVertex *v)
     if (count <= 0) return 0;
     unsigned test = sky_state[3], alpha = v[0].colour >> 24;
     if (!p4_2d_alpha_masks || pixel_mask != 0x00ffffff || rtt_target ||
-        render_state[RS_ZTEST] || render_state[RS_ZWRITE] || (test & (1u << 14)) ||
+        render_state[RS_ZWRITE] || (test & (1u << 14)) ||
         ((test & 1) && ((test >> 1) & 7) != 1 && ((test >> 12) & 3) != 1) ||
         (prim != GU_TRIANGLES && prim != GU_TRIANGLE_STRIP && prim != GU_TRIANGLE_FAN))
         return 0;

@@ -466,6 +466,30 @@ FIXES["src/promoted/code1_003c.c"] = [
     ('    self = arg0;\n    func_003e3c20(D_0070AF70, self);\n',
      '    self = arg0;\n    { extern void p4_fx_unmark(void *); p4_fx_unmark(self); }\n    func_003e3c20(D_0070AF70, self);\n'),
 ]
+# b344: this pair's framebuffer alpha is scratch for its immediately following noise draw.
+# Build the reader UVs before drawing, so unsupported cases still use the untouched two-pass path.
+FIXES["src/Graphics/Effect/effDistortParticle.c"] = [
+    ('        u32 primitiveTable;\n',
+     '        u32 primitiveTable;\n        DistortVertex p4_mask[4];\n'
+     '        extern int p4_cloud_draw(const void *, const void *, void *, unsigned);\n'
+     '        memcpy(p4_mask, quad, sizeof p4_mask);\n'),
+    ('        ((s32 (**)(s32, DistortVertex *, s32))primitiveTable)[0](4, quad, 4);\n'
+     '        mdlEffectEmitTagPair();\n'
+     '        ((void (**)(u32, u32))setStateTable)[0](1, *(u32 *)instance->texture);\n'
+     '        RpSkyRenderStateSet(2, savedTextureState | 0x10);\n', ''),
+    ('        quad[3].v = D_0071458C[uv].coordinate;\n',
+     '        quad[3].v = D_0071458C[uv].coordinate;\n'
+     '        if (p4_cloud_draw(p4_mask, quad, *(void **)instance->texture, savedTextureState | 0x10)) {\n'
+     '            mdlEffectEmitTagPair();\n'
+     '            ((void (**)(u32, u32))setStateTable)[0](1, *(u32 *)instance->texture);\n'
+     '            RpSkyRenderStateSet(2, savedTextureState | 0x10);\n'
+     '        } else {\n'
+     '            ((s32 (**)(s32, DistortVertex *, s32))primitiveTable)[0](4, p4_mask, 4);\n'
+     '            mdlEffectEmitTagPair();\n'
+     '            ((void (**)(u32, u32))setStateTable)[0](1, *(u32 *)instance->texture);\n'
+     '            RpSkyRenderStateSet(2, savedTextureState | 0x10);\n'),
+    ('        mdlEffectEmitSlotPacket();\n        break;\n', '        }\n        mdlEffectEmitSlotPacket();\n        break;\n'),
+]
 RETAIL_LITERAL = re.compile(r"(\*\)\s*(?:\([^()\n]*\)\s*\)\s*)?\(?)(0x0{0,2}[5-9][0-9A-Fa-f]{5})\b")  # data and callback pointer casts move with the image
 TIMER_CONTROL = re.compile(r"\*\s*\(\s*(?:volatile\s+)?u32\s*\*\s*\)\s*0x100000[123]0")
 TIMER0 = re.compile(r"\*\s*\(\s*(?:volatile\s+)?(?:u32|unsigned int|s32|int)\s*\*\s*\)\s*0x10000000")

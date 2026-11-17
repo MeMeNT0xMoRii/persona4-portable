@@ -15,7 +15,7 @@ PSP_MAIN_THREAD_STACK_SIZE_KB(1024);
 PSP_HEAP_SIZE_KB(-1); /* the heap is claimed before main */
 PSP_HEAP_THRESHOLD_SIZE_KB(4096); /* left free: thread stacks */
 
-#define BUILD 340
+#define BUILD 344
 #define P4_IMAGE_SIZE 0x40B000 /* retail 0x52da00..0x938a00: data and bss */
 #include "paths.h"
 #define GAME_DIR "ms0:/PSP/GAME/P4/" /* only until p4_paths_init: the log before it */

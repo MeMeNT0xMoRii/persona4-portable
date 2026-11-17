@@ -830,6 +830,7 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     if (dst_small_frame != cache_frame)
         dst_small_last = dst_small_now, dst_small_now = 0, dst_small_frame = cache_frame;
     int many = p4_dst_alpha_many > 0 && dst_small_last > (unsigned)p4_dst_alpha_many;
+    alpha_mask_low = many ? p4_alpha_mask_coarse : 1;
     if (!p4_alpha_pixel && (dst_alpha_pass || alpha_writer)) {
         float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
         for (int i = 0; i < count; i++) {
@@ -841,7 +842,9 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
         }
         if ((x1 - x0) * (y1 - y0) < 640 * 448 / 2) { /* the battle's puffs cover 0.27 of the screen, filters all of it */
             dst_small_now++; /* b284: counted always; skipped when passes are off or the last frame had many */
-            if (!p4_dst_alpha_passes ? (dst_alpha_pass || (alpha_writer && !p4_2d_alpha_masks)) : many) {
+            /* Noise textures also read these masks: keep them even when screen-feedback passes are skipped. */
+            if (!p4_dst_alpha_passes ? (dst_alpha_pass || (alpha_writer && !p4_2d_alpha_masks)) :
+                (many && (!alpha_writer || !p4_2d_alpha_masks))) {
                 dst_alpha_skipped++;
                 return 1;
             }
@@ -915,6 +918,8 @@ int p4_ui_quad_draw(const P4UiVertex *vertices)
     prof_end(PROF_2D);
     return result;
 }
+
+#include "cloud.h"
 
 static int im2d_line(Vertex2D *v, int n, int a, int b)
 {

@@ -399,6 +399,7 @@ static void guard_big_report(void);
 static void sl_report(void);
 static void ptank_spill_collect(int all);
 static void ptank_spill_report(void);
+static void cloud_report(void);
 static void fx_report(void);
 static int fx_set_reg(void *atomic, int which, unsigned value);
 static void sk_report(void);
@@ -558,6 +559,9 @@ int p4_dst_alpha_passes = 1; /* b253: feedback readers need their preceding alph
    (the System menu's selected label, b252), the dream fog's screen-copy puffs dozens (f068 '???', b283: 66.7 -> 52 ms
    with them off, the picture the same to the eye). 0: every pass drawn, as b253-b283. */
 int p4_dst_alpha_many = 8;
+/* b343: in those crowded frames (enemy appearance clouds) the 2D alpha masks keep only bits >= this: 32 is
+   1 clear + 3 bit passes instead of up to 9 per puff, the noise blend by them in 5 steps. 1: every bit, as b342. */
+int p4_alpha_mask_coarse = 32;
 static unsigned dst_small_now, dst_small_last, dst_small_frame;
 /* b177: an alpha-only write (PS2 FBMSK 0x00ffffff) goes to the GE with the stencil test off and RGB masked, so the alpha
    byte takes each pixel's fragment alpha (Gouraud, texture) as the PS2's does, instead of one stencil value per draw.
@@ -1437,6 +1441,7 @@ int func_003f79b0(void *raster, void *device, int flags)
         far_lod_report();
         sl_report();
         ptank_spill_report();
+        cloud_report();
         fx_report();
         sk_report();
         other_report(256);
@@ -2991,6 +2996,7 @@ int p4_video_renderer_begin(void)
     sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
     guard_result_clear();
     ptank_spill_collect(1);
+    cloud_clear();
     unsigned released = cache_bytes + skin_ge_bytes;
     for (int i = 0; i < CACHE_SLOTS; i++) free(mesh_cache[i].v);
     memset(mesh_cache, 0, sizeof mesh_cache);
