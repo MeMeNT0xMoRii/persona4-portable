@@ -2031,6 +2031,26 @@ static void work_words(const unsigned *w, const unsigned *end)
             work_draw(vtype, arg & 0xffff, iaddr ? (const void *)iaddr : 0);
     }
 }
+
+static inline unsigned *ge_draw_addresses(unsigned *out, const void *indices, const void *vertices)
+{
+    uintptr_t iaddr = (uintptr_t)indices, vaddr = (uintptr_t)vertices;
+    unsigned ibase = iaddr >> 8 & 0xf0000;
+    if (indices) {
+        *out++ = 0x10u << 24 | ibase;
+        *out++ = 0x02u << 24 | (iaddr & 0xffffff);
+    }
+    if (vertices) {
+        unsigned vbase = vaddr >> 8 & 0xf0000;
+        /* BASE is unchanged by IADDR. Reuse it only inside this draw so
+           recorded GE CALLs are still independent of their caller's BASE. */
+        if (!indices || vbase != ibase)
+            *out++ = 0x10u << 24 | vbase;
+        *out++ = 0x01u << 24 | (vaddr & 0xffffff);
+    }
+    return out;
+}
+
 static void gu_draw(int prim, int vtype, int count, const void *indices, const void *vertices)
 {
     mesh_draw_calls++;
@@ -2046,14 +2066,7 @@ static void gu_draw(int prim, int vtype, int count, const void *indices, const v
     unsigned *c = gu_list->current;
     if (vtype)
         *c++ = 0x12u << 24 | (vtype & 0xffffff);
-    if (indices) {
-        *c++ = 0x10u << 24 | ((unsigned)indices >> 8 & 0xf0000);
-        *c++ = 0x02u << 24 | ((unsigned)indices & 0xffffff);
-    }
-    if (vertices) {
-        *c++ = 0x10u << 24 | ((unsigned)vertices >> 8 & 0xf0000);
-        *c++ = 0x01u << 24 | ((unsigned)vertices & 0xffffff);
-    }
+    c = ge_draw_addresses(c, indices, vertices);
     *c++ = 0x04u << 24 | (((unsigned)prim << 16 | count) & 0xffffff);
     gu_list->current = c;
     if (++draws_since_stall >= (unsigned)p4_draw_batch && !gu_object_stack_depth)
