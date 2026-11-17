@@ -62,11 +62,12 @@ int main(void) {
 int sflDataDrawTexturedQuad(int x, int y, float z, int width, int height, int rgb,
                           int alpha, int mode, short center_x, short center_y,
                           Matrix *matrix, int texture, float (*uv)[2]) {
-    assert(x == 0 && y == 0 && z == 0 && center_x == 0 && center_y == 0);
+    assert(y == 0 && z == 0 && center_y == 0);
     assert(width == 640 && height == 448 && rgb == 0xffffff && alpha == 255 && mode == 1);
     assert(texture == 123 && matrix->flags == 0);
-    float left = matrix->pos.x * SCREEN_W / width;
-    float right = (matrix->pos.x + matrix->right.x * width) * SCREEN_W / width;
+    /* Retail sflDataDrawTexturedQuad uses RwV3dTransformVector, then adds x. */
+    float left = (x - center_x * matrix->right.x) * SCREEN_W / width;
+    float right = (x + (width - center_x) * matrix->right.x) * SCREEN_W / width;
     assert(fabsf(right - left - 4.0f * SCREEN_H / 3.0f) < .0001f);
     assert(fabsf(left + right - SCREEN_W) < .0001f);
     assert(matrix->up.y == 1 && matrix->at.z == 1 && matrix->pos.y == 0);
