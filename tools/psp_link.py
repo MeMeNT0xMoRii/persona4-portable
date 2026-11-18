@@ -77,7 +77,21 @@ def library_names():
     return found
 
 
+# Both Rush/Stop loads in SLUS-21782 (0x2117a4 and 0x2118bc) read 420.5 here.
+# The inferred GP name spells an offset 16 bytes below that constant.
+VERIFIED_GP_ADDRESSES = {"fGpffff84a0": 0x7615a0}
+
+
+def correct_retail_data_symbols(script):
+    """Refresh verified GP aliases when reusing a prepared linker census."""
+    for name, address in VERIFIED_GP_ADDRESSES.items():
+        script = re.sub(rf"^{name} = 0x[0-9a-fA-F]+;$", f"{name} = {address + K:#x};", script, flags=re.M)
+    return script
+
+
 def retail_address(name, names, gp):
+    if name in VERIFIED_GP_ADDRESSES:
+        return VERIFIED_GP_ADDRESSES[name]
     m = GP_NAME.match(name)
     if m:
         offset = int(m[1], 16)
@@ -178,7 +192,9 @@ def main():
 
     # The image follows .bss in one segment, padded up to its address: a gap would make a separate load segment.
     (OUT / "image.ld").write_text(f"SECTIONS {{ .p4image (NOLOAD) : {{ . = ABSOLUTE({PSP_IMAGE:#x}); *(.p4image) }} }} INSERT AFTER .bss;\n", encoding="utf-8")
-    (OUT / "symbols.ld").write_text("".join(f"{n} = {a + K:#x};\n" for n, a in sorted(data.items())) + "".join(f"{n} = {t};\n" for n, t in sorted(aliases.items())), encoding="utf-8")
+    script = "".join(f"{n} = {a + K:#x};\n" for n, a in sorted(data.items()))
+    script += "".join(f"{n} = {t};\n" for n, t in sorted(aliases.items()))
+    (OUT / "symbols.ld").write_text(script, encoding="utf-8")
     (OUT / "stubs.c").write_text("int p4_missing(const char *name);\n" + "".join(
         f'int {n}(void) {{ return p4_missing("{n} {refused.get(stub_address(n, names), "")}"); }}\n' for n in stubs), encoding="utf-8")
     (OUT / "missing.txt").write_text("\n".join(stubs) + "\n", encoding="utf-8")

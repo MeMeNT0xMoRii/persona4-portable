@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from psp_data_census import ROOT, load
-from psp_link import PORT, PORT_ASM, LIB_FLAGS, run, check_import_ranges
+from psp_link import PORT, PORT_ASM, LIB_FLAGS, run, check_import_ranges, correct_retail_data_symbols
 from psp_make_data import K, PSP_IMAGE, build
 from psp_xref import find_gp
 from psp_xmb import ARTWORK, TITLE, pack_eboot
@@ -84,7 +84,7 @@ def main():
     link_script = link_script.replace("  _end = .;",
         f"  .p4image {PSP_IMAGE - LOAD_BASE:#x} (NOLOAD) : {{ *(.p4image) }}\n  _end = .;")
     (stage / "linkfile.prx").write_text(link_script)
-    symbols = (stage / "symbols.ld").read_text()
+    symbols = correct_retail_data_symbols((stage / "symbols.ld").read_text())
     symbols = re.sub(r"= (0x[0-9a-f]+);", lambda m: f"= {int(m[1], 16) - LOAD_BASE:#x};", symbols)
     (stage / "symbols.ld").write_text(symbols)
     objects = [stage / path.name for path in original_objects]
