@@ -7097,9 +7097,14 @@ int hanim_age(const void *h)
 }
 static inline int hanim_bad(const float *f, int n)
 {
-    for (int k = 0; k < n; k++)
-        if (!(f[k] == f[k] && f[k] < 1e30f && f[k] > -1e30f))
+    for (int k = 0; k < n; k++) {
+        /* Binary32 magnitudes sort as unsigned integers. Infinity and every
+           NaN exceed the original strict 1e30f magnitude limit as well. */
+        uint32_t bits;
+        memcpy(&bits, &f[k], sizeof bits);
+        if ((bits & 0x7fffffffu) >= 0x7149f2cau)
             return 1;
+    }
     return 0;
 }
 typedef struct { void *prev; float time; unsigned short q[4], t[3]; } CKey;

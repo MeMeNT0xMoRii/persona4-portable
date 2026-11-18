@@ -19,10 +19,15 @@ class DiscRead(unittest.TestCase):
         harness = r'''
 #include <assert.h>
 #include <string.h>
+#include <stdio.h>
+#define P4_PATH_MAX 256
+#define PSP_O_RDONLY 1
+static char p4_game_dir[P4_PATH_MAX];
+static int sceIoOpen(const char *path, int mode, int permissions) { return -1; }
 enum { SECTOR = 2048, PART = 4096, MAX_PARTS = 2, PSP_SEEK_SET = 0 };
 typedef int SceUID;
 typedef struct { int container, stat; long long offset; } Handle;
-static SceUID fds[1][MAX_PARTS] = {{10, 11}};
+static SceUID fds[1][MAX_PARTS] = {{11, 12}};
 static const char *containers[] = { "DATA" };
 static int available[2], position, seek_fails, wait_fails;
 static int seeks, reads, locks, writebacks;

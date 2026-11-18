@@ -19,7 +19,7 @@ typedef struct { unsigned hash, where, size; } Row;
 typedef struct { int used, container; long long offset; unsigned size; int stat; } Handle;
 
 static const char *const containers[NUM_CONTAINERS] = { "DATA", "BTL", "ENV", "BGM", "ZZZZZ" };
-static SceUID fds[NUM_CONTAINERS][MAX_PARTS];
+static SceUID fds[NUM_CONTAINERS][MAX_PARTS]; /* opened on first read */
 static Row *rows;
 static int num_rows;
 static char directory[256];
@@ -63,18 +63,18 @@ static int open_index(void)
     if (fd < 0)
         return 0;
     int size = (int)sceIoLseek(fd, 0, PSP_SEEK_END);
-    sceIoLseek(fd, 0, PSP_SEEK_SET);
-    rows = malloc(size);
-    sceIoRead(fd, rows, size);
+    Row *index = NULL;
+    if (size > 0 && size % sizeof(Row) == 0 && sceIoLseek(fd, 0, PSP_SEEK_SET) == 0)
+        index = malloc(size);
+    int loaded = index && sceIoRead(fd, index, size) == size;
     sceIoClose(fd);
+    if (!loaded) {
+        free(index);
+        return 0;
+    }
     num_rows = size / sizeof(Row);
-    for (int i = 0; i < NUM_CONTAINERS; i++)
-        for (int part = 0; part < MAX_PARTS; part++) {
-            char path[P4_PATH_MAX];
-            snprintf(path, sizeof path, "%s%s.%d", p4_game_dir, containers[i], part);
-            fds[i][part] = sceIoOpen(path, PSP_O_RDONLY, 0);
-        }
-    p4_log("disc index %d files, DATA part 0 %x\n", num_rows, fds[0][0]);
+    rows = index;
+    p4_log("disc index %d files\n", num_rows);
     return 1;
 }
 
@@ -112,7 +112,7 @@ Handle *func_004c85a0(const char *name, int mode)
         base++;
     unsigned hash = path_hash(directory, base);
     const Row *row = find(hash);
-    if (!row) {
+    if (!row || (row->where & 7) >= NUM_CONTAINERS) {
         static unsigned last; /* the request list retries every frame */
         if (hash != last)
         {
@@ -163,8 +163,18 @@ int func_004c9010(Handle *h, int sectors, void *buffer)
         int size = left < PART - inside ? left : PART - inside;
         if (part >= MAX_PARTS)
             break;
-        SceUID fd = fds[h->container][part];
-        if (fd < 0 || sceIoLseek(fd, inside, PSP_SEEK_SET) != inside)
+        /* Keep zero for unopened entries, including after a failed open.
+           The same semaphore protects opening, seeking and reading. */
+        SceUID fd = fds[h->container][part] - 1;
+        if (fd < 0) {
+            char path[P4_PATH_MAX];
+            snprintf(path, sizeof path, "%s%s.%d", p4_game_dir, containers[h->container], part);
+            fd = sceIoOpen(path, PSP_O_RDONLY, 0);
+            if (fd < 0)
+                break;
+            fds[h->container][part] = fd + 1;
+        }
+        if (sceIoLseek(fd, inside, PSP_SEEK_SET) != inside)
             break;
         int n = sceIoRead(fd, to + got, size);
         if (n <= 0)

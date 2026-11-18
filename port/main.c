@@ -17,7 +17,7 @@ PSP_HEAP_SIZE_KB(-1); /* the heap is claimed before main */
 PSP_HEAP_THRESHOLD_SIZE_KB(4096); /* left free: thread stacks */
 
 #define BUILD 249
-#define P4_BUILD_ID "Persona4-PORTABLE-v0.27-dev-perf02"
+#define P4_BUILD_ID "Persona4-PORTABLE-v0.27-dev-perf03"
 #define P4_IMAGE_SIZE 0x40B000 /* retail 0x52da00..0x938a00: data and bss */
 static char data_path[P4_PATH_MAX], strings_path[P4_PATH_MAX], log_path[P4_PATH_MAX];
 #ifdef P4_HW_PROFILE
@@ -284,12 +284,16 @@ void p4_log(const char *fmt, ...)
     va_list args;
     int n = snprintf(line, sizeof line, "b%d ", BUILD);
     va_start(args, fmt);
-    n += vsnprintf(line + n, sizeof line - n, fmt, args);
+    int body = vsnprintf(line + n, sizeof line - n, fmt, args);
     va_end(args);
-    if (n < 0)
+    if (body < 0)
         return;
-    if (n >= (int)sizeof line)
+    if (body >= (int)sizeof line - n) {
         n = sizeof line - 1;
+        line[n - 1] = '\n';
+    } else {
+        n += body;
+    }
     if (!p4_quiet)
         pspDebugScreenPrintf("%s", line);
     int intr = pspSdkDisableInterrupts();
