@@ -2,18 +2,20 @@
 param(
     [ValidateSet('OpenGL','Software')][string]$Renderer = 'OpenGL',
     [string]$Route,
-    [ValidateSet('P4','P4-perf03','P4-perf04','P4-perf04-timing','P4-perf05','P4-perf05-timing','P4-perf05-manuell')][string]$GameFolder = 'P4',
+    [ValidateSet('P4','P4-perf03','P4-perf04','P4-perf04-timing','P4-perf04-ab-timing','P4-perf05','P4-perf05-timing','P4-perf05-manuell','P4-perf05-ab-timing','P4-perf06','P4-perf06-timing','P4-perf06-manuell','P4-perf06-control')][string]$GameFolder = 'P4',
     [ValidateRange(5,900)][int]$TimeoutSeconds = 120,
     [Alias("CaptureJunes")][switch]$CaptureScene,
     [string]$SceneMarker = "f009_004_cart filter mode",
     [ValidateRange(0,30000)][int]$CaptureDelayMilliseconds = 4000,
     [ValidateRange(1,12)][int]$ScreenshotCount = 1,
+    [string[]]$ExtraScreenshotMarkers = @(),
     [switch]$Manual,
     [string]$LabRoot = (Join-Path $PSScriptRoot '../build/ppsspp-lab')
 )
 $ErrorActionPreference = 'Stop'
 $LabRoot = (Resolve-Path -LiteralPath $LabRoot).Path
 if ($Manual -and $CaptureScene) { throw 'Choose manual control or automatic capture.' }
+if ($ExtraScreenshotMarkers.Count -and !$CaptureScene) { throw 'Extra screenshot markers require scene capture.' }
 $emulator = Join-Path $LabRoot 'emulator'
 $exe = Join-Path $emulator 'PPSSPPWindows64.exe'
 $psp = Join-Path $emulator 'memstick\PSP'
@@ -77,8 +79,18 @@ try {
     else {
         $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
         $found = $false
+        $nextMarker = 0
         while (!$proc.HasExited -and [DateTime]::UtcNow -lt $deadline) {
             Start-Sleep -Milliseconds 500
+            if ($nextMarker -lt $ExtraScreenshotMarkers.Count -and (Test-Path -LiteralPath "$game\$logName") -and
+                (Select-String -LiteralPath "$game\$logName" -SimpleMatch $ExtraScreenshotMarkers[$nextMarker] -Quiet)) {
+                $proc.Refresh()
+                if (![P4LabMenu]::PostMessage($proc.MainWindowHandle,273,[IntPtr]40066,[IntPtr]::Zero)) {
+                    throw "Intermediate screenshot request failed for $($ExtraScreenshotMarkers[$nextMarker])"
+                }
+                Add-Content -LiteralPath "$run\screenshot-markers.txt" -Value $ExtraScreenshotMarkers[$nextMarker]
+                $nextMarker++
+            }
             if ($CaptureScene -and (Test-Path -LiteralPath "$game\$logName") -and
                 (Select-String -LiteralPath "$game\$logName" -SimpleMatch $SceneMarker -Quiet)) {
                 if ($CaptureDelayMilliseconds) { Start-Sleep -Milliseconds $CaptureDelayMilliseconds }
@@ -115,8 +127,8 @@ Get-LabCapture |
     Copy-Item -Destination $run
 
 if (!$proc.HasExited) { throw "Lab process $($proc.Id) still needs to close." }
-if ($CaptureScene -and (!$found -or
-    @(Get-ChildItem -LiteralPath $run -Filter '*.png').Count -lt $ScreenshotCount -or
+if ($CaptureScene -and (!$found -or $nextMarker -ne $ExtraScreenshotMarkers.Count -or
+    @(Get-ChildItem -LiteralPath $run -Filter '*.png').Count -lt ($ScreenshotCount + $ExtraScreenshotMarkers.Count) -or
     !(Get-ChildItem -LiteralPath $run -Filter '*.ppdmp'))) {
     throw "Capture incomplete. Inspect the archived run in $run"
 }
