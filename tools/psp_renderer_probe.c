@@ -305,6 +305,92 @@ static void check_mask_order(FILE *report)
             WIDTH * HEIGHT, covered, alpha_values, differences);
 }
 
+/* Keep the SDK's register stream as the reference. Force each mip only in
+   this fixture so that an incorrect nonzero-level address is observable. */
+typedef struct { unsigned words[3 * MAX_MIPS]; int n, flushes; } MipCommands;
+
+static void mip_picture(Raster *r, int use_sdk, MipCommands *result)
+{
+    const SwizzleHead *h = swizzle_head(r->originalPixels);
+    int levels = h->levels;
+    start_picture();
+    gu_dirty();
+    sceGuDisable(GU_DEPTH_TEST);
+    sceGuDisable(GU_ALPHA_TEST);
+    sceGuDisable(GU_STENCIL_TEST);
+    sceGuDisable(GU_BLEND);
+    sceGuPixelMask(0);
+    unsigned *first = gu_list->current;
+    bind_raster(r, GU_REPEAT);
+    if (use_sdk) {
+        first = gu_list->current;
+        int psm = r->depth == 4 ? GU_PSM_T4 : r->depth == 8 ? GU_PSM_T8 :
+                  r->depth == 16 ? GU_PSM_5551 : GU_PSM_8888;
+        sceGuTexMode(psm, levels - 1, 0, 1);
+        unsigned char *data = r->originalPixels;
+        for (int l = 0; l < levels; l++) {
+            int wbytes, rows, size = mip_level_size(r, l, &wbytes, &rows);
+            sceGuTexImage(l, r->width >> l, r->height >> l, wbytes * 8 / r->depth, data);
+            data += size;
+        }
+    }
+    for (unsigned *p = first; p < gu_list->current; p++) {
+        unsigned op = *p >> 24;
+        if ((op >= 0xa0 && op < 0xb0) || (op >= 0xb8 && op < 0xc0)) {
+            if (result->n < 3 * MAX_MIPS)
+                result->words[result->n] = *p;
+            result->n++;
+        }
+        result->flushes += op == 0xcb;
+    }
+    sceGuTexFunc(GU_TFX_REPLACE, GU_TCC_RGBA);
+    for (int l = 0; l < levels; l++) {
+        sceGuTexLevelMode(GU_TEXTURE_CONST, l);
+        GuVertex *v = sceGuGetMemory(2 * sizeof *v);
+        v[0] = (GuVertex){0, 0, 0xffffffff, 64 * l, 2, 0};
+        v[1] = (GuVertex){r->width, r->height, 0xffffffff, 64 * l + 63, 30, 0};
+        sceGuDrawArray(GU_SPRITES, GU_2D_FORMAT, 2, NULL, v);
+    }
+    finish_picture();
+}
+
+static void check_mip_chains(FILE *report)
+{
+    static unsigned expected[32][SCREEN_W];
+    static unsigned palette[256] __attribute__((aligned(64)));
+    const int shapes[][3] = {{128,64,4}, {512,256,8}, {128,64,16}, {256,128,32}};
+    for (int i = 0; i < 256; i++)
+        palette[i] = 0xff000000u | ((unsigned)i * 0x157d3u & 0xffffff);
+    sceKernelDcacheWritebackRange(palette, sizeof palette);
+    for (int i = 0; i < 4; i++) {
+        Raster r = {.width=shapes[i][0], .height=shapes[i][1], .depth=shapes[i][2]};
+        r.stride = r.width * r.depth / 8;
+        r.palette = r.depth <= 8 ? (unsigned char *)palette : NULL;
+        r.originalPixels = memalign(64, r.stride * r.height);
+        if (!r.originalPixels) { fputs("mip allocation failed\n", report); return; }
+        for (int j = 0; j < r.stride * r.height; j++)
+            r.originalPixels[j] = (unsigned char)(j * 29 + (j >> 4) + j / r.stride * 17);
+        swizzle_raster(&r);
+        const SwizzleHead *h = swizzle_head(r.originalPixels);
+        if (!h) { fputs("mip swizzle failed\n", report); free(r.originalPixels); return; }
+        MipCommands sdk = {0}, actual = {0};
+        mip_picture(&r, 1, &sdk);
+        for (int y = 0; y < 32; y++)
+            memcpy(expected[y], pixels[y], sizeof expected[y]);
+        mip_picture(&r, 0, &actual);
+        int diffs = 0, coverage = 0, commands_differ = sdk.n != actual.n || sdk.n != (int)h->levels * 3 ||
+            memcmp(sdk.words, actual.words, sizeof sdk.words) != 0;
+        for (int y = 0; y < 32; y++)
+            for (int x = 0; x < SCREEN_W; x++) {
+                diffs += expected[y][x] != pixels[y][x];
+                coverage += expected[y][x] != expected[0][0];
+            }
+        fprintf(report, "mip %dx%dx%d levels %u descriptor_error %d flush %d/%d pixels %d changed %d\n",
+                r.width,r.height,r.depth,h->levels,commands_differ,sdk.flushes,actual.flushes,coverage,diffs);
+        free(r.originalPixels - SWIZZLE_HEAD);
+    }
+}
+
 static void measure_submission(FILE *report)
 {
     enum { SAMPLES = 9, LISTS = 12, DRAWS = 120 };
@@ -379,6 +465,7 @@ int main(void)
         fwrite(pixels[y], sizeof(unsigned), SCREEN_W, raw);
     fclose(raw);
     check_mask_order(report);
+    check_mip_chains(report);
     measure_submission(report);
     measure_call_key(report);
     fputs("done\n", report);

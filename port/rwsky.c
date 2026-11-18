@@ -2574,6 +2574,30 @@ static void bind_raster(Raster *r, int wrap)
     bind_raster_axes(r, wrap, wrap);
 }
 
+/* Native mip levels are contiguous and have power-of-two dimensions.
+   sceGuTexImage emits three registers and a TEXFLUSH for each level. There
+   is no draw between these descriptors. Publish the complete chain and
+   flush once, before the very same texture is sampled. */
+static void bind_native_mips(const Raster *r, const SwizzleHead *head, int levels)
+{
+    int width_log = 31 - __builtin_clz((unsigned)r->width);
+    int height_log = 31 - __builtin_clz((unsigned)r->height);
+    const unsigned char *pixels = r->originalPixels;
+    int wbytes = head->wbytes, rows = head->rows;
+    unsigned *cmd = gu_list->current;
+    for (int l = 0; l < levels; l++) {
+        if (l)
+            mip_level_size(r, l, &wbytes, &rows);
+        unsigned address = (unsigned)pixels;
+        *cmd++ = ((0xa0u + l) << 24) | (address & 0xffffffu);
+        *cmd++ = ((0xa8u + l) << 24) | ((address >> 8) & 0xf0000u) | (unsigned)(wbytes * 8 / r->depth);
+        *cmd++ = ((0xb8u + l) << 24) | (unsigned)((height_log - l) << 8) | (unsigned)(width_log - l);
+        pixels += wbytes * rows;
+    }
+    gu_list->current = cmd;
+    sceGuTexFlush();
+}
+
 static void bind_raster_body(Raster *r, int wrap_u, int wrap_v)
 {
     if (r != &display_raster && gu_mesh_mode) {
@@ -2664,12 +2688,16 @@ static void bind_raster_body(Raster *r, int wrap_u, int wrap_v)
     bound_alpha_max = swizzled ? swizzled->alpha_max : 255;
     int levels = swizzled && p4_mipmaps ? swizzled->levels : 1;
     sceGuTexMode(psm, levels - 1, 0, swizzled != 0);
-    sceGuTexImage(0, pow2_at_least(r->width), pow2_at_least(r->height), swizzled ? swizzled->wbytes * 8 / r->depth : r->width, r->originalPixels);
-    const unsigned char *level = r->originalPixels + (swizzled ? swizzled->wbytes * swizzled->rows : 0);
-    for (int l = 1; l < levels; l++) { /* swizzled and power of two: see mip_levels */
-        int wbytes, rows, size = mip_level_size(r, l, &wbytes, &rows);
-        sceGuTexImage(l, r->width >> l, r->height >> l, wbytes * 8 / r->depth, level);
-        level += size;
+    if (levels > 1 && r->width <= 512 && r->height <= 512) {
+        bind_native_mips(r, swizzled, levels);
+    } else {
+        sceGuTexImage(0, pow2_at_least(r->width), pow2_at_least(r->height), swizzled ? swizzled->wbytes * 8 / r->depth : r->width, r->originalPixels);
+        const unsigned char *level = r->originalPixels + (swizzled ? swizzled->wbytes * swizzled->rows : 0);
+        for (int l = 1; l < levels; l++) { /* swizzled and power of two: see mip_levels */
+            int wbytes, rows, size = mip_level_size(r, l, &wbytes, &rows);
+            sceGuTexImage(l, r->width >> l, r->height >> l, wbytes * 8 / r->depth, level);
+            level += size;
+        }
     }
     sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
     sceGuTexFilter(levels > 1 ? GU_LINEAR_MIPMAP_NEAREST : GU_LINEAR, GU_LINEAR);
