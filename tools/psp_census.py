@@ -660,6 +660,10 @@ ASM_FIXES = {
     # mdlEffectCatmullRomVU: work[] is the frame at sp (tangents at 0x50/0x60), points arrives in a0.
     # enclosing_arguments cannot name `u8 (*points)[16]`, so both become operands.
     "src/Graphics/Model/mdlEffect.c": [
+        # These retail labels are lanes of the same VU scratch vector. Treating them
+        # as separate C objects lets GCC read Y/Z before the translated quad store.
+        ("D_00713D14[0]", "D_00713D10[1]"),
+        ("D_00713D18[0]", "D_00713D10[2]"),
         ('0x0($a1)            \\n"\n      ".set reorder"\n      :\n      :',
          '0x0($a1)            \\n"\n      ".set reorder"\n      :\n      : "r"(work), "r"(points)'),
         ('$vf12        \\n"\n      ".set reorder"\n      :\n      :',

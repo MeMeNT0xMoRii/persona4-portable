@@ -9,6 +9,19 @@ from psp_vu0 import translate
 
 
 class QuadMemory(unittest.TestCase):
+    def test_effect_projection_shares_the_quad_store_with_scalar_reads(self):
+        from psp_census import DECOMP, shim
+
+        rel = "src/Graphics/Model/mdlEffect.c"
+        if not (DECOMP / rel).is_file():
+            self.skipTest("pinned decompilation unavailable")
+        generated = shim((DECOMP / rel).read_text(encoding="utf-8"), rel)
+        for lane, label in ((1, "D_00713D14"), (2, "D_00713D18")):
+            self.assertNotIn(label + "[0]", generated)
+            self.assertIn(f"input.{'yz'[lane - 1]} = D_00713D10[{lane}];", generated)
+            self.assertEqual(generated.count(f".value = D_00713D10[{lane}];"), 2)
+            self.assertIn(f"&D_00713D10[{lane}] =", generated)
+
     def test_encoded_square_root_updates_q_before_read(self):
         encoded = translate(r'".word 0x4A0203BD\n" "cfc2.ni $2, $vi22\n"')
         named = translate(r'"vsqrt $Q, $vf2x\n" "cfc2.ni $2, $vi22\n"')
