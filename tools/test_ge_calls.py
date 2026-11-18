@@ -27,6 +27,40 @@ class GeCalls(unittest.TestCase):
             subprocess.run([cc, "-O2", str(source), "-o", str(executable)], check=True)
             subprocess.run([str(executable)], check=True)
 
+    def test_instance_replay_checks_live_material_bits(self):
+        types = [re.search(rf"^typedef struct .*?\}} {name};$", RENDERER, re.M)[0]
+                 for name in ("Material", "Mesh", "MeshHeader")]
+        self.run_fixture(r"""
+#include <assert.h>
+#include <stddef.h>
+#include <string.h>
+""" + "\n".join(types) + r"""
+static struct { unsigned material[8][3]; } replay;
+""" + function("replay_materials_match") + r"""
+int main(void) {
+    struct Objects { MeshHeader head; unsigned padding[3]; Mesh mesh[8]; } objects = {0};
+    Material material[8] = {0};
+    objects.head.firstMeshOffset = offsetof(struct Objects, mesh) - sizeof(MeshHeader);
+    for (int i = 0; i < 8; ++i) {
+        objects.mesh[i].material = &material[i];
+        material[i].colour = replay.material[i][0] = 0xff000000u + i;
+        replay.material[i][1] = 0x7fc00001u + i;
+        memcpy(&material[i].ambient, &replay.material[i][1], 4);
+    }
+    for (int count = 0; count <= 8; ++count) {
+        objects.head.numMeshes = count;
+        assert(replay_materials_match(&objects.head));
+        for (int i = 0; i < 8; ++i) {
+            for (int lane = 0; lane < 3; ++lane) {
+                replay.material[i][lane] ^= 0x80000000u;
+                assert(replay_materials_match(&objects.head) == (i >= count));
+                replay.material[i][lane] ^= 0x80000000u;
+            }
+        }
+    }
+}
+""")
+
     def test_address_words_omit_only_equal_base(self):
         self.run_fixture(r"""
 #include <assert.h>

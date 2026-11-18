@@ -6,6 +6,7 @@ param(
     [ValidateRange(5,900)][int]$TimeoutSeconds = 120,
     [Alias("CaptureJunes")][switch]$CaptureScene,
     [string]$SceneMarker = "f009_004_cart filter mode",
+    [ValidateRange(0,30000)][int]$CaptureDelayMilliseconds = 4000,
     [ValidateRange(1,12)][int]$ScreenshotCount = 1,
     [switch]$Manual,
     [string]$LabRoot = (Join-Path $PSScriptRoot '../build/ppsspp-lab')
@@ -80,7 +81,7 @@ try {
             Start-Sleep -Milliseconds 500
             if ($CaptureScene -and (Test-Path -LiteralPath "$game\$logName") -and
                 (Select-String -LiteralPath "$game\$logName" -SimpleMatch $SceneMarker -Quiet)) {
-                Start-Sleep -Seconds 4
+                if ($CaptureDelayMilliseconds) { Start-Sleep -Milliseconds $CaptureDelayMilliseconds }
                 $proc.Refresh()
                 $window = $proc.MainWindowHandle
                 $commands = @(40066) * $ScreenshotCount + @(40062)

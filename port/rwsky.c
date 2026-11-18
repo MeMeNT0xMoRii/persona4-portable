@@ -5869,7 +5869,7 @@ int p4_replay_census = 0; /* b207: 1 counts what instance replays send (replay_c
 static unsigned *mesh_model_mark;
 enum { REPLAY_MESHES = 8, REPLAY_WORDS = 512 };
 static struct {
-    int valid, count, modulate, draws;
+    int valid, count, modulate, draws, mesh_count;
     unsigned frame, tex_generation, pixel;
     const void *header, *position, *uv, *prelit, *normals, *camera;
     unsigned *from, *end;
@@ -5926,6 +5926,20 @@ static int replay_unguarded(const Matrix *model, const float *sphere)
     guard_world_planes();
     return guard_sphere_world(model, sphere, *(float *)((char *)current_camera + CAMERA_NEAR) * 1.01f);
 }
+/* Compare only live material lanes. The saved count prevents reuse if a header
+   changes in place. Bitwise comparisons preserve NaNs and signed zero. */
+static int replay_materials_match(MeshHeader *header)
+{
+    Mesh *mesh = (Mesh *)((char *)header + sizeof *header + header->firstMeshOffset);
+    for (int i = 0; i < header->numMeshes; i++, mesh++) {
+        const Material *m = mesh->material;
+        if (replay.material[i][0] != m->colour ||
+            memcmp(&replay.material[i][1], &m->ambient, sizeof m->ambient) ||
+            memcmp(&replay.material[i][2], &m->diffuse, sizeof m->diffuse))
+            return 0;
+    }
+    return 1;
+}
 static int replay_try(MeshHeader *header, const V3 *position, float (*uv)[2], const unsigned *preLit, int count, const Matrix *model, int modulate, const V3 *normals, const float *sphere)
 {
     if (!replay.valid || replay.frame != cache_frame || gu_list->current != replay.end || !gu_mesh_mode)
@@ -5933,15 +5947,15 @@ static int replay_try(MeshHeader *header, const V3 *position, float (*uv)[2], co
     if (replay.header != header || replay.position != position || replay.uv != uv || replay.prelit != preLit || replay.count != count ||
         replay.modulate != modulate || replay.normals != normals || replay.camera != current_camera || replay.tex_generation != texture_generation)
         return 0;
-    unsigned material[REPLAY_MESHES][3], view[19];
-    if (!replay_inputs(header, model, material, view))
+    if (!model || header->numMeshes != replay.mesh_count || p4_mesh_frustum || p4_probe_depth_mode)
         return 0;
     int why = 0;
     if (memcmp(replay.render, render_state, sizeof replay.render) || memcmp(replay.sky, sky_state, sizeof replay.sky) || replay.pixel != pixel_mask)
         why = 1;
-    else if (memcmp(replay.material, material, sizeof material))
+    else if (!replay_materials_match(header))
         why = 2;
-    else if (memcmp(replay.camera_view, view, sizeof view))
+    else if (memcmp(replay.camera_view, (char *)current_camera + CAMERA_VIEW, 16 * sizeof(unsigned)) ||
+             memcmp(replay.camera_view + 16, (char *)current_camera + CAMERA_NEAR, 3 * sizeof(unsigned)))
         why = 3;
     else if (normals) {
         prof_begin(PROF_RLIGHT);
@@ -5993,6 +6007,7 @@ static void replay_record(MeshHeader *header, const V3 *position, float (*uv)[2]
     if (!replay_inputs(header, model, replay.material, replay.camera_view) || !replay_unguarded(model, sphere))
         return;
     replay.valid = 1;
+    replay.mesh_count = header->numMeshes;
     replay.frame = cache_frame, replay.tex_generation = texture_generation, replay.pixel = pixel_mask;
     replay.header = header, replay.position = position, replay.uv = uv, replay.prelit = preLit, replay.normals = normals;
     replay.count = count, replay.modulate = modulate, replay.camera = current_camera, replay.draws = draws;
