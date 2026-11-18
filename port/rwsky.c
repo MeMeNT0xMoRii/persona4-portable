@@ -3021,6 +3021,16 @@ static unsigned gs_alpha_splits;
 unsigned p4_gs_alpha_splits(void) { unsigned n = gs_alpha_splits; gs_alpha_splits = 0; return n; }
 
 static int calendar_depth_pass, calendar_date_clip;
+static int forecast_card;
+extern void calDrawWeather(int, int, float, unsigned char, int, int, float, float, int, int, int, int);
+
+void p4_forecast_weather(int x, int y, float depth, unsigned char opacity, int weather, int highlight,
+                         float scale_x, float scale_y, int left, int width, int font, int forced)
+{
+    forecast_card = 1;
+    calDrawWeather(x, y, depth, opacity, weather, highlight, scale_x, scale_y, left, width, font, forced);
+    forecast_card = 0;
+}
 static int system_cursor_mask;
 
 void p4_system_cursor_mask(int phase)
@@ -3502,8 +3512,10 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     /* An alpha-only write (RGB masked) of a texture: the PS2 stores each pixel's alpha, the PSP's stencil takes one
        value per draw. Keep that value off the pixels the texture leaves transparent, so the title's light blobs
        (added by destination alpha) stay off the letterbox bars instead of covering the whole quad. */
+    /* Forecast rectangles write depth with zero vertex alpha. Their textured
+       cutouts then use the game's alpha test to shape each weather icon. */
     int test_alpha_writer = p4_alpha_write_test && !p4_alpha_pixel && alpha_writer &&
-                            !effect_mask && !slot_cutout && !calendar_depth_pass;
+                            !effect_mask && !slot_cutout && !calendar_depth_pass && !forecast_card;
     if (test_alpha_writer) {
         sceGuEnable(GU_ALPHA_TEST);
         sceGuAlphaFunc(GU_GREATER, 0x40, 0xff);
@@ -3517,7 +3529,7 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
        is the square; without the pass that reads it they only cost fill */
     int effect_overlay = p4_effect_mask && !rtt_target && dst_alpha_pass && sky_state[3] == 0x31001;
     if (!p4_dst_alpha_passes && !p4_alpha_pixel && ((dst_alpha_pass && !effect_overlay) ||
-        (alpha_writer && !effect_mask && !slot_cutout && !calendar_depth_pass))) {
+        (alpha_writer && !effect_mask && !slot_cutout && !calendar_depth_pass && !forecast_card))) {
         float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
         for (int i = 0; i < count; i++) {
             const Vertex2D *v = &vertices[indices ? indices[i] : i];

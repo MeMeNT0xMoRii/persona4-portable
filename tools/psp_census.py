@@ -674,6 +674,9 @@ ASM_FIXES = {
 
 
 def shim(text, rel=""):
+    if rel in ("src/itfMsgProcedure_Window.c", "src/itfMsgProcedure_Window_inferred_0027bec0.c"):
+        # The TV forecast uses its own depth mask for each animated weather card.
+        text = text.replace("calDrawWeather(", "p4_forecast_weather(")
     for old, new in ASM_FIXES.get(rel, ()):
         assert old in text, (rel, old)
         text = text.replace(old, new)
