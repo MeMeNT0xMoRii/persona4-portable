@@ -4,7 +4,7 @@ Ausgangspunkt ist perf01 nach dem [PSP-Go-Test](v027_perf01_hardware.md). Für j
 
 ## Entwicklung seit dem perf01-Gerätetest
 
-Der [perf02-Bericht](v027_perf02.md) führt Pixelvergleiche, Messbedingungen, Artefakthashes und die Abnahmeroute. Quellstand des Testbuilds ist `410fb09`. Für perf02 liegt noch kein Gerätetest vor.
+Der [perf02-Bericht](v027_perf02.md) führt Pixelvergleiche, Messbedingungen, Artefakthashes und die Abnahmeroute. Quellstand des Testbuilds ist `410fb09`. Der spätere perf02-Gerätelauf ergab in Junes rund 83,4 ms typische Frametime. Build, Emulatorvergleiche und Geräteabnahme für den Nachfolger stehen im [perf03-Bericht](v027_perf03.md).
 
 | Bereich | Befund, Status und nächster Nachweis |
 | --- | --- |
@@ -19,12 +19,12 @@ Der [perf02-Bericht](v027_perf02.md) führt Pixelvergleiche, Messbedingungen, Ar
 
 | ID oder Beobachtung | Stand und nächster Vergleich |
 | --- | --- |
-| P4P-001 / P4-053 · Lichtkugeln | Auf Go weiter bei Zio und Fusion, historisch bei weiteren Skills, All-Out und in Feldszenen. PTank-Z-Write und exakte Quad-Masken sind technisch geprüft. Für jeden Effekt den ersten auffälligen Writer und den späteren Blend-/Feedback-Leser bestimmen. |
+| P4P-001 / P4-053 · Lichtkugeln | Auf Go weiter bei Zio und Fusion, bei weiteren Effekten historisch dokumentiert. Lichtkugeln bei All-Out sind unbestätigt. PTank-Z-Write und exakte Quad-Masken sind technisch geprüft. Für jeden Effekt den ersten auffälligen Writer und den späteren Blend-/Feedback-Leser bestimmen. |
 | P4P-002 / P4-005 / P4-014 · Vordergrund | Schlafzimmer und Konishi-Laden mit fester Kamera. Junes-Einkaufswagen bleiben auf perf01 fehlerhaft. Je Objekt Mesh, Tiefenwerte, Clip und Reihenfolge bestimmen. |
-| P4P-003 / P4-058 · Apsaras | Auf Go weiterhin alternierend hell/dunkel. home25-Log zeigt wechselndes Feedback/Additiv bei gleicher Meshzahl. Bankrichtung wechselt je Lauf. Slot 10, benachbarte abgeschlossene Frames vergleichen. Igor-/Tischschatten separat. |
-| P4P-004 / P4-022 · Nebel | Schwarze Traumstreifen und weiße Bodenlinien in Yukikos Castle sind getrennte Go-Befunde. Distanznebel ist seit home19 technisch wiederhergestellt. Feste Kamera, Clip-, Tiefen- und Screen-Copy-Grenzen prüfen. |
+| P4P-003 / P4-058 · Fusionsergebnis | Neu entstandene Persona auf Go alternierend hell/dunkel. Apsaras ist das reproduzierbare Beispiel. home25-Log zeigt wechselndes Feedback/Additiv bei gleicher Meshzahl. Bankrichtung wechselt je Lauf. Slot 10, benachbarte abgeschlossene Frames vergleichen. Igor-/Tischschatten separat. |
+| P4P-004 / P4-022 · Nebel | Schwarze Streifen beim frei steuerbaren Erkunden des frühen Nebelwegs vor dem Kampf und weiße Bodenlinien in Yukikos Castle sind getrennte Go-Befunde. Distanznebel ist seit home19 technisch wiederhergestellt. Feste Kamera, Clip-, Tiefen- und Screen-Copy-Grenzen prüfen. |
 | P4P-005 / P4-001 · CRIWARE | Darstellung historisch wiederhergestellt, Zentrierung auf home26 und perf01 auf Go bestätigt. Kaltstart als Kontrolle. |
-| P4P-006 / P4P-007 · Wetter / Rush | Icons ragen aus den TV-Kacheln, oberer Rush-Header sitzt zu hoch. Beide auf Go offen. Je Sprite Anker, Scissor und Animationsphase erfassen. |
+| P4P-006 / P4P-007 · Wetter / Rush | Icons ragen aus den TV-Kacheln, die Rush-/Stop-Anzeige sitzt zu hoch. Die PS2-Referenz zeigt sie unten links. Beide auf Go offen. Je Sprite Anker, Scissor und Animationsphase erfassen. |
 | P4P-008 / P4P-009 / P4P-010 · Tageswechsel, Fusion, Social Link | Tageswechselfarben weiter zum Original vergleichen. Dunkle Blöcke um beabsichtigte Fusionslisten-Striche offen. Social-Link-Porträts und Velvet-Room-UI eventuell zu breit. Vergleich je Element gegen natives PS2-4:3 und separat den US-16:9-Patch. |
 | P4P-011 / P4P-012 · Intro/Titel | Langsamer Übergang und einfarbiger Return-to-Title-Blitz auf Go. Skip, kompletter Film, TV-Eintritt und Schwierigkeitswahl separat. Der home26-Bankwechsel ist im isolierten Test korrekt. |
 | P4P-013 / P4P-014 · Teddie-Audio / Margaret | Stimmen-/Animationszuordnung benötigt zeitgleichen PS2-Vergleich. Margaret erscheint auf perf01 weiterhin matt-bläulich (auch P4-041). |
