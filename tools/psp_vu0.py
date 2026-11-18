@@ -23,6 +23,13 @@ class Unknown(Exception):
     pass
 
 
+def encoded_vsqrt(word):
+    # COP2 SPECIAL2 VSQRT. Ft selects the source vector, Ftf its component.
+    if word & ~((31 << 16) | (3 << 23)) == 0x4A0003BD:
+        return f"vsqrt $Q, $vf{(word >> 16) & 31}{LANE[(word >> 23) & 3]}"
+    return None
+
+
 def mask(field):
     return sum(1 << LANE.index(c) for c in field)
 
@@ -122,8 +129,10 @@ class Block:
         parts = line.split(None, 1)
         op = parts[0]
         args = [a.strip() for a in parts[1].split(",")] if len(parts) > 1 else []
-        if op == ".word" and len(args) == 1 and int(args[0], 0) == 0x4A0203BD:
-            return self.line("vsqrt $Q, $vf2x")
+        if op == ".word" and len(args) == 1:
+            mnemonic = encoded_vsqrt(int(args[0], 0))
+            if mnemonic:
+                return self.line(mnemonic)
         if op in ("nop", "vnop", "vwaitq"):
             return ""
         m = ARITH.match(op)

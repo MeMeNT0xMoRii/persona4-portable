@@ -22,6 +22,16 @@ class QuadMemory(unittest.TestCase):
             self.assertEqual(generated.count(f".value = D_00713D10[{lane}];"), 2)
             self.assertIn(f"&D_00713D10[{lane}] =", generated)
 
+    def test_effect_scratch_byte_and_float_declarations(self):
+        from psp_census import shim
+
+        for lane, label in ((1, "D_00713D14"), (2, "D_00713D18")):
+            floats = f"extern f32 D_00713D10[4], {label}[4];\nf32 y = {label}[0];"
+            self.assertEqual(shim(floats), floats.replace(f"{label}[0]", f"D_00713D10[{lane}]"))
+            for cast in ("(f32 *)", "(f32 (*)[1])"):
+                source = f"extern u8 D_00713D10[], {label}[];\nx = *{cast}{label};"
+                self.assertIn(f"*{cast}((u8 *)D_00713D10 + {lane * 4})", shim(source))
+
     def test_encoded_square_root_updates_q_before_read(self):
         encoded = translate(r'".word 0x4A0203BD\n" "cfc2.ni $2, $vi22\n"')
         named = translate(r'"vsqrt $Q, $vf2x\n" "cfc2.ni $2, $vi22\n"')
@@ -29,6 +39,18 @@ class QuadMemory(unittest.TestCase):
         self.assertEqual(encoded, named)
         self.assertLess(encoded.index("p4_vsqrt"), encoded.index("p4_float_to_reg"))
         self.assertIsNone(translate(r'".word 0xFFFFFFFF\n" "vwaitq\n"'))
+
+    def test_encoded_square_root_in_a_standalone_asm_statement(self):
+        from psp_census import trap_ee_asm
+
+        for register in (0, 2, 31):
+            for lane, component in enumerate("xyzw"):
+                word = 0x4A0003BD | register << 16 | lane << 23
+                asm = f'__asm__ volatile(".word {word:#x}");'
+                self.assertIn(f"p4_vsqrt(p4vu.vf[{register}].f[{lane}])", trap_ee_asm(asm))
+                self.assertEqual(translate(f'".word {word:#x}"'), translate(f'"vsqrt $Q, $vf{register}{component}"'))
+        native = '__asm__ volatile(".word 0");'
+        self.assertEqual(trap_ee_asm(native), native)
 
     def test_quad_setter_keeps_assignment_in_return(self):
         from psp_census import void_quad_setters
