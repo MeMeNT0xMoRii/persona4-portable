@@ -4,6 +4,7 @@
 SLUS_217.82
 *.bin
 build/
+toolchain/
 
 # Decomp input, kept as its own clone (no licence to redistribute)
 ext/

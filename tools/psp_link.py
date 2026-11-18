@@ -53,6 +53,14 @@ def check_import_ranges(elf):
     return len(ranges)
 
 
+def link_path(path):
+    """MinGW ld misdecodes UTF-8 paths passed through gcc's response file."""
+    path = Path(path)
+    if os.name == "nt" and not str(path).isascii() and path.drive.lower() == Path.cwd().drive.lower():
+        return Path(os.path.relpath(path)).as_posix()
+    return path.as_posix()
+
+
 def run(*cmd):
     r = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, errors="replace")
     if r.returncode:
@@ -177,11 +185,11 @@ def main():
 
     run(BIN / "psp-gcc.exe", "-O2", "-G0", "-w", "-fno-builtin", "-c", OUT / "stubs.c", "-o", OUT / "stubs.o")
     rsp = OUT / "objects.rsp"
-    rsp.write_text("\n".join('"' + p.as_posix() + '"' for p in objects) + "\n", encoding="utf-8")
+    rsp.write_text("\n".join('"' + link_path(p) + '"' for p in objects) + "\n", encoding="utf-8")
     elf = OUT / "p4.elf"
     # ponytail: two CRI generations define the same names, first object wins; drop one set when audio lands.
-    run(BIN / "psp-gcc.exe", "-G0", f"-L{SDK / 'lib'}", "-Wl,-zmax-page-size=128", "-Wl,--allow-multiple-definition", "-Wl,--wrap=sdkSpriteRequestLoad", "-Wl,--wrap=sceGuGetMemory", "-Wl,--wrap=sceGeListUpdateStallAddr", "-Wl,--wrap=func_00397c40", *(f"-Wl,--wrap={f}" for f in ("malloc", "calloc", "realloc", "memalign", "free")),f"-Wl,-T,{(OUT / 'image.ld').as_posix()}",
-        *port_objects, OUT / "stubs.o", OUT / "reasm.o", f"@{rsp.as_posix()}", OUT / "symbols.ld", *LIB_FLAGS, "-o", elf)
+    run(BIN / "psp-gcc.exe", "-G0", f"-L{SDK / 'lib'}", "-Wl,-zmax-page-size=128", "-Wl,--allow-multiple-definition", "-Wl,--wrap=sdkSpriteRequestLoad", "-Wl,--wrap=sceGuGetMemory", "-Wl,--wrap=sceGeListUpdateStallAddr", "-Wl,--wrap=func_00397c40", *(f"-Wl,--wrap={f}" for f in ("malloc", "calloc", "realloc", "memalign", "free")),f"-Wl,-T,{link_path(OUT / 'image.ld')}",
+        *map(link_path, port_objects), link_path(OUT / "stubs.o"), link_path(OUT / "reasm.o"), f"@{link_path(rsp)}", link_path(OUT / "symbols.ld"), *LIB_FLAGS, "-o", link_path(elf))
     run(BIN / "psp-fixup-imports.exe", elf)
     check_import_ranges(elf)
     table = {l.split()[2]: int(l.split()[0], 16) for l in run(BIN / "psp-nm.exe", elf).splitlines() if l.count(" ") == 2}

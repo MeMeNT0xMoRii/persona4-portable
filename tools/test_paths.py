@@ -1,5 +1,7 @@
 """Host checks for PSP launch-directory resolution."""
 import ctypes
+from contextlib import ExitStack
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -8,11 +10,13 @@ import unittest
 class PathsTest(unittest.TestCase):
     def test_launch_locations(self):
         root = Path(__file__).resolve().parents[1]
-        with tempfile.TemporaryDirectory() as temp:
+        with tempfile.TemporaryDirectory() as temp, ExitStack() as libraries:
             lib = Path(temp) / "paths.so"
             subprocess.run(["cc", "-shared", "-fPIC", "-Wall", "-Wextra", "-Werror",
                             str(root / "port/paths.c"), "-o", str(lib)], check=True)
             api = ctypes.CDLL(str(lib))
+            if os.name == "nt":
+                libraries.callback(ctypes.windll.kernel32.FreeLibrary, ctypes.c_void_p(api._handle))
             api.p4_paths_init.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
             cases = [
                 (b"ms0:/PSP/GAME/P4/EBOOT.PBP", None, b"ms0:/PSP/GAME/P4/"),
