@@ -491,6 +491,52 @@ static void measure_call_key(FILE *report)
     }
 }
 
+static void measure_texture_tiles(FILE *report)
+{
+    enum { BYTES=256*256, REPEATS=16 };
+    static unsigned char input[BYTES] __attribute__((aligned(64)));
+    static unsigned char output[BYTES] __attribute__((aligned(64)));
+    for (int i=0; i<BYTES; i++)
+        input[i] = (unsigned char)(i*31 + i/17);
+    for (int sample=-1; sample<9; sample++) {
+        unsigned start = sceKernelGetSystemTimeLow();
+        for (int i=0; i<REPEATS; i++) {
+            ge_swizzle(output,input,256,256,256,256,1);
+            __asm__ volatile("" ::: "memory");
+        }
+        unsigned us = sceKernelGetSystemTimeLow()-start;
+        if (sample>=0)
+            fprintf(report, "tile-cpu bytes %d calls %d us %u control %u\n", BYTES,REPEATS,us,output[9811]);
+    }
+}
+
+static void measure_skin_census(FILE *report)
+{
+    enum { TRIANGLES=512, VERTICES=TRIANGLES*3 };
+    static unsigned short index[VERTICES];
+    static unsigned char bone[VERTICES][4];
+    static struct { MeshHeader header; Mesh mesh[2]; } object;
+    Material material[2] = {0};
+    SkinGeometry entry = {0};
+    Geometry g = {.mesh=&object.header};
+    Skin skin = {.maxWeights=1, .indices=bone};
+    object.header.numMeshes=2;
+    for (int i=0; i<2; i++)
+        object.mesh[i]=(Mesh){index + i*VERTICES/2,VERTICES/2,&material[i]};
+    for (int i=0; i<VERTICES; i++) {
+        index[i]=i;
+        bone[i][0]=(i/3+i%3)%32;
+    }
+    unsigned before = sceKernelGetSystemTimeLow();
+    if (p4_batch_stats)
+        batch_regroup(&entry,&g,&skin,32);
+    unsigned us = sceKernelGetSystemTimeLow()-before;
+    fprintf(report, "skin-census default %d triangles %d hypothetical_batches %u us %u\n",
+            p4_batch_stats,TRIANGLES,entry.regroup[1],us);
+    batch_regroup(&entry,&g,&skin,32);
+    fprintf(report, "skin-census opt-in mesh %u texture %u all %u\n",entry.regroup[1],entry.regroup[2],entry.regroup[3]);
+}
+
 int main(void)
 {
     FILE *report = fopen("ms0:/p4-perf01-probe.txt", "w");
@@ -514,6 +560,8 @@ int main(void)
     check_flat_effects(report);
     measure_submission(report);
     measure_call_key(report);
+    measure_texture_tiles(report);
+    measure_skin_census(report);
     fputs("done\n", report);
     fclose(report);
     sceKernelSleepThread();
