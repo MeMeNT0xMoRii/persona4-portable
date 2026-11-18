@@ -34,6 +34,17 @@ Der [perf02-Bericht](v027_perf02.md) führt Pixelvergleiche, Messbedingungen, Ar
 | Schulkorridor · Ferntextur | Go zeigt unscharfen Boden, der beim Annähern schärfer wird. Erst Material, UV und Mip-Stufe in gleicher Kamera identifizieren. P4-054 betrifft frühere schwarze Polygone. |
 | P4-017 · Laufzeit | Junes West, Shopping North/South, TV-Hub, Schulversammlung, Korridor, Titel, Kampfeinstieg und All-Out getrennt messen. Overlay-Beobachtungen und ältere Gerätewerte stehen in [perf01](v027_perf01_hardware.md) und [Performancehistorie](perf_status.md). |
 
+## Stand nach perf04
+
+- **P4P-003 / P4-058.** Der Wechsel zwischen hellem und dunklem Fusionsmodell ist für Apsaras im gehaltenen Erwerbsdialog unter PPSSPP korrigiert. Der allgemeine Projektionspfad verwendet nun zusammenhängende Vektorkomponenten. Weitere Ergebnis-Personas, die Helligkeit während der Animation und die PSP-Go-Abnahme sind offen.
+- **P4P-001 / P4-053.** Vor und nach der Änderung wurden Bildserien und GE-Dumps während der Fusionsanimation am Effektmarker `18c9` erfasst. Die Tests erlauben keine Zuordnung der gemeldeten Lichtkugeln zu einem einzelnen Draw. Die blaue Zio-Entladung und Fusionspartikel auf der Go bleiben eigene Prüfpunkte.
+- **P4-017.** perf03 erreichte auf der Go in Junes 12,4–13 FPS im Stand und 11,4–13 FPS in Bewegung. Der direkte Vergleich von Mesh-Replay-Eingaben in perf04 spart im kontrollierten PPSSPP-Lauf Gast-CPU-Zeit. Die Hardwaremessung steht aus.
+- **P4-022, P4-043, P4-054.** Die sporadische weiße Fernwand in Yukikos Castle, dünne weiße Bodenlinien und schwarze Streifen auf dem frei steuerbaren Traumweg brauchen getrennte Kamera- und Bewegungsaufnahmen. Für das Shopping-Flackern fehlen ein reproduzierbarer Blickwinkel, der betroffene Gegenstand und die Bewegungsrichtung. Die Korridorprobe aus Slot 9 erfasst die verwendeten Filterzustände, die konkrete Mip-Stufe des Bodens in der Distanz ist offen.
+- **P4P-006 / P4P-007.** Der TV-Kalender zeichnet Kartenrahmen, Datum und Wetter getrennt. Für Animation und Ruhezustand liegen Aufrufe von `calDrawWeather` vor. Der auslösende Sprite und der korrekte Bildausschnitt müssen in einer geöffneten Vorhersage bestimmt werden. Für Rush liegt die Sollposition links unten auf der PS2 vor. Beide Layoutfehler bleiben offen.
+- **P4P-014.** Margarets stehende Pose nach einer Fusion und ihre sitzende Pose beim Wiedereintritt sind ein Gerätebefund des Benutzers. Ob die PS2 denselben Zustandswechsel zulässt, ist offen. Die Pose und ihre Farbdarstellung getrennt prüfen.
+
+Messmethode, reproduzierte Szene und Hardwareabnahme stehen im [perf04-Bericht](v027_perf04.md).
+
 ## Vollständiger historischer Index P4-001 bis P4-058
 
 „Gerät“ bezeichnet die damalige Bestätigung im angegebenen Testumfang. „Technik“ steht für implementierte, per Code, Host oder Emulator geprüfte Teilkorrekturen. Alle offenen Teilfälle behalten ihre [Spielstände und Routen](replay_saves.md).
