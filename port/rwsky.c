@@ -1169,17 +1169,18 @@ static void swizzle_raster(Raster *r)
         mip_textures++, mip_bytes += total - wbytes * rows;
 }
 
-static void unswizzle_raster(Raster *r)
+static int unswizzle_raster(Raster *r)
 {
     const SwizzleHead *h = swizzle_head(r->originalPixels);
     if (!h)
-        return;
+        return 1;
     unsigned char *linear = memalign(64, r->stride * r->height);
     if (!linear)
-        return;
+        return 0;
     ge_swizzle(r->originalPixels, linear, r->stride, r->height, h->wbytes, h->rows, 0);
     free(r->originalPixels - SWIZZLE_HEAD);
     r->originalPixels = linear;
+    return 1;
 }
 
 /* rwSTANDARDRASTERCREATE: retail's validation, then plain memory the GE can read. */
@@ -1294,11 +1295,15 @@ int func_003f98a0(void *out, Raster *r, int flags)
         return 1;
     r->stride = (r->width * r->depth + 7) / 8;
     r->originalPixels = memalign(64, r->stride * r->height);
-    if (r->depth <= 8)
+    if (r->originalPixels && r->depth <= 8)
         r->palette = memalign(64, 4 << r->depth);
-    if (!r->originalPixels)
-        p4_log("TRACE raster no memory %dx%dx%d stride %d flags %x type %x\n", r->width, r->height, r->depth, r->stride, flags, r->cType);
-    return r->originalPixels != 0;
+    if (r->originalPixels && (r->depth > 8 || r->palette))
+        return 1;
+    /* RwRasterCreate releases only its raster header on driver failure. */
+    p4_log("TRACE raster no memory %dx%dx%d stride %d flags %x type %x\n", r->width, r->height, r->depth, r->stride, flags, r->cType);
+    free(r->originalPixels);
+    r->originalPixels = NULL;
+    return 0;
 }
 
 /* rwSTANDARDRASTERDESTROY */
@@ -2236,8 +2241,13 @@ enum {
 int func_003fc5f0(unsigned char **pixels, Raster *r, int how)
 {
     pipe_texture_wait();
+    if (!unswizzle_raster(r)) {
+        /* A CPU lock promises rows. Keep the GE image and its metadata intact
+           if the temporary linear allocation fails, so a later lock can retry. */
+        *pixels = NULL;
+        return 0;
+    }
     texture_generation++;
-    unswizzle_raster(r);
     r->cpPixels = r->originalPixels;
     *pixels = r->cpPixels;
     if (!r->cpPixels)
