@@ -25,13 +25,15 @@ class PathsTest(unittest.TestCase):
                 (b"./EBOOT.PBP", b"ms0:/PSP/GAME/CAT_Ports/P4/",
                  b"ms0:/PSP/GAME/CAT_Ports/P4/"),
                 (None, b"ms0:/PSP/GAME/P4", b"ms0:/PSP/GAME/P4/"),
+                (b"ef0:/PSP/GAME/P4/EBOOT.PBP", b"ms0:/", b"ef0:/PSP/GAME/P4/"),
+                (b"./EBOOT.PBP", b"ef0:/PSP/GAME/P4", b"ef0:/PSP/GAME/P4/"),
             ]
             for exe, cwd, expected in cases:
                 self.assertEqual(api.p4_paths_init(exe, cwd), 0)
                 self.assertEqual((ctypes.c_char * 160).in_dll(api, "p4_game_dir").value, expected)
                 self.assertEqual((ctypes.c_char * 176).in_dll(api, "p4_save_dir").value, expected+b"saves")
                 self.assertEqual((ctypes.c_char * 176).in_dll(api, "p4_sound_dir").value, expected+b"SOUND/")
-            for exe, cwd in [(None, None), (b"ef0:/P4/EBOOT.PBP", b"ms0:/"),
+            for exe, cwd in [(None, None), (b"flash0:/P4/EBOOT.PBP", b"ms0:/"),
                              (b"ms0:/P4/../EBOOT.PBP", None),
                              (b"ms0:/"+b"x"*160+b"/EBOOT.PBP", None),
                              (b"ms0:/P4/", None), (b"/EBOOT.PBP", b"ms0:/")]:

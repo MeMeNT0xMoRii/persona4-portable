@@ -4,6 +4,7 @@
 #include <pspsdk.h>
 #include <psppower.h>
 #include <pspsysmem.h>
+#include <psputils.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -371,7 +372,18 @@ static int load(const char *path, void *dst, int max)
     SceUID fd = sceIoOpen(path, PSP_O_RDONLY, 0);
     if (fd < 0)
         return fd;
-    int n = sceIoRead(fd, dst, max);
+    SceOff length = sceIoLseek(fd, 0, PSP_SEEK_END);
+    int n = 0;
+    if (length <= 0 || length > max || sceIoLseek(fd, 0, PSP_SEEK_SET) != 0)
+        n = -1;
+    while (n >= 0 && n < length) {
+        int chunk = sceIoRead(fd, (char *)dst + n, (int)length - n);
+        if (chunk <= 0) {
+            n = -1;
+            break;
+        }
+        n += chunk;
+    }
     sceIoClose(fd);
     return n;
 }
@@ -382,6 +394,10 @@ static int check_strings(const unsigned *list, int count)
     const unsigned end = P4_IMAGE + P4_IMAGE_SIZE;
     int bad = 0, first_bad = -1;
     for (int i = 0; i < count; i++) {
+        if ((list[i] & 3) || list[i] > P4_IMAGE_SIZE - sizeof(unsigned)) {
+            bad++;
+            continue;
+        }
         unsigned p = *(unsigned *)(P4_IMAGE + list[i]);
         const unsigned char *s = (const unsigned char *)p;
         /* s[-1] may be the top byte of a rebased pointer that sits right before the text */
@@ -402,7 +418,21 @@ static int __attribute__((noinline)) load_boot_data(void *image)
     unsigned list[8192];
     memset(image, 0, P4_IMAGE_SIZE);
     int data = load(data_path, image, P4_IMAGE_SIZE);
-    int count = load(strings_path, list, sizeof list) / 4;
+    int bytes = load(strings_path, list, sizeof list);
+    if (data <= 0 || bytes <= 0 || bytes % sizeof(unsigned)) {
+        p4_log("Cannot load runtime files from %s (data=%d strings=%d).\n", p4_game_dir, data, bytes);
+        return 0;
+    }
+#ifdef P4_VERIFY_RUNTIME
+    extern const unsigned char p4_runtime_digests[40];
+    unsigned char digest[20];
+    if (sceKernelUtilsSha1Digest(image, data, digest) < 0 || memcmp(digest, p4_runtime_digests, 20) ||
+        sceKernelUtilsSha1Digest((unsigned char *)list, bytes, digest) < 0 || memcmp(digest, p4_runtime_digests + 20, 20)) {
+        p4_log("Runtime mismatch in %s. Install EBOOT.PBP, p4data.bin and p4str.bin from the same package.\n", p4_game_dir);
+        return 0;
+    }
+#endif
+    int count = bytes / sizeof(unsigned);
     p4_log("loaded data=%d list=%d\n", data, count);
     return data > 0 && count > 0 && !check_strings(list, count);
 }
