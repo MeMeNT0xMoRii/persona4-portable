@@ -8,7 +8,7 @@ import unittest
 
 
 class RasterMemory(unittest.TestCase):
-    def test_generated_mip_chain_requires_source_flag(self):
+    def test_recovery_keeps_minification_for_unflagged_rasters(self):
         cc = shutil.which("gcc")
         if not cc:
             self.skipTest("C compiler required")
@@ -23,7 +23,7 @@ static int p4_mip_build = 1, p4_mip_min = 64;
 """ + body + """
 int main(void) {
     Raster r = {128, 128, 8, 0x25};
-    assert(mip_levels(&r) == 1);
+    assert(mip_levels(&r) == 4);
     r.cFormat |= 0x80;
     assert(mip_levels(&r) == 4);
     r.width = 127;

@@ -7,6 +7,22 @@ from psp_make_data import K
 
 
 class AddressCasts(unittest.TestCase):
+    def test_velvet_idle_is_dispatched_only_after_the_return_room_is_ready(self):
+        from psp_census import DECOMP
+        rel = "src/unplaced/unplaced_inferred_0033d310.c"
+        if not (DECOMP / rel).is_file():
+            self.skipTest("local decompilation checkout required")
+        source = shim((DECOMP / rel).read_text(encoding="utf-8"), rel)
+        update = source.split("s32 fclCombineEventTaskUpdate(u8 *task)", 1)[1]
+        after_load = update.split("case 7:", 1)[1].split("case 8:", 1)[0]
+        self.assertEqual(update.count("mdlDispatchAnimIfPresent("), 1)
+        steps = ["fieldSceneLoadStep()", "mtSceneResListPrepareAll()",
+                 "MT_Scene_GetResListHead(3)", "(actor->resTypeId & 0x3ff) == 0x38",
+                 "mdlDispatchAnimIfPresent(((SceneCharacterUpdate *)actor)->model, 0, 13, 0, 1)",
+                 "fadeBeginReturnTransition", "->state + 1"]
+        positions = [after_load.index(step) for step in steps]
+        self.assertEqual(positions, sorted(positions))
+
     def test_script_integer_result_matches_canonical_header(self):
         self.assertEqual(shim('extern s64 scrGetParamInt();'), 'extern s32 scrGetParamInt();')
         self.assertEqual(shim('s64 actual_wide_result(void);'), 's64 actual_wide_result(void);')

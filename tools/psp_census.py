@@ -139,6 +139,22 @@ FIXES = {
          "    }\n"
          "    if (state == 0xD8) {"),
     ],
+    # The fusion event reloads field 8/3 room 1. Once list 3 is ready, restore
+    # the idle animation selected by the normal room entry (US 0x310f20).
+    # This state advances after the fade request, so the pose starts only once.
+    "src/unplaced/unplaced_inferred_0033d310.c": [
+        ('#include "fcl_combine_internal.h"',
+         '#include "fcl_combine_internal.h"\n#include "scene_resource_internal.h"\n'
+         '#include "model_motion_internal.h"\nextern u8 *MT_Scene_GetResListHead(s32);'),
+        ("         view = kwlnGetCamera();",
+         "         ResrcHeader *actor;\n"
+         "         for (actor = (ResrcHeader *)MT_Scene_GetResListHead(3);\n"
+         "              actor; actor = (ResrcHeader *)actor->next) {\n"
+         "             if ((actor->resTypeId & 0x3ff) == 0x38)\n"
+         "                 mdlDispatchAnimIfPresent(((SceneCharacterUpdate *)actor)->model, 0, 13, 0, 1);\n"
+         "         }\n"
+         "         view = kwlnGetCamera();"),
+    ],
     "src/Event/Fcl/y_fclCombine.c": [
         ("void fclCombineMenuFusion(u8 *task) {\n    KwlnTask *ownerTask",
          "void fclCombineMenuFusion(u8 *task) {\n"
