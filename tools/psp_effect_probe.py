@@ -66,6 +66,8 @@ def main():
     modes.add_argument("--depth-only", action="store_true", help="read back the depth fixture in the first display list")
     modes.add_argument("--renderer-perf", action="store_true",
                        help="build the renderer command, framebuffer and CPU submission probe")
+    modes.add_argument("--renderer-ui-trace", action="store_true",
+                       help="compare an instrumented UI frame with the same frame captured on request")
     args = parser.parse_args()
     pspdev = os.environ.get("PSPDEV")
     if not pspdev:
@@ -73,9 +75,12 @@ def main():
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     sdk = Path(pspdev).resolve()
-    if args.renderer_perf:
+    if args.renderer_perf or args.renderer_ui_trace:
+        defines = [f'P4_PROBE_RENDERER="{args.renderer.resolve().as_posix()}"']
+        if args.renderer_ui_trace:
+            defines.append("P4_FRAME_TIMING=1")
         build_program(sdk, output, ROOT / "tools/psp_renderer_probe.c", "P4 Renderer Probe",
-                      (f'P4_PROBE_RENDERER="{args.renderer.resolve().as_posix()}"',),
+                      defines,
                       cflags=("-ffunction-sections", "-fdata-sections", "-D_PSP_FW_VERSION=600",
                               "-Wl,--gc-sections,--wrap=sceGuGetMemory,--wrap=sceGeListUpdateStallAddr"),
                       libraries=("-lpspctrl", "-lpspgum", "-lm"))

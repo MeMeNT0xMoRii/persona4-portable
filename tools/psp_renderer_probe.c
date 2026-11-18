@@ -26,9 +26,22 @@ static GuVertex geometry[4] __attribute__((aligned(64)));
 static unsigned short indices16[6] __attribute__((aligned(64))) = {0,1,2, 2,1,3};
 static unsigned char indices8[6] __attribute__((aligned(64))) = {0,1,2, 2,1,3};
 
+#ifdef P4_FRAME_TIMING
+static FILE *trace_report;
+#endif
+
 void p4_log(const char *format, ...)
 {
+#ifdef P4_FRAME_TIMING
+    if (trace_report) {
+        va_list args;
+        va_start(args, format);
+        vfprintf(trace_report, format, args);
+        va_end(args);
+    }
+#else
     (void)format;
+#endif
 }
 
 static void init_gu(void)
@@ -537,8 +550,56 @@ static void measure_skin_census(FILE *report)
     fprintf(report, "skin-census opt-in mesh %u texture %u all %u\n",entry.regroup[1],entry.regroup[2],entry.regroup[3]);
 }
 
+#ifdef P4_FRAME_TIMING
+/* Draw the same 70 UI inputs with and without a simulated capture-button edge.
+   The real draw path records the first 64 and still submits the whole frame. */
+static int check_ui_trace(void)
+{
+    static unsigned reference[SCREEN_H][SCREEN_W];
+    FILE *report = fopen("ms0:/p4-ui-trace-probe.txt", "w");
+    if (!report) return 1;
+    init_gu();
+    trace_report = report;
+    int different = 0, painted = 0;
+    for (int capture = 0; capture < 2; capture++) {
+        start_picture();
+        gu_dirty();
+        timing_ui_poll(capture, 1, 0);
+        render_state[12] = 1;
+        sky_state[2] = BLEND_NORMAL;
+        sky_state[3] = 0x70000;
+        for (int i = 0; i < 70; i++) {
+            Vertex2D vertices[4];
+            render_state[1] = (int)(i % 2 ? &indexed_raster : &rasters[0]);
+            ui_quad(vertices, 4 + i % 10 * 58, 4 + i / 10 * 60, 160, 255, 3200);
+            draw(4, vertices, NULL, 4);
+        }
+        finish_picture();
+        timing_ui_poll(0, 1, 1);
+        for (int y = 0; y < SCREEN_H; y++) {
+            if (!capture) {
+                memcpy(reference[y], pixels[y], sizeof reference[y]);
+            } else {
+                for (int x = 0; x < SCREEN_W; x++) {
+                    different += reference[y][x] != pixels[y][x];
+                    painted += pixels[y][x] != pixels[0][0];
+                }
+            }
+        }
+    }
+    fprintf(report, "ui trace inputs %u painted %d differences %d\ndone\n",
+            timing_ui_count, painted, different);
+    trace_report = NULL;
+    fclose(report);
+    return timing_ui_count == 70 && painted && !different ? 0 : 2;
+}
+#endif
+
 int main(void)
 {
+#ifdef P4_FRAME_TIMING
+    return check_ui_trace();
+#endif
     FILE *report = fopen("ms0:/p4-perf01-probe.txt", "w");
     if (!report)
         return 1;
