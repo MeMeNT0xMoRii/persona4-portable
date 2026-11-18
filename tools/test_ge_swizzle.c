@@ -21,9 +21,35 @@ static void check_legacy_map_texture(void)
     }
 }
 
+/* Compare each byte against its GE address. A round trip alone would also
+   pass if both directions made the same addressing mistake. */
+static void check_texture_shapes(void)
+{
+    unsigned char input[129 * 35 + 4], encoded[144 * 40 + 4], decoded[sizeof input];
+    for (unsigned i = 0; i < sizeof input; i++)
+        input[i] = (unsigned char)(i * 31 + (i >> 6));
+    for (int stride = 1; stride <= 129; stride++) {
+        for (int rows = 1; rows <= 35; rows++) {
+            int wbytes = (stride + 15) & ~15, padded = (rows + 7) & ~7;
+            memset(encoded, 0xcc, sizeof encoded);
+            memset(decoded, 0xbb, sizeof decoded);
+            ge_swizzle(encoded + 1, input + 2, stride, rows, wbytes, padded, 1);
+            for (int y = 0; y < padded; y++)
+                for (int x = 0; x < wbytes; x++)
+                    assert(encoded[1 + ge_swizzle_offset(x, y, wbytes)] ==
+                           (x < stride && y < rows ? input[2 + y * stride + x] : 0));
+            ge_swizzle(encoded + 1, decoded + 3, stride, rows, wbytes, padded, 0);
+            assert(memcmp(decoded + 3, input + 2, stride * rows) == 0);
+            assert(encoded[0] == 0xcc && encoded[1 + wbytes * padded] == 0xcc);
+            assert(decoded[2] == 0xbb && decoded[3 + stride * rows] == 0xbb);
+        }
+    }
+}
+
 int main(void)
 {
     check_legacy_map_texture();
+    check_texture_shapes();
     /* a bijection onto the padded picture, and the documented layout: block 1 starts at byte 128 */
     static unsigned char seen[64 * 24];
     for (int y = 0; y < 24; y++)

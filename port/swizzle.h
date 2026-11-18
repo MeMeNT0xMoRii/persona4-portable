@@ -4,6 +4,8 @@
 #ifndef SWIZZLE_H
 #define SWIZZLE_H
 
+#include <string.h>
+
 /* Which of the 8 by 8 places of a block the pixel takes: the same for both formats. */
 static inline int swizzle_x(int x, int y) { return (x + (((y + 2) >> 2 & 1) << 2)) & 7; }
 static inline int swizzle_y(int y) { return (((y & 12) >> 1) + (y & 1)) & 7; }
@@ -43,6 +45,24 @@ static inline int ge_swizzle_offset(int xbyte, int y, int wbytes)
 /* linear (stride bytes a row, rows rows) -> swizzled (wbytes by padded rows, padding zero), or back with to_ge 0 */
 static inline void ge_swizzle(unsigned char *swizzled, unsigned char *linear, int stride, int rows, int wbytes, int padded_rows, int to_ge)
 {
+    /* Native power-of-two rasters and their mips fill whole GE blocks. Copy
+       each 16-byte span once, in GE memory order. memcpy also permits
+       unaligned caller buffers. Keep the edge-padding path for odd sizes. */
+    if (stride == wbytes && rows == padded_rows) {
+        for (int y = 0; y < rows; y += 8) {
+            for (int x = 0; x < stride; x += 16) {
+                unsigned char *row = linear + y * stride + x;
+                for (int k = 0; k < 8; k++) {
+                    if (to_ge)
+                        memcpy(swizzled, row + k * stride, 16);
+                    else
+                        memcpy(row + k * stride, swizzled, 16);
+                    swizzled += 16;
+                }
+            }
+        }
+        return;
+    }
     for (int y = 0; y < padded_rows; y++)
         for (int x = 0; x < wbytes; x++) {
             unsigned char *s = &swizzled[ge_swizzle_offset(x, y, wbytes)];
