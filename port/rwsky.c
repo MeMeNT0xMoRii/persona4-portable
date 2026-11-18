@@ -9474,7 +9474,7 @@ static int skin_mesh_regroup(const Mesh *mesh, const Geometry *g, const int *cor
    draw and pass (body / shadow) in p4_batch_stats_report. First-fit: a batch takes any later triangle of its group
    whose bones still fit, not only the next one. Groups: each mesh; meshes sharing a texture (the shadow pass draws
    one colour); all meshes. Alpha order and blend/depth state are not told apart, so these are lower bounds. */
-int p4_batch_stats = 1;
+int p4_batch_stats = 0; /* BATCHSTATS at startup enables the hypothetical bone-palette regrouping census. */
 enum { BS_DRAWS, BS_BATCHES, BS_MESHES, BS_FF_MESH, BS_FF_TEX, BS_FF_ALL, BS_PAL, BS_PAL_MESH, BS_PAL_TEX, BS_PAL_ALL, BS_SENT, BS_N };
 static unsigned *batch_stats; /* [2][BS_N], heap: .bss is full */
 

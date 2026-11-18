@@ -421,10 +421,13 @@ int main(int argc, char **argv)
         stop();
         return 1;
     }
-    char fps_marker[P4_PATH_MAX];
-    SceIoStat fps_stat;
-    snprintf(fps_marker, sizeof fps_marker, "%sFPS", p4_game_dir);
-    p4_fps_overlay = sceIoGetstat(fps_marker, &fps_stat) >= 0;
+    extern int p4_batch_stats;
+    char marker[P4_PATH_MAX];
+    SceIoStat stat;
+    snprintf(marker, sizeof marker, "%sFPS", p4_game_dir);
+    p4_fps_overlay = sceIoGetstat(marker, &stat) >= 0;
+    snprintf(marker, sizeof marker, "%sBATCHSTATS", p4_game_dir);
+    p4_batch_stats = sceIoGetstat(marker, &stat) >= 0;
     p4_log(P4_BUILD_ID ": HOME exit callback ready\n");
 #ifdef P4_GE_DUMP
     p4_log("v0.27-dev GE dump diagnostic: serial renderer\n");
