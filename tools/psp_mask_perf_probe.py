@@ -20,7 +20,7 @@ def main():
     renderers = (args.home20, args.home21, ROOT / 'port/rwsky.c')
     for suffix, path in zip(('20', '21', 'current'), renderers):
         source = path.read_text()
-        names = ('mask_diagonal_side', 'effect_mask_quad', 'draw_effect_mask')
+        names = ('mask_diagonal_side', 'effect_mask_quad', 'effect_triangle_alpha', 'draw_effect_mask')
         for name in names:
             match = extract(source, name)
             if match:

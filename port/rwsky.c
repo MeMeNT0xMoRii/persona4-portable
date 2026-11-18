@@ -3174,6 +3174,30 @@ static int effect_mask_quad(int prim, int count, const GuVertex *v)
     return 0;
 }
 
+/* This triangle cannot cover a pixel twice. Full-byte stencil replacements
+   preserve the surviving fragment's alpha on both GE and emulator backends.
+   An alpha ceiling of seven needs at most eight passes, including zero. */
+static void effect_triangle_alpha(const GuVertex *v)
+{
+    unsigned maximum = v[0].colour >> 24;
+    for (int i = 1; i < 3; i++) {
+        unsigned a = v[i].colour >> 24;
+        if (a > maximum)
+            maximum = a;
+    }
+    int type = GU_2D_FORMAT;
+    unsigned step = maximum <= 7 ? 1 : 85;
+    for (unsigned value = 0; value <= 255; value += step) {
+        unsigned threshold = step == 1 || !value ? value : value - 42;
+        if (threshold > maximum)
+            break;
+        sceGuStencilFunc(GU_ALWAYS, value, 0xff);
+        sceGuAlphaFunc(GU_GEQUAL, threshold, 0xff);
+        sceGuDrawArray(GU_TRIANGLES, type, 3, NULL, v);
+        type = 0;
+    }
+}
+
 static void draw_effect_mask(int prim, int count, const GuVertex *vertices)
 {
     sceGuEnable(GU_STENCIL_TEST);
@@ -3203,6 +3227,21 @@ static void draw_effect_mask(int prim, int count, const GuVertex *vertices)
             sceGuDrawArray(prim, 0, count, 0, vertices);
         }
         sceGuPixelMask(0x00ffffff);
+    } else if ((prim == GU_TRIANGLES && (count == 3 || count == 6)) ||
+               ((prim == GU_TRIANGLE_STRIP || prim == GU_TRIANGLE_FAN) && (count == 3 || count == 4))) {
+        /* The later triangle owns the overlap, even if its alpha is lower.
+           Finish the preceding triangle's thresholds before starting it. */
+        sceGuEnable(GU_ALPHA_TEST);
+        effect_triangle_alpha(vertices);
+        if (count == 6) {
+            effect_triangle_alpha(vertices + 3);
+        } else if (count == 4) {
+            GuVertex *tri = sceGuGetMemory(3 * sizeof *tri);
+            tri[0] = vertices[prim == GU_TRIANGLE_STRIP ? 2 : 0];
+            tri[1] = vertices[prim == GU_TRIANGLE_STRIP ? 1 : 2];
+            tri[2] = vertices[3];
+            effect_triangle_alpha(tri);
+        }
     } else {
         /* Bit writes would combine alpha from overlapping fragments. */
         sceGuEnable(GU_ALPHA_TEST);

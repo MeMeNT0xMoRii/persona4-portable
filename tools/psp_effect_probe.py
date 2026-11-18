@@ -17,7 +17,7 @@ def extract(source, name):
 
 def build(pspdev, output, renderer, depth_only=False):
     source = renderer.read_text()
-    names = ("blend_factor", "set_blend", "camera_projection", "mask_diagonal_side", "effect_mask_quad",
+    names = ("blend_factor", "set_blend", "camera_projection", "mask_diagonal_side", "effect_mask_quad", "effect_triangle_alpha",
              "draw_effect_mask")
     functions = [match[0] for name in names if (match := extract(source, name))]
     submit = extract(source, "draw_ptank_quads")

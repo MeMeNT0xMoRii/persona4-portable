@@ -222,6 +222,89 @@ static void finish_picture(void)
     sceKernelDcacheInvalidateRange(pixels, sizeof pixels);
 }
 
+/* The reference draws each triangle in retail order. A GE equality test for
+   each alpha value is independent of the renderer's bit-plane algorithm. */
+static void mask_picture(int reference)
+{
+    start_picture();
+    gu_dirty();
+    sceGuDisable(GU_CULL_FACE);
+    sceGuDisable(GU_BLEND);
+    sceGuEnable(GU_DEPTH_TEST);
+    sceGuDepthFunc(GU_GEQUAL);
+    sceGuClearDepth(20000);
+    sceGuDepthMask(GU_FALSE);
+    sceGuClear(GU_DEPTH_BUFFER_BIT);
+    render_state[RS_ZWRITE] = 0;
+    for (int tile = 0; tile < 7; tile++) {
+        int prim = tile == 0 || tile == 3 ? GU_TRIANGLES :
+                   tile == 1 || tile == 4 ? GU_TRIANGLE_STRIP : GU_TRIANGLE_FAN;
+        int count = tile == 0 ? 3 : prim == GU_TRIANGLES ? 6 : 4;
+        GuVertex *v = sceGuGetMemory(count * sizeof *v);
+        static const GuVertex shape[6] = {
+            {0,0,0x177f9781,4,4,9000}, {1,0,0xa6718652,49,8,28000},
+            {0,1,0xef628ba4,10,58,50000}, {1,1,0x40435465,15,15,37000},
+            {1,0,0x6d48596a,24,33,44000}, {0,1,0x82394a5b,37,14,41000},
+        };
+        for (int i = 0; i < count; i++) {
+            v[i] = shape[i];
+            v[i].x += 64 * tile;
+            if (tile == 0 || tile == 4 || tile == 6)
+                v[i].colour = (v[i].colour & 0xffffff) | (unsigned)(7 - i * 2) << 24;
+        }
+        if (tile & 1)
+            bind_raster(&rasters[0], GU_CLAMP);
+        else
+            sceGuDisable(GU_TEXTURE_2D);
+        if (!reference) {
+            draw_effect_mask(prim, count, v);
+            continue;
+        }
+        sceGuDepthMask(GU_TRUE);
+        sceGuEnable(GU_ALPHA_TEST);
+        sceGuEnable(GU_STENCIL_TEST);
+        sceGuStencilOp(GU_KEEP, GU_KEEP, GU_REPLACE);
+        sceGuPixelMask(0x00ffffff);
+        for (int t = 0; t < (count == 3 ? 1 : 2); t++) {
+            GuVertex *tri = sceGuGetMemory(3 * sizeof *tri);
+            tri[0] = v[t == 0 ? 0 : prim == GU_TRIANGLES ? 3 : prim == GU_TRIANGLE_STRIP ? 2 : 0];
+            tri[1] = v[t == 0 ? 1 : prim == GU_TRIANGLES ? 4 : prim == GU_TRIANGLE_STRIP ? 1 : 2];
+            tri[2] = v[t == 0 ? 2 : prim == GU_TRIANGLES ? 5 : 3];
+            for (int a = 0; a < 256; a++) {
+                sceGuAlphaFunc(GU_EQUAL, a, 0xff);
+                int stored = tile == 0 || tile == 4 || tile == 6 ? a : (a + 42) / 85 * 85;
+                sceGuStencilFunc(GU_ALWAYS, stored, 0xff);
+                sceGuDrawArray(GU_TRIANGLES, GU_2D_FORMAT, 3, NULL, tri);
+            }
+        }
+    }
+    finish_picture();
+}
+
+static void check_mask_order(FILE *report)
+{
+    enum { WIDTH = 448, HEIGHT = 64 };
+    static unsigned expected[HEIGHT][WIDTH];
+    mask_picture(1);
+    for (int y = 0; y < HEIGHT; y++)
+        memcpy(expected[y], pixels[y], WIDTH * sizeof(unsigned));
+    mask_picture(0);
+    int differences = 0, covered = 0, alpha_values = 0;
+    unsigned char seen[256] = {0};
+    for (int y = 0; y < HEIGHT; y++) {
+        for (int x = 0; x < WIDTH; x++) {
+            unsigned value = expected[y][x];
+            differences += pixels[y][x] != value;
+            covered += value != expected[0][0];
+            seen[value >> 24] = 1;
+        }
+    }
+    for (int a = 0; a < 256; a++)
+        alpha_values += seen[a];
+    fprintf(report, "ordered-masks pixels %d covered %d alphas %d differences %d\n",
+            WIDTH * HEIGHT, covered, alpha_values, differences);
+}
+
 static void measure_submission(FILE *report)
 {
     enum { SAMPLES = 9, LISTS = 12, DRAWS = 120 };
@@ -295,6 +378,7 @@ int main(void)
     for (int y = 0; y < SCREEN_H; y++)
         fwrite(pixels[y], sizeof(unsigned), SCREEN_W, raw);
     fclose(raw);
+    check_mask_order(report);
     measure_submission(report);
     measure_call_key(report);
     fputs("done\n", report);
