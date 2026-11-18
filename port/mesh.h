@@ -118,14 +118,27 @@ static void bind_ge_light_body(const Material *material, int modulate, const Sce
     st_enable(GU_LIGHT1, 0);
     st_enable(GU_LIGHT2, 0);
     st_enable(GU_LIGHT3, 0);
-    sceGuColorMaterial(GU_AMBIENT);
-    sceGuAmbient(c);
-    sceGuModelColor(emissive, 0xffffffff, 0xffffffff, 0);
+    if (p4_ge_raw) { /* b366: libpspgu's words (read from its objects): CMAT, AC/AA, model colours EMC DMC AMC SMC */
+        ge_word(0x53, GU_AMBIENT);
+        ge_word(0x5C, c), ge_word(0x5D, c >> 24);
+        ge_word(0x54, emissive), ge_word(0x56, 0xffffff), ge_word(0x55, 0xffffff), ge_word(0x57, 0);
+    } else {
+        sceGuColorMaterial(GU_AMBIENT);
+        sceGuAmbient(c);
+        sceGuModelColor(emissive, 0xffffffff, 0xffffffff, 0);
+    }
     if (diffuse && (d->x || d->y || d->z)) { /* a zero direction would normalise to NaN */
         ScePspFVector3 to = { -d->x, -d->y, -d->z };
-        sceGuLight(0, GU_DIRECTIONAL, GU_DIFFUSE, &to);
-        sceGuLightColor(0, GU_DIFFUSE, diffuse);
-        sceGuLightColor(0, GU_AMBIENT, 0);
+        if (p4_ge_raw) { /* light 0: position x y z (float >> 8), type (directional, diffuse), diffuse and ambient colour */
+            union { float f; unsigned u; } x = { to.x }, y = { to.y }, z = { to.z };
+            ge_word(0x63, x.u >> 8), ge_word(0x64, y.u >> 8), ge_word(0x65, z.u >> 8);
+            ge_word(0x5F, (GU_DIRECTIONAL << 8 & 0x300) | 0);
+            ge_word(0x90, diffuse), ge_word(0x8F, 0);
+        } else {
+            sceGuLight(0, GU_DIRECTIONAL, GU_DIFFUSE, &to);
+            sceGuLightColor(0, GU_DIFFUSE, diffuse);
+            sceGuLightColor(0, GU_AMBIENT, 0);
+        }
         st_enable(GU_LIGHT0, 1);
     } else {
         st_enable(GU_LIGHT0, 0);
@@ -262,7 +275,7 @@ static unsigned cache_emergencies;
 int p4_material_state = 1; /* b177: 1: GE-lit cache keys without the material; 2: unlit compact meshes too (material
                               colour as GE state); 0: the material in every cache key, as b176 */
 int p4_cache_reuse_last = 1; /* 1: a miss may take its mesh's entry drawn last frame (pipeline off); 0: as b75 */
-static Geometry *draw_geometry; /* the atomic's geometry while its own arrays are drawn, else 0 */
+/* draw_geometry: declared in guard.h (b387) */
 typedef struct { const Geometry *g; const void *pos, *uv, *pre, *nrm; int count; float du, dv; unsigned nsample, part[4]; } LockMemo;
 static LockMemo lock_memo[1024];
 
@@ -746,6 +759,58 @@ static void sl_note(MeshCache *slot);
 static unsigned *mesh_model_begin; /* b258: where mesh_state's model matrix words start (static_list.h) */
 static int sl_recording; /* b258: a static list is being recorded: mesh cache hits inline, noted */
 static int sl_ge_uncut; /* certified prepared mesh: GE handles near clip and offscreen rejection */
+#include "static_uv.h"
+int p4_static_uv_pack = 1, p4_static_uv_check = 0;
+static unsigned static_uv_vertices, static_uv_bytes, static_uv_refused, static_uv_checks, static_uv_diffs, static_uv_why[6];
+/* b353: the temporary UV buffers (256 KiB, 4 frames) ran out while recording: the list records again 2 frames later
+   instead of keeping float UVs for good (Heaven's load records ~58k vertices at once) */
+static int sl_uv_short;
+static unsigned static_uv_retries;
+static int sl_note_uv(MeshCache *slot, const void *data, unsigned bytes);
+static void *static_uv_alloc(unsigned bytes);
+
+static int draw_static_uv(MeshCache *slot, int prim, const Material *material, int modulate, const SceneLight *light)
+{
+    if (!sl_recording || !p4_static_uv_pack) return 0;
+    /* vertices left with float UVs, by reason: 0 under 16 or over 65536 vertices, 1 deferred translucent, 2 MatFX env,
+       3 vertex format, 4 UV range (span over 8 or non-finite), 5 temporary memory */
+    int why = slot->vertices < 16 || slot->vertices > 65536 ? 0 : translucent_material(material, modulate) ? 1 :
+              matfx_env_entry(material) ? 2 :
+              (slot->vtype & GU_TEXTURE_BITS) != GU_TEXTURE_32BITF ||
+              (slot->vtype & GU_VERTEX_BITS) != GU_VERTEX_32BITF || (slot->vtype & GU_WEIGHT_BITS) ||
+              (slot->vtype & GU_COLOR_BITS) != GU_COLOR_8888 ||
+              ((slot->vtype & GU_NORMAL_BITS) && (slot->vtype & GU_NORMAL_BITS) != GU_NORMAL_8BIT) ? 3 : -1;
+    if (why >= 0) { static_uv_why[why] += slot->vertices; return 0; }
+    int stride = slot->vtype & GU_NORMAL_8BIT ? sizeof(Vertex3DN) : sizeof(Vertex3D);
+    int bytes = slot->vertices * (stride - 4);
+    float decode[4];
+    void *packed = static_uv_alloc(bytes);
+    if (!packed || !static_uv_pack(slot->v, slot->vertices, stride, packed, decode)) {
+        static_uv_why[packed ? 4 : 5] += slot->vertices;
+        if (!packed && bytes <= 128 * 1024) sl_uv_short = 1; /* fits once the buffers in flight retire */
+        static_uv_refused++;
+        return 0;
+    }
+    if (p4_static_uv_check) {
+        static_uv_checks++;
+        if (!static_uv_same(slot->v, packed, slot->vertices, stride, decode)) {
+            static_uv_diffs++;
+            p4_static_uv_pack = 0;
+            return 0;
+        }
+    }
+    if (!sl_note_uv(slot, packed, bytes)) return 0;
+    sceKernelDcacheWritebackRange(packed, bytes);
+    bind_texscale(decode);
+    draw_slot_v = packed, draw_slot_alpha = &slot->alpha_lo;
+    int vtype = (slot->vtype & ~GU_TEXTURE_BITS) | GU_TEXTURE_16BIT;
+    draw_mesh_vertices(prim, vtype, slot->indices, slot->idx, packed, material, modulate, light);
+    draw_slot_v = 0;
+    bind_texscale(0);
+    static_uv_vertices += slot->vertices;
+    static_uv_bytes += slot->vertices * 4;
+    return 1;
+}
 static void draw_mesh_hit(MeshCache *slot, int prim, const Material *material, int modulate, const SceneLight *light)
 {
     unsigned w[48], h[2];
@@ -772,6 +837,7 @@ static void draw_mesh_hit(MeshCache *slot, int prim, const Material *material, i
     bind_mask(material->colour >> 24);
     bind_raster(texture ? *texture : 0, GU_REPEAT);
     prof_end(PROF_HBIND);
+    if (draw_static_uv(slot, prim, material, modulate, light)) return;
     draw_slot_v = slot->v, draw_slot_alpha = &slot->alpha_lo;
     draw_mesh_vertices(prim, slot->vtype, slot->indices, slot->idx, slot->v, material, modulate, light);
     draw_slot_v = 0;
@@ -836,8 +902,15 @@ static int replay_inputs(MeshHeader *header, const Matrix *model, unsigned mater
    than R times the camera depth of its sphere's nearest point skips the CPU guard-band cut and goes to the GE whole,
    also through the static lists (b307 used an absolute length: the battle arena's floor near the camera broke). The cut exists
    for triangles the GE would drop (screen XY past 0..4096); in Heaven with the cut off only the huge cloud-sea
-   triangles broke (PPSSPP, 2026-11-16). The longest edge is measured once per geometry, keyed by its sphere. */
-float p4_guard_big = 0;
+   triangles broke (PPSSPP, 2026-11-16). The longest edge is measured once per geometry, keyed by its sphere.
+   b388: on by default at 1.0 (b366 Margaret dialogue: 256 uncut, 0 cut, no frame change; docs/hardware_b366.md). */
+float p4_guard_big = 1.0f;
+/* b388 p4_guard_tiny L (world length, 0 off): a geometry whose longest edge, scaled by its model matrix, is shorter than L
+   skips the guard cut at any depth, also next to the camera: a tiny triangle the GE drops at the near plane is a small
+   hole (as characters with p4_skin_guard 0). An absolute length broke the arena floor near the camera in b308: pick L
+   from the log's "guard cut ... longest edge" histogram, below the floors' edges. */
+float p4_guard_tiny = 0;
+static unsigned guard_tiny_hits;
 enum { GUARD_EDGES = 1024 };
 static struct { const float *sphere; float edge; } *guard_edges; /* heap: .bss must end below the data image */
 static unsigned guard_small_hits, guard_big_hits;
@@ -853,7 +926,7 @@ static float *guard_edge_slot(const float *sphere)
 }
 static void guard_edge_note(const MeshHeader *header, const V3 *position, int count, const float *sphere)
 {
-    if (!(p4_guard_big > 0) || !sphere || guard_edge_slot(sphere) || (!guard_edges && !(guard_edges = calloc(GUARD_EDGES, sizeof *guard_edges))))
+    if (!(p4_guard_big > 0 || p4_guard_tiny > 0) || !sphere || guard_edge_slot(sphere) || (!guard_edges && !(guard_edges = calloc(GUARD_EDGES, sizeof *guard_edges))))
         return;
     int strip = (header->flags & MESH_PRIM_MASK) == MESH_TRISTRIP;
     const Mesh *mesh = (const Mesh *)((const char *)header + sizeof(MeshHeader) + header->firstMeshOffset);
@@ -885,7 +958,7 @@ static void guard_edge_note(const MeshHeader *header, const V3 *position, int co
 /* 1: this geometry's triangles are all short enough to go to the GE uncut */
 static int guard_small(const Matrix *model, const float *sphere)
 {
-    if (!(p4_guard_big > 0) || !sphere)
+    if (!(p4_guard_big > 0 || p4_guard_tiny > 0) || !sphere)
         return 0;
     const float *edge = guard_edge_slot(sphere);
     if (!edge)
@@ -898,6 +971,15 @@ static int guard_small(const Matrix *model, const float *sphere)
         float c = m->at.x * m->at.x + m->at.y * m->at.y + m->at.z * m->at.z;
         float big = a > b ? a : b;
         scale = sqrtf(big > c ? big : c);
+    }
+    if (*edge * scale < p4_guard_tiny) { /* b388: no depth test at all */
+        guard_tiny_hits++;
+        return 1;
+    }
+    if (!(p4_guard_big > 0))
+        return 0;
+    if (model) {
+        const Matrix *m = model;
         float wx = x * m->right.x + y * m->up.x + z * m->at.x + m->pos.x;
         float wy = x * m->right.y + y * m->up.y + z * m->at.y + m->pos.y;
         float wz = x * m->right.z + y * m->up.z + z * m->at.z + m->pos.z;
@@ -913,9 +995,10 @@ static int guard_small(const Matrix *model, const float *sphere)
 }
 static void guard_big_report(void)
 {
-    p4_log("guard big %d: uncut %u cut %u; longest edges %d %d %d %d\n", (int)p4_guard_big, guard_small_hits, guard_big_hits,
-           (int)guard_edge_top[0], (int)guard_edge_top[1], (int)guard_edge_top[2], (int)guard_edge_top[3]);
-    guard_small_hits = guard_big_hits = 0;
+    p4_log("guard big %d: uncut %u cut %u; tiny %d uncut %u; longest edges %d %d %d %d\n", (int)p4_guard_big, guard_small_hits,
+           guard_big_hits, (int)p4_guard_tiny, guard_tiny_hits, (int)guard_edge_top[0], (int)guard_edge_top[1], (int)guard_edge_top[2],
+           (int)guard_edge_top[3]);
+    guard_small_hits = guard_big_hits = guard_tiny_hits = 0;
 }
 static int replay_unguarded(const Matrix *model, const float *sphere)
 {
@@ -1085,6 +1168,11 @@ static void bind_fog(void)
     if (gu_mesh_mode && fog_sent.known && fog_sent.end == end && fog_sent.slope == slope && fog_sent.colour == colour)
         return;
     fog_sent.known = gu_mesh_mode, fog_sent.end = end, fog_sent.slope = slope, fog_sent.colour = colour;
+    if (p4_ge_raw) { /* b366 */
+        union { float f; unsigned u; } e = { -end }, s = { slope };
+        ge_word(GE_FOG1, e.u >> 8), ge_word(GE_FOG2, s.u >> 8), ge_word(GE_FOG_COLOR, colour);
+        return;
+    }
     sceGuSendCommandf(GE_FOG1, -end);
     sceGuSendCommandf(GE_FOG2, slope);
     sceGuSendCommandi(GE_FOG_COLOR, colour);

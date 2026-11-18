@@ -46,6 +46,8 @@ def main():
                 shutil.copy2(ROOT / "build" / "shot.png", ROOT / "build" / f"shot_{when:g}.png")
                 continue
             command = ["watch", button[1:]] if button.startswith("@") else ["press", button]  # "40:@8873fc" arms a write watch
+            if button.startswith("r@"):  # "200:r@8a12340/128" logs every read of 128 bytes there (PPSSPP's log)
+                command = ["rwatch", *button[2:].split("/")]
             if "=" in button:  # "45:8b3a54c=0" writes a word
                 command = ["poke", *button.split("=")]
             subprocess.run([sys.executable, str(ROOT / "tools" / "psp_debug.py"), *command], timeout=15)

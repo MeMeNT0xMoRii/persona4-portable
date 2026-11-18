@@ -52,6 +52,11 @@ def check_import_ranges(elf):
     return len(ranges)
 
 
+def pbp_icons():
+    """ICON0/PIC1 from the local, git-ignored build/icons when present; NULL otherwise, so packaged builds stay reproducible."""
+    return [path if path.is_file() else "NULL" for path in (ROOT / "build/icons/ICON0.PNG", ROOT / "build/icons/PIC1.PNG")]
+
+
 def run(*cmd):
     r = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, errors="replace")
     if r.returncode:
@@ -179,7 +184,7 @@ def main():
     rsp.write_text("\n".join('"' + p.as_posix() + '"' for p in objects) + "\n", encoding="utf-8")
     elf = OUT / "p4.elf"
     # ponytail: two CRI generations define the same names, first object wins; drop one set when audio lands.
-    run(BIN / "psp-gcc.exe", "-G0", f"-L{SDK / 'lib'}", "-Wl,-zmax-page-size=128", "-Wl,--allow-multiple-definition", "-Wl,--wrap=sdkSpriteRequestLoad", "-Wl,--wrap=sceGuGetMemory", "-Wl,--wrap=sceGeListUpdateStallAddr", "-Wl,--wrap=func_00397c40", *(f"-Wl,--wrap={f}" for f in ("malloc", "calloc", "realloc", "memalign", "free")),f"-Wl,-T,{(OUT / 'image.ld').as_posix()}",
+    run(BIN / "psp-gcc.exe", "-G0", f"-L{SDK / 'lib'}", "-Wl,-zmax-page-size=128", "-Wl,--allow-multiple-definition", "-Wl,--wrap=sdkSpriteRequestLoad", "-Wl,--wrap=sceGuGetMemory", "-Wl,--wrap=sceGuDrawArray", "-Wl,--wrap=sceGeListUpdateStallAddr", "-Wl,--wrap=func_00397c40", *(f"-Wl,--wrap={f}" for f in ("malloc", "calloc", "realloc", "memalign", "free")),f"-Wl,-T,{(OUT / 'image.ld').as_posix()}",
         *port_objects, OUT / "stubs.o", OUT / "reasm.o", f"@{rsp.as_posix()}", OUT / "symbols.ld", *LIB_FLAGS, "-o", elf)
     run(BIN / "psp-fixup-imports.exe", elf)
     check_import_ranges(elf)
@@ -198,7 +203,7 @@ def main():
     audit_addresses()
     run(BIN / "mksfoex.exe", "-d", "MEMSIZE=1", "Persona 4", OUT / "PARAM.SFO")
     run(BIN / "psp-strip.exe", elf, "-o", OUT / "strip.elf")
-    run(BIN / "pack-pbp.exe", OUT / "EBOOT.PBP", OUT / "PARAM.SFO", "NULL", "NULL", "NULL", "NULL", "NULL", OUT / "strip.elf", "NULL")
+    run(BIN / "pack-pbp.exe", OUT / "EBOOT.PBP", OUT / "PARAM.SFO", *pbp_icons(), "NULL", "NULL", "NULL", OUT / "strip.elf", "NULL")
     DIST.mkdir(parents=True, exist_ok=True)
     for name in ("EBOOT.PBP", "p4data.bin", "p4str.bin"):
         (DIST / name).write_bytes((OUT / name).read_bytes())

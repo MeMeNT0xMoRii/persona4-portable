@@ -119,6 +119,9 @@ static int ib_same(const Geometry *g, int modulate, const V3 *normals)
 /* 1: atomic g at model is in the batch (drawn later); 0: draw it as usual */
 static int ib_take(const Geometry *g, const Matrix *model, const V3 *normals, int skinned)
 {
+    /* b382: an atomic that culls its back faces (p4_cull_back, bind_depth) is drawn on its own, with its own state */
+    if (p4_cull_back && render_state[RS_CULLMODE] == 2 && (p4_cull_back < 3 || (g->flags & 0x2c) == 0x20))
+        return 0;
     if (!p4_inst_batch || skinned || (normals && !p4_ge_light) || shadow_shear_m || rtt_target || ib_failed || g->numVertices > p4_inst_batch_vertices ||
         g->numVertices > IB_VERTS || g->numMorphTargets != 1 || !g->mesh->numMeshes || g->mesh->numMeshes > IB_MESHES)
         return 0;
@@ -221,6 +224,13 @@ typedef struct {
 } FarProxy;
 static int sl_try(const void *atomic, const Geometry *g, const Matrix *model, const V3 *normals);
 static FarProxy *fp_slots;
+/* Stand-in materials contain no RenderWare plugin tail (b327 on perf/shuffle-time: matfx_env_entry read the next
+   mesh header's numMeshes=1 as a plugin pointer, an invalid read at 0x81). */
+static int fp_owns_material(const Material *material)
+{
+    size_t offset = (size_t)material - (size_t)fp_slots;
+    return fp_slots && offset < FP_SLOTS * sizeof *fp_slots && offset % sizeof *fp_slots == offsetof(FarProxy, material);
+}
 static struct FpAtomic { const void *atomic; unsigned char far; } *fp_atomic; /* heap: .bss is full */
 static unsigned fp_drawn, fp_builds, fp_refused_build, fp_bytes, fp_meshes_saved;
 static unsigned fp_why[6]; /* refused: 0 lit/skinned, 1 alpha, 2 texture kind, 3 memory, 4 one mesh, 5 too big */
@@ -296,6 +306,14 @@ static void fp_free(FarProxy *e)
         fp_bytes -= e->vertices * (sizeof(V3) + 4) + e->header.m.numIndices * 2;
     free(e->pos);
     memset(e, 0, sizeof *e);
+}
+/* b375: every stand-in freed (GE idle) */
+static unsigned fp_release_all(void)
+{
+    unsigned before = fp_bytes;
+    for (int i = 0; fp_slots && i < FP_SLOTS; i++)
+        fp_free(&fp_slots[i]);
+    return before - fp_bytes;
 }
 /* the colour the GE lights a vertex to (bind_ge_light: emissive + global ambient (material colour) x vertex colour
    + directional x max(0, N.L)), before the texture */

@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from psp_data_census import ROOT, load
-from psp_link import PORT, PORT_ASM, LIB_FLAGS, run, check_import_ranges
+from psp_link import PORT, PORT_ASM, LIB_FLAGS, pbp_icons, run, check_import_ranges
 from psp_make_data import K, PSP_IMAGE, build
 from psp_xref import find_gp
 
@@ -78,7 +78,7 @@ def main():
     rsp.write_text("".join('"' + p.as_posix() + '"\n' for p in objects), encoding="utf-8")
     elf = out / "p4.elf"
     port = [out / f"{name}.o" for name in (*PORT, *PORT_ASM)]
-    wraps = ["sdkSpriteRequestLoad", "sceGuGetMemory", "sceGeListUpdateStallAddr", "func_00397c40",
+    wraps = ["sdkSpriteRequestLoad", "sceGuGetMemory", "sceGuDrawArray", "sceGeListUpdateStallAddr", "func_00397c40",
              "malloc", "calloc", "realloc", "memalign", "free"]  # b166 memory census (main.c), as psp_link
     if not args.release:
         wraps += ["mdlQueueModelForDraw", "mdlComputeIndexedAttachMatrix", "qsort",
@@ -86,7 +86,8 @@ def main():
                   "FldResource_QueueDrawCallbacks", "FldResource_QueueDrawCallbacksPrimary",
                   "FldResource_QueueDrawCallbacksSecondary", "PrimAllocQueueNode", "PrimAppendNode",
                   "func_003d5bc0", "func_003d5e40", "func_003d5e90", "func_003d5840", "func_003e9680",
-                  "p4r_003ed7e0", "func_003e9cb0", "mdlEffectListInvokeEach"]  # b263 frame sync, RwFrameTransform
+                  "p4r_003ed7e0", "func_003e9cb0", "mdlEffectListInvokeEach",  # b263 frame sync, RwFrameTransform
+                  "func_003e9700", "p4r_003e9700"]  # b358 RwFrameGetLTM: bone frame census (hanim.h)
     run(binpath / "psp-gcc.exe", "-G0", f"-L{sdk / 'lib'}", "-Wl,-zmax-page-size=128",
         f"-specs={sdk / 'lib' / 'prxspecs'}", f"-Wl,-q,-T{(stage / 'linkfile.prx').as_posix()}",
         "-Wl,--allow-multiple-definition", *[f"-Wl,--wrap={name}" for name in wraps],
@@ -106,7 +107,7 @@ def main():
     assert (out / "p4str.bin").read_bytes() == (base / "p4str.bin").read_bytes()
     title = f"Persona 4 b{build_number}" if args.release else f"Persona 4 HW Debug b{build_number}"
     run(binpath / "mksfoex.exe", "-d", "MEMSIZE=1", title, out / "PARAM.SFO")
-    run(binpath / "pack-pbp.exe", out / "EBOOT.PBP", out / "PARAM.SFO", "NULL", "NULL", "NULL", "NULL", "NULL", out / "p4.prx", "NULL")
+    run(binpath / "pack-pbp.exe", out / "EBOOT.PBP", out / "PARAM.SFO", *pbp_icons(), "NULL", "NULL", "NULL", out / "p4.prx", "NULL")
     print(run(binpath / "psp-size.exe", elf).strip())
     destination.mkdir(parents=True, exist_ok=True)
     artifacts = ["p4.elf", "p4.prx", "EBOOT.PBP", data_name, "p4str.bin"]

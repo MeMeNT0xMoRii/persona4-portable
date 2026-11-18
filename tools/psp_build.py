@@ -71,6 +71,19 @@ def cache_path(cache=None):
     return Path(cache or Path(os.environ.get('LOCALAPPDATA', tempfile.gettempdir())) / 'Persona4PSP').expanduser().resolve()
 
 
+MAX_TEMP_PATH = 250  # below Windows' 260-character MAX_PATH, which the compiler and its includes still obey
+PATH_HEADROOM = 24  # "../../../" include joins the compiler forms on top of the longest stored file (b389)
+
+
+def check_path_lengths(root, headroom=PATH_HEADROOM):
+    """Raise if any file under root, plus headroom, would exceed MAX_TEMP_PATH. Returns the longest length."""
+    longest = max((len(str(path)) for path in Path(root).rglob('*')), default=len(str(root)))
+    if longest + headroom > MAX_TEMP_PATH:
+        raise ValueError(f'Build folder paths reach {longest} characters ({longest + headroom} with compiler include joins), '
+                         f'over the {MAX_TEMP_PATH}-character limit. Choose a shorter build-cache folder, e.g. C:\\P4cache.')
+    return longest
+
+
 def prepare_cache(cache):
     cache = Path(cache).resolve()
     if cache.parent == cache or cache in (Path.home().resolve(), Path.cwd().resolve()):
@@ -401,7 +414,7 @@ def extract_upstream(archive, destination):
     with zipfile.ZipFile(archive) as source:
         for path, entry in archive_files(source):
             # Probe evidence nothing reads; its 124-character names pass Windows' 260-character MAX_PATH under the
-            # default build cache (%LOCALAPPDATA%\Persona4PSP\builds\<hash>\work\ext\...).
+            # default build cache (%LOCALAPPDATA%\Persona4PSP\builds\<16 hex>\work\ext\...).
             if path.parts[:2] == ('docs', 'probe_archive'):
                 continue
             target = destination.joinpath(*path.parts)
@@ -515,7 +528,7 @@ def _build_eboot(iso, bundle, pspdev=None, cache=None, archive=None):
     identity = {'config_sha256': digest(bundle / 'prepare.json'),
                 'elf_sha256': hashlib.sha256(elf).hexdigest(), 'toolchain': toolchain}
     key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
-    job = cache / 'builds' / key
+    job = cache / 'builds' / key[:16]  # b389: 16 hex, not 64: 48 characters back for deep upstream paths
     job.mkdir(parents=True, exist_ok=True)
     workspace = job / 'work'
     release = workspace / 'build/source_release'
@@ -542,6 +555,7 @@ def _build_eboot(iso, bundle, pspdev=None, cache=None, archive=None):
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(bundle / 'source' / name, target)
         extract_upstream(archive_path, workspace / 'ext/Persona4-Decompilation')
+        print(f'Longest build path: {check_path_lengths(workspace)} characters (limit {MAX_TEMP_PATH}).', flush=True)
         (workspace / 'build').mkdir()
         (workspace / 'build/SLUS_217.82').write_bytes(elf)
         env = os.environ.copy()

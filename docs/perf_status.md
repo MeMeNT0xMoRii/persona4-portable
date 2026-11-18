@@ -47,6 +47,11 @@ against the old path):
 - **Shadows**: capsule shadows and the look-at shadow pose (`p4_shadow_capsule`, `p4_shadow_lookat`).
 - **Particles**: VFPU path for the particle matrix block (`p4_particle_vfpu`, b266, device check 0 diffs); the
   particle vertex pool reserves clipped quads instead of refusing whole tanks.
+- **GE words written directly** (`p4_ge_raw`, b365-b366): state cache, texture binds, model/view matrices, light,
+  blend, stencil, fog and every `sceGuDrawArray` (batched stall updates, no syscall per draw) without libpspgu.
+  Same words; PSP A/B pending. The dialogue's 67 ms is the CPU and the GE not overlapping, not CPU work alone:
+  [ge_frame.md](ge_frame.md) (b360 PSP numbers, `p4_timeline`, double-buffered lists `p4_list_double`, why skins
+  carry 8 weights a vertex).
 
 ## Measured and left off
 

@@ -27,6 +27,14 @@ class PreparationTests(unittest.TestCase):
                 self.assertEqual(log.getvalue(), 'building\nfinished\n')
                 self.assertEqual([messages.get_nowait(), messages.get_nowait()], ['building\n', 'finished\n'])
 
+    def test_build_paths_stay_under_250(self):
+        from psp_build import MAX_TEMP_PATH, check_path_lengths
+        with tempfile.TemporaryDirectory() as temp:
+            (Path(temp) / ('a' * (MAX_TEMP_PATH - len(temp) - 11))).write_bytes(b'')  # path is 10 under the limit
+            self.assertEqual(check_path_lengths(temp, 10), MAX_TEMP_PATH - 10)
+            with self.assertRaises(ValueError):
+                check_path_lengths(temp, 12)
+
     def test_recipe_roundtrip_and_wrong_edition(self):
         elf = bytearray(512)
         elf[:6] = b'\x7fELF\x01\x01'

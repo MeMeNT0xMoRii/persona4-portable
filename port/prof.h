@@ -34,8 +34,18 @@ static unsigned long long prof_sum[PROF_SECTIONS][PC_COUNT];
 static unsigned long long prof_mono[PROF_SECTIONS]; /* cycles, never reset: the task table subtracts nested render work */
 static unsigned prof_shaded, prof_emitted;
 
+/* b356 p4_prof_clock 1 (poke it): without the thread profiler (PPSSPP, or no profmode t) the render sections are timed
+   by the system clock (microseconds x 333, so cpu_k stays roughly kcycles at 333 MHz); the other columns stay 0. In
+   PPSSPP that clock follows the emulated instruction count: work, not device time (no cache misses). 0: off. */
+int p4_prof_clock = 0;
 static void prof_read(unsigned out[PC_COUNT])
 {
+    if (prof_state <= 0) {
+        out[0] = sceKernelGetSystemTimeLow() * 333u;
+        for (int i = 1; i < PC_COUNT; i++)
+            out[i] = 0;
+        return;
+    }
     for (int i = 0; i < PC_COUNT; i++)
         out[i] = prof_regs[1 + prof_index[i]];
 }
@@ -70,7 +80,7 @@ static int prof_live(void)
             prof_store_test();
         }
     }
-    return prof_state > 0;
+    return prof_state > 0 || p4_prof_clock;
 }
 
 static void prof_begin(int s)
@@ -81,7 +91,7 @@ static void prof_begin(int s)
 
 static void prof_end(int s)
 {
-    if (prof_state <= 0 || !prof_depth[s] || --prof_depth[s])
+    if ((prof_state <= 0 && !p4_prof_clock) || !prof_depth[s] || --prof_depth[s])
         return;
     unsigned now[PC_COUNT];
     prof_read(now);
@@ -101,7 +111,7 @@ static void ot_report(unsigned frames);
 /* per frame: CPU kcycles, stall kcycles (total, memory), cache misses, FPU/VFPU instructions (k) */
 static void prof_report(unsigned frames)
 {
-    if (prof_state <= 0 || !frames)
+    if ((prof_state <= 0 && !p4_prof_clock) || !frames)
         return;
     for (int s = 0; s < PROF_SECTIONS; s++) {
         unsigned long long *v = prof_sum[s];

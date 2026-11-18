@@ -340,9 +340,35 @@ static const V3 *skin_vertices_body(const Geometry *g, const Skin *skin, const H
    colour through the same path with no light). A skeleton whose sphere may leave the guard band stays on the CPU. */
 int p4_ge_skin = 1; /* 0: every skinned atomic on the CPU, as b76 */
 typedef struct { int mesh, bones, vtype, indices, vertices, wreal, rigid, strip_count, strip_n; unsigned char palette[8]; unsigned char *v; unsigned short *idx, *src, *strip, *strip_lens; int alpha[2]; GeCall call[2]; float uvs[4]; } SkinBatch;
-typedef struct { const Geometry *g; const V3 *verts; int vertices, lit, batches, nradius, packed, nmap; unsigned sample, frame, bytes, used[8]; SkinBatch *batch; float *radius; unsigned short regroup[8]; float pack[4]; unsigned char *bone_map; float *bone_len; void *list; } SkinGeometry;
+typedef struct { const Geometry *g; const V3 *verts; int vertices, lit, nrm, batches, nradius, packed, nmap; unsigned sample, frame, bytes, used[8]; SkinBatch *batch; float *radius, *box; unsigned short regroup[8]; float pack[4]; unsigned char *bone_map; float *bone_len; void *list; } SkinGeometry;
 enum { SKIN_GEOMETRIES = 64, SKIN_PALETTE = 8 };
 static SkinGeometry *skin_cache; /* heap: .bss is full */
+/* b385 p4_skin_guard_box: a bone whose sphere leaves the guard band is tested again with the box (bone space) round
+   the vertices it carries. Each vertex is a weighted mean of its bones' images of it, each inside that bone's box, and
+   the band is convex: every box inside means every vertex inside. b383 Velvet Room, Satan after a fusion: his blades
+   made the spheres huge, every frame went to the CPU skin path (31 batches, ~12 ms) and nothing was ever cut. */
+int p4_skin_guard_box = 1;
+static unsigned skin_box_saved;
+unsigned skin_box_saved_count(void) { unsigned n = skin_box_saved; skin_box_saved = 0; return n; }
+static int skin_box_inside(float P[5][4], const Matrix *pose, const float *bx)
+{
+    if (!(bx[0] <= bx[3] && bx[1] <= bx[4] && bx[2] <= bx[5]))
+        return 1; /* no vertex on this bone */
+    if (!(bx[0] > -1e30f && bx[3] < 1e30f && bx[1] > -1e30f && bx[4] < 1e30f && bx[2] > -1e30f && bx[5] < 1e30f))
+        return 0;
+    for (int p = p4_guard_gnear ? 1 : 0; p < 5; p++) {
+        float ax = P[p][0] * pose->right.x + P[p][1] * pose->right.y + P[p][2] * pose->right.z;
+        float ay = P[p][0] * pose->up.x + P[p][1] * pose->up.y + P[p][2] * pose->up.z;
+        float az = P[p][0] * pose->at.x + P[p][1] * pose->at.y + P[p][2] * pose->at.z;
+        float least = P[p][0] * pose->pos.x + P[p][1] * pose->pos.y + P[p][2] * pose->pos.z + P[p][3];
+        least += ax > 0 ? ax * bx[0] : ax * bx[3];
+        least += ay > 0 ? ay * bx[1] : ay * bx[4];
+        least += az > 0 ? az * bx[2] : az * bx[5];
+        if (!(least > 0))
+            return 0;
+    }
+    return 1;
+}
 
 /* b205 P3P-shaped skin vertices (P3P's battle frame: s16 positions and u16 UVs on every 3D draw). Position: s16 over
    the geometry's bind-pose box, pack = centre xyz and half extent s, the GE reading q / 32768; draw_skinned_ge folds
@@ -462,6 +488,7 @@ static void skin_free(SkinGeometry *e)
         free(e->batch[b].v), free(e->batch[b].src), free(e->batch[b].strip), free(e->batch[b].strip_lens);
     free(e->batch);
     free(e->radius);
+    free(e->box);
     free(e->bone_map), free(e->bone_len);
     skin_ge_bytes -= e->bytes;
     memset(e, 0, sizeof *e);
@@ -841,7 +868,7 @@ static int skin_batch(SkinGeometry *e, int mesh, const unsigned char *palette, i
             mesh_stamp[tri[k]] = stamp;
             mesh_remap[tri[k]] = used++;
         }
-    SkinLayout l = skin_layout(bones, e->lit, e->packed);
+    SkinLayout l = skin_layout(bones, e->nrm, e->packed);
     int stride = l.stride, bytes = stride * used + corners * 2;
     unsigned char *v = memalign(16, bytes);
     SkinBatch *grown = realloc(e->batch, (e->batches + 1) * sizeof *grown);
@@ -858,7 +885,7 @@ static int skin_batch(SkinGeometry *e, int mesh, const unsigned char *palette, i
     b->bones = bones;
     memcpy(b->palette, palette, bones);
     b->vtype = GU_WEIGHTS(bones) | GU_WEIGHT_8BIT | (e->packed ? GU_TEXTURE_16BIT | GU_VERTEX_16BIT : GU_TEXTURE_32BITF | GU_VERTEX_32BITF) | GU_COLOR_8888 |
-               (e->lit ? GU_NORMAL_8BIT : 0) | GU_INDEX_16BIT | GU_TRANSFORM_3D;
+               (e->nrm ? GU_NORMAL_8BIT : 0) | GU_INDEX_16BIT | GU_TRANSFORM_3D;
     b->v = v;
     b->idx = (unsigned short *)(v + stride * used);
     b->src = malloc(used * 2); /* b178: the geometry vertex of each batch vertex, for p4_skin_diff */
@@ -932,7 +959,7 @@ static int skin_batch(SkinGeometry *e, int mesh, const unsigned char *palette, i
         memcpy(out + l.colour, &base, 4);
         if ((int)(base >> 24) < b->alpha[0]) b->alpha[0] = base >> 24;
         if ((int)(base >> 24) > b->alpha[1]) b->alpha[1] = base >> 24;
-        if (e->lit) {
+        if (e->nrm && normals) {
             const V3 *nv = &normals[j];
             float len = sqrtf(nv->x * nv->x + nv->y * nv->y + nv->z * nv->z), inv = len > 0 ? 1.0f / len : 0;
             out[l.normal] = (unsigned char)normal_s8(nv->x * inv);
@@ -1221,7 +1248,7 @@ static unsigned char *skin_far_map(const Geometry *g, const Skin *skin, int nbon
         free(map), map = 0;
     return map;
 }
-static SkinGeometry *skin_geometry(const Geometry *g, const Skin *skin, int nbones, int lit)
+static SkinGeometry *skin_geometry(const Geometry *g, const Skin *skin, int nbones, int lit, int nrm)
 {
     if (!skin_cache && !(skin_cache = calloc(SKIN_GEOMETRIES, sizeof *skin_cache)))
         return 0;
@@ -1233,7 +1260,7 @@ static SkinGeometry *skin_geometry(const Geometry *g, const Skin *skin, int nbon
     SkinGeometry *spare = 0;
     for (int i = 0; i < SKIN_GEOMETRIES; i++) {
         SkinGeometry *e = &skin_cache[i];
-        if (e->g == g && e->verts == verts && e->vertices == g->numVertices && e->lit == lit && e->sample == sample) {
+        if (e->g == g && e->verts == verts && e->vertices == g->numVertices && e->lit == lit && e->nrm == nrm && e->sample == sample) {
             e->frame = cache_frame;
             return e->batches ? e : 0;
         }
@@ -1253,6 +1280,7 @@ static SkinGeometry *skin_geometry(const Geometry *g, const Skin *skin, int nbon
     e->verts = verts;
     e->vertices = g->numVertices;
     e->lit = lit;
+    e->nrm = nrm;
     e->sample = sample;
     e->frame = cache_frame;
     skin_ge_builds++;
@@ -1304,6 +1332,10 @@ static SkinGeometry *skin_geometry(const Geometry *g, const Skin *skin, int nbon
     /* how far from its joint each bone carries a vertex (bone space): the per-frame guard test */
     if ((e->radius = calloc(nbones, sizeof *e->radius)))
         e->nradius = nbones;
+    /* b385: and the box (bone space) round them, for p4_skin_guard_box: min xyz, max xyz; empty = min > max */
+    if ((e->box = malloc(nbones * 6 * sizeof *e->box)))
+        for (int i = 0; i < nbones; i++)
+            e->box[i * 6] = e->box[i * 6 + 1] = e->box[i * 6 + 2] = INFINITY, e->box[i * 6 + 3] = e->box[i * 6 + 4] = e->box[i * 6 + 5] = -INFINITY;
     for (int j = 0; j < g->numVertices && e->radius; j++) {
         unsigned char bone[4];
         float weight[4];
@@ -1316,6 +1348,13 @@ static SkinGeometry *skin_geometry(const Geometry *g, const Skin *skin, int nbon
                 d = INFINITY; /* b180: NaN was skipped by the compare below and left radius 0, which skips the guard test */
             if (d > e->radius[bone[w]])
                 e->radius[bone[w]] = d;
+            if (e->box) {
+                float *bx = e->box + bone[w] * 6, c[3] = { local.x, local.y, local.z };
+                for (int k = 0; k < 3; k++) {
+                    if (!(c[k] >= bx[k])) bx[k] = c[k] == c[k] ? c[k] : -INFINITY;
+                    if (!(c[k] <= bx[k + 3])) bx[k + 3] = c[k] == c[k] ? c[k] : INFINITY;
+                }
+            }
         }
     }
     MeshHeader *header = g->mesh;
@@ -1531,7 +1570,7 @@ static SkinGeometry *skin_geometry(const Geometry *g, const Skin *skin, int nbon
     }
     free(mk_cap.data), free(mk_over), free(mk_group);
     if (!ok) /* packed stays 0: no batches */
-        skin_free(e), e->g = g, e->verts = verts, e->vertices = g->numVertices, e->lit = lit, e->sample = sample, e->frame = cache_frame;
+        skin_free(e), e->g = g, e->verts = verts, e->vertices = g->numVertices, e->lit = lit, e->nrm = nrm, e->sample = sample, e->frame = cache_frame;
     else if (p4_batch_stats)
         batch_regroup(e, g, skin, nbones);
     vertex_bone_map = 0;
@@ -1578,9 +1617,9 @@ static SkinGeometry *skin_geometry(const Geometry *g, const Skin *skin, int nbon
    alpha bounds (draw_skin_alpha) still hold: skinning moves vertices, not colours. */
 static unsigned char bone_parked[MAX_BONES]; /* b180: this frame's bones with an insane matrix (draw_skinned_ge) */
 static int bones_parked;
-static void skin_batch_cpu(const SkinBatch *b, int lit, const float *pack, const Material *material, int modulate, const SceneLight *light, const Matrix *space, float near)
+static void skin_batch_cpu(const SkinBatch *b, int lit, int nrm, const float *pack, const Material *material, int modulate, const SceneLight *light, const Matrix *space, float near)
 {
-    SkinLayout l = skin_layout(b->bones, lit, pack != 0);
+    SkinLayout l = skin_layout(b->bones, nrm, pack != 0);
     int stride = l.stride, n = b->vertices, out_stride = lit ? sizeof(Vertex3DN) : sizeof(Vertex3D);
     int units = (n * out_stride + sizeof(Vertex3D) - 1) / sizeof(Vertex3D);
     if (n > MAX_GUARDED || vertex_used + units > MAX_VERTICES) {
@@ -1664,7 +1703,7 @@ static void skin_diff(const Geometry *g, const Skin *skin, const SkinGeometry *e
         const SkinBatch *b = &e->batch[bi];
         if (!b->src)
             continue;
-        SkinLayout l = skin_layout(b->bones, e->lit, e->packed);
+        SkinLayout l = skin_layout(b->bones, e->nrm, e->packed);
         float step = e->packed ? e->pack[3] * (1.0f / 32768) : 0, moved = 3 * step * step + 1e-6f; /* s16 rounding */
         for (int vi = 0; vi < b->vertices; vi++) {
             const unsigned char *in = b->v + l.stride * vi;
@@ -1889,19 +1928,92 @@ static void sk_keep(SkinGeometry *e, const unsigned *from, const unsigned *to, c
     e->list = l;
     sk_records++;
 }
+/* b357 p4_skin_guard 0 (experiment): characters are small triangles, so no bone-sphere test against the guard band;
+   only non-finite (parked) bones still send their batches to the CPU. A triangle crossing the near plane with a corner
+   behind the eye is dropped by the GE (b101): small holes when the camera is inside a character. 1: as before.
+   b388: 0 by default (PPSSPP Margaret: sguard 241k -> 185k cycles a frame). */
+int p4_skin_guard = 0;
+static unsigned sb_bones_us, sb_geom_us, sb_draws; /* b356: draw_skinned_ge's sbones split: skin_bones vs skin_geometry */
 static void sk_report(void)
 {
+    p4_log("skin sbones split per 256 frames: draws %u bones %u us geometry %u us\n", sb_draws, sb_bones_us, sb_geom_us);
+    sb_bones_us = sb_geom_us = sb_draws = 0;
     p4_log("skin list %d per 256 frames: hits %u records %u; misses key %u twice %u retry %u; refused marks %u flow %u memory %u bones %u\n",
            p4_skin_list, sk_hits, sk_records, sk_misses[0], sk_misses[1], sk_misses[2], sk_refused[0], sk_refused[1], sk_refused[2],
            sk_refused[3]);
     sk_hits = sk_records = 0;
     memset(sk_misses, 0, sizeof sk_misses), memset(sk_refused, 0, sizeof sk_refused);
 }
-static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy *hierarchy, const Matrix *model, int lit, int modulate)
+/* b359 p4_matfx_env_ge 1: a GE-skinned character's MatFX env map drawn by the GE, as Burnout Legends draws its car
+   reflections: right after each env batch (its bones still in the GE), the same vertices again with the texture
+   coordinates generated from the normalized normal through the texture matrix (TMAP 0x201): rotation into the env
+   space x 0.5 + 0.5, the formula of matfx_env_pass in rwsky.c. Vertex colour (prelit or white) x env texture, and
+   the material colour x coefficient as the blend FIX: (Cs x fix) + Cd. The batches carry s8 normals for this even
+   unlit (SkinGeometry.nrm). Only unlit characters (a lit stream has black vertex colour); no skin list for them,
+   since the texture matrix follows the camera. 0: as b358, such a character takes the CPU skin path
+   (p4_matfx_env_skin). */
+int p4_matfx_env_ge = 0;
+static unsigned matfx_env_ge_draws;
+static void skin_env_ge(const unsigned char *e, const Material *material, int modulate, const Matrix *space, const SkinBatch *batch)
+{
+    float coef = *(const float *)(e + 8);
+    void **texture = *(void ***)(e + 4);
+    if (!(coef > 0) || !texture)
+        return;
+    if (coef > 1)
+        coef = 1;
+    const Matrix identity = { .right = { 1, 0, 0 }, .up = { 0, 1, 0 }, .at = { 0, 0, 1 } };
+    const Matrix *m = space ? space : &identity;
+    const V3 *mrow[3] = { &m->right, &m->up, &m->at };
+    const void *frame = *(void *const *)e;
+    const Matrix *env = frame ? p4r_003e9700((void *)frame) : (const Matrix *)((char *)current_camera + CAMERA_VIEW);
+    float r[3][2];
+    for (int a = 0; a < 3; a++) {
+        const V3 *row = mrow[a];
+        if (frame) { /* orthonormal LTM: its inverse rotation is the transpose */
+            r[a][0] = row->x * env->right.x + row->y * env->right.y + row->z * env->right.z;
+            r[a][1] = row->x * env->up.x + row->y * env->up.y + row->z * env->up.z;
+        } else {
+            r[a][0] = row->x * env->right.x + row->y * env->up.x + row->z * env->at.x;
+            r[a][1] = row->x * env->right.y + row->y * env->up.y + row->z * env->at.y;
+        }
+    }
+    ScePspFMatrix4 t = { { 0.5f * r[0][0], 0.5f * r[0][1], 0, 0 }, { 0.5f * r[1][0], 0.5f * r[1][1], 0, 0 },
+                         { 0.5f * r[2][0], 0.5f * r[2][1], 0, 0 }, { 0.5f, 0.5f, 1, 1 } };
+    unsigned mc = modulate ? material->colour : 0xffffffff, fix = 0;
+    for (int s = 0; s < 24; s += 8)
+        fix |= (unsigned)((mc >> s & 0xff) * coef + 0.5f) << s;
+    st_enable(GU_LIGHTING, 0);
+    st_enable(GU_ALPHA_TEST, 0);
+    st_enable(GU_DEPTH_TEST, 1);
+    st_depth_func(GU_GEQUAL);
+    st_depth_mask(GU_FALSE); /* depth write on, as matfx_env_pass */
+    st_enable(GU_STENCIL_TEST, 0);
+    st_pixel_mask(pixel_mask | 0xff000000); /* our alpha byte is the stencil: leave it */
+    sceGuBlendFunc(GU_ADD, GU_FIX, GU_FIX, fix, 0xffffff);
+    gs.blend_known = 0;
+    bind_raster(*texture, GU_REPEAT);
+    bind_texscale(0);
+    sceGuSetMatrix(GU_TEXTURE, &t);
+    sceGuTexProjMapMode(GU_NORMALIZED_NORMAL);
+    sceGuTexMapMode(GU_TEXTURE_MATRIX, 0, 0);
+    if (batch->strip) {
+        draw_strip_lens = batch->strip_lens, draw_strip_n = batch->strip_n;
+        gu_draw(GU_TRIANGLE_STRIP, batch->vtype, batch->strip_count, batch->strip, batch->v);
+        draw_strip_n = 0;
+    } else
+        gu_draw(GU_TRIANGLES, batch->vtype, batch->indices, batch->idx, batch->v);
+    sceGuTexProjMapMode(GU_POSITION);
+    sceGuTexMapMode(GU_TEXTURE_COORDS, 0, 0);
+    matfx_env_ge_draws++;
+}
+static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy *hierarchy, const Matrix *model, int lit, int modulate, int env_ge)
 {
     prof_begin(PROF_SBONES);
     bone_check_geometry = g;
+    unsigned sb_t0 = sceKernelGetSystemTimeLow();
     int nbones = skin_bones(skin, hierarchy);
+    unsigned sb_t1 = sceKernelGetSystemTimeLow();
     skin_simplify_now = p4_skin_simplify;
     skin_bones_now = 0;
     skin_hierarchy_now = hierarchy;
@@ -1925,13 +2037,14 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
             skin_lod_draws += level == 1, skin_full_draws += level == 0, skin_far_draws += level == 2;
         }
     }
-    SkinGeometry *e = nbones > 0 ? skin_geometry(g, skin, nbones, lit) : 0;
+    SkinGeometry *e = nbones > 0 ? skin_geometry(g, skin, nbones, lit, lit || env_ge) : 0;
     if (e && e->bone_map && !far_bones_sane(e, hierarchy, nbones)) {
         skin_far_fallbacks++;
         skin_bones_now = 0;
         skin_simplify_now = p4_skin_lod_depth > 0 && p4_skin_lod_keep > 0 && p4_skin_lod_keep < 100 ? p4_skin_lod_keep : p4_skin_simplify;
-        e = skin_geometry(g, skin, nbones, lit);
+        e = skin_geometry(g, skin, nbones, lit, lit || env_ge);
     }
+    sb_bones_us += sb_t1 - sb_t0, sb_geom_us += sceKernelGetSystemTimeLow() - sb_t1, sb_draws++;
     prof_end(PROF_SBONES);
     if (!e || e->nradius < nbones)
         return 0;
@@ -1963,7 +2076,7 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
         anim_seen_at(hierarchy, root->pos.x * m[0][3] + root->pos.y * m[1][3] + root->pos.z * m[2][3] + m[3][3], model);
     }
     float planes[5][4], plane_len[5];
-    if (p4_skin_guard_fast)
+    if (p4_skin_guard_fast && p4_skin_guard)
         guard_sphere_planes(m, near, planes, plane_len);
     static unsigned char bone_out[MAX_BONES];
     int any_out = 0;
@@ -1979,12 +2092,16 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
             skin_nonfinite_bones++;
             continue;
         }
-        if (e->radius[i] <= 0)
+        if (e->radius[i] <= 0 || !p4_skin_guard)
             continue;
         const Matrix *pose = &hierarchy->matrices[i];
         float scale = sqrtf(pose->right.x * pose->right.x + pose->right.y * pose->right.y + pose->right.z * pose->right.z);
         float sphere[4] = { pose->pos.x, pose->pos.y, pose->pos.z, e->radius[i] * (scale > 1 ? scale : 1) };
         int inside = p4_skin_guard_fast ? guard_sphere_inside_planes(planes, plane_len, sphere) : guard_sphere_inside(m, sphere, near);
+        if (!inside && p4_skin_guard_box && p4_skin_guard_fast && e->box) { /* b385: the bone's box, tighter than its sphere */
+            inside = skin_box_inside(planes, pose, e->box + i * 6);
+            skin_box_saved += inside;
+        }
         if (p4_skin_guard_fast && p4_skin_guard_check) {
             skin_guard_checks++;
             skin_guard_diffs += inside != guard_sphere_inside(m, sphere, near);
@@ -2002,7 +2119,7 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
     prof_begin(PROF_SDRAW);
     unsigned sk[6], *sk_from = 0;
     int sk_rec = 0;
-    if (p4_skin_list && !any_out && !bones_parked && !shadow_shear_m && p4_bone_direct && p4_state_cache && p4_draw_batch > 1 && !p4_probe_3d &&
+    if (p4_skin_list && !env_ge && !any_out && !bones_parked && !shadow_shear_m && p4_bone_direct && p4_state_cache && p4_draw_batch > 1 && !p4_probe_3d &&
         !p4_hide_material && !rtt_target && !p4_gs_test_raw_prelit && !p4_batch_stats) { /* b323: fog is in the key */
         sk_key(sk, g, lit, modulate, space);
         SkinList *l = e->list;
@@ -2138,7 +2255,8 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
         unsigned key[2];
         if (ge_work_on && !cpu)
             work_batches++, work_wreal += batch->wreal, work_wslotv += batch->bones * batch->vertices, work_rigid += batch->rigid, work_tris += batch->indices / 3;
-        GeCall *slot = 0, *call = !cpu && !sk_recording && skin_call_key(batch, material, modulate, &light, key) ? call_find(batch->call, key, &slot) : 0;
+        const unsigned char *env_entry = env_ge && !cpu ? matfx_env_entry(material) : 0;
+        GeCall *slot = 0, *call = !cpu && !env_entry && !sk_recording && skin_call_key(batch, material, modulate, &light, key) ? call_find(batch->call, key, &slot) : 0;
         if (call && call_replay(call, 0)) {
             prof_end(PROF_SBIND);
             draw_skin_alpha = 0;
@@ -2158,7 +2276,7 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
         prof_end(PROF_SBIND);
         prof_begin(PROF_STEST);
         if (cpu)
-            skin_batch_cpu(batch, e->lit, e->packed ? e->pack : 0, material, modulate, &light, space, near);
+            skin_batch_cpu(batch, e->lit, e->nrm, e->packed ? e->pack : 0, material, modulate, &light, space, near);
         else if (batch->strip) {
             draw_strip_lens = batch->strip_lens, draw_strip_n = batch->strip_n; /* b250: one PRIM a strip (gu_draw) */
             draw_tested(GU_TRIANGLE_STRIP, batch->vtype, batch->strip_count, batch->strip, batch->v);
@@ -2166,6 +2284,10 @@ static int draw_skinned_ge(const Geometry *g, const Skin *skin, const Hierarchy 
         }
         else
             draw_tested(GU_TRIANGLES, batch->vtype, batch->indices, batch->idx, batch->v);
+        if (env_entry) {
+            skin_env_ge(env_entry, material, modulate, space, batch);
+            light = mesh_state(space, lit); /* blend, alpha test, depth, texture scale for the next batch */
+        }
         if (p4_skin_dummy && !cpu)
             *gu_list->current++ = 0xff000000u, skin_dummies++;
         if (slot)

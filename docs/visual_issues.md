@@ -94,7 +94,39 @@ Differences between the PSP port and the PS2 original that the user has seen on 
 - **Check on the PSP:** rain present on 04/12 and 04/15, streaks the right way up, density and brightness against the
   PS2 screenshot; the umbrella canopy keeps the trees behind it; the cost of both in hwperf.
 
+### Velvet Room: a new persona's glow flickers after a fusion (found 2026-11-17, b366-b383)
+
+- **Where:** Velvet Room, the new persona's introduction after a fusion (seen with Satan). The glow flickers; slower
+  when the frame rate drops (15 FPS with the pipeline off), so it follows drawn frames, not game ticks.
+- **Seen:** screenshots alternate between a darker persona and a brighter one with doubled blades (glow layers).
+  Per frame: colour cleared (camera clear mask 3), later a second camera clears depth only (mask 2), 80 tiles with
+  blend 0x42 (subtract) darken the bottom row, and the screen copy is drawn ~7 screens a frame with blend 0x58
+  (Cs x destination alpha + Cd): the glow depends on the framebuffer's alpha.
+- **Not the cause (measured on the PSP):** `p4_ge_raw`, `p4_skin_list`, `p4_frameskip`, `p4_skip_visual_bits`,
+  `p4_skip_model_lite`; `p4_keep_previous` (b379, start a frame from the shown one) never runs here (colour cleared).
+- **Try first:** the destination alpha the glow multiplies by: what writes the alpha byte in each of our two buffers
+  (p4_dst_alpha_passes, alpha writes of the persona's translucent draws); a GE dump (L+R+SQUARE) of two consecutive
+  frames, compared in PPSSPP.
+
 ## Fixed
+
+### Velvet Room: fusion cards without faces (fixed b386, 2026-11-18)
+
+- **Where:** Velvet Room, the cards of a fusion: frames drawn, faces missing.
+- **Cause:** the cards are Im3D quads with RenderWare cull mode 2; back and face are coplanar, and without back-face
+  culling the back covered the face (the Shuffle Time cards had the same fault and got culling only for themselves).
+  A GE dump replayed in PPSSPP showed the same picture: the port's commands.
+- **Fix:** `p4_im3d_cull` 1: CCW-front culling for every Im3D draw with cull mode 2.
+
+### Limousine (Velvet Room): blue patch on the floor around the table (fixed b383, 2026-11-17)
+
+- **Where:** Velvet Room, floor under Igor's table; it came and went with the camera angle.
+- **Cause:** a 4-vertex lit, untextured quad without prelight (geometry flags 0x73, normals down) lies on the carpet
+  and has RenderWare's cull mode 2 (cull back faces). From the camera it is a back face; the port never culled, so it
+  was drawn over the carpet (z fighting decided where).
+- **Fix:** `p4_cull_back` 3: back faces culled (CCW front) for lit, untextured meshes without prelight when the game
+  asks for it. Culling every mesh (`p4_cull_back` 1/2) cut holes in curtains and walls: our strips do not keep the
+  winding, so a general fix needs winding-safe strips first.
 
 | Build | What | Cause | Fix |
 |---|---|---|---|

@@ -4,6 +4,87 @@
 /* ponytail: every vertex is copied every frame; a cache per geometry when the device shows this in its profile. */
 
 
+/* b355: the triangles the CPU cuts at the guard band, by the longest model-space edge (log2 buckets: [0] < 2, [k]
+   < 2^(k+1), [15] the rest) and by plane (near only, band sides only, both): how small an offline tessellation would
+   have to make them for the GE to draw them uncut, as Burnout Legends draws its roads. */
+/* b387 guard cut census (p4_guard_census 1): which geometries the CPU cuts, with the longest model-space edge of a
+   cut triangle, the nearest view depth (clip w) of its vertices: what an offline tessellation must reach for each
+   (Crisis Core: tessellated floor, GE BOUNDINGBOX + BJUMP, no CPU cut). Logged every 256 frames, biggest first. */
+int p4_guard_census = 1;
+static Geometry *draw_geometry; /* the atomic's geometry while its own arrays are drawn, else 0 (mesh.h sets it) */
+enum { GC_SLOTS = 64 };
+typedef struct { const Geometry *g; unsigned cuts, frames_seen, last_frame, verts, tris; float edge, depth; char name[24]; } GuardCensus;
+static GuardCensus *guard_census;
+static void guard_census_note(float edge, const ClipVertex tri[3])
+{
+    const Geometry *g = draw_geometry;
+    if (!g || (!guard_census && !(guard_census = calloc(GC_SLOTS, sizeof *guard_census))))
+        return;
+    GuardCensus *e = 0, *spare = 0;
+    for (int i = 0; i < GC_SLOTS && !e; i++)
+        if (guard_census[i].g == g)
+            e = &guard_census[i];
+        else if (!guard_census[i].g && !spare)
+            spare = &guard_census[i];
+    if (!e) {
+        if (!spare)
+            return;
+        e = spare;
+        memset(e, 0, sizeof *e);
+        e->g = g, e->depth = 1e30f, e->verts = g->numVertices, e->tris = g->numTriangles;
+        const Mesh *m = (const Mesh *)((const char *)g->mesh + sizeof(MeshHeader) + g->mesh->firstMeshOffset);
+        void **texture = m->material ? m->material->texture : 0;
+        if (texture)
+            memcpy(e->name, (const char *)texture + 0x10, sizeof e->name - 1);
+    }
+    e->cuts++;
+    if (e->last_frame != cache_frame)
+        e->last_frame = cache_frame, e->frames_seen++;
+    if (edge > e->edge)
+        e->edge = edge;
+    for (int k = 0; k < 3; k++)
+        if (tri[k].c[3] < e->depth)
+            e->depth = tri[k].c[3];
+}
+static void guard_census_report(void)
+{
+    if (!guard_census)
+        return;
+    for (int k = 0; k < 16; k++) {
+        GuardCensus *best = 0;
+        for (int i = 0; i < GC_SLOTS; i++)
+            if (guard_census[i].g && guard_census[i].cuts && (!best || guard_census[i].cuts > best->cuts))
+                best = &guard_census[i];
+        if (!best)
+            break;
+        p4_log("guard census %s v%u t%u: cuts %u in %u frames, longest edge %d, nearest depth %d\n", best->name[0] ? best->name : "-",
+               best->verts, best->tris, best->cuts, best->frames_seen, (int)best->edge, (int)best->depth);
+        best->cuts = 0;
+    }
+    memset(guard_census, 0, GC_SLOTS * sizeof *guard_census);
+}
+
+static void guard_cut_stats(const ClipVertex tri[3], unsigned planes)
+{
+    float longest = 0;
+    for (int k = 0; k < 3; k++) {
+        const Vertex3D *p = &tri[k].v, *q = &tri[(k + 1) % 3].v;
+        float dx = p->x - q->x, dy = p->y - q->y, dz = p->z - q->z, d = dx * dx + dy * dy + dz * dz;
+        if (d > longest)
+            longest = d;
+    }
+    int b = 0;
+    for (float lim = 4; b < 15 && longest >= lim; lim *= 4) /* squared: 2^(k+1) squared */
+        b++;
+    guard_cut_edge[b]++;
+    if (p4_guard_census)
+        guard_census_note(sqrtf(longest), tri);
+    if (planes & 1)
+        (planes & ~1u) ? guard_cut_both++ : guard_cut_near++;
+    else
+        guard_cut_side++;
+}
+
 typedef float Mat4[4][4]; /* rows; a row vector times the matrix, as sceGuSetMatrix takes it */
 static void mat4_from(Mat4 out, const Matrix *m)
 {
@@ -24,6 +105,19 @@ static void mat4_mul(Mat4 out, Mat4 a, Mat4 b)
 
 static void set_matrix(int which, const Matrix *m)
 {
+    if (p4_ge_raw && (which == GU_MODEL || which == GU_VIEW)) { /* b365: number word, then 12 floats >> 8 by rows */
+        const V3 *row[4] = { &m->right, &m->up, &m->at, &m->pos };
+        unsigned cmd = which == GU_MODEL ? 0x3A : 0x3C, *c = gu_list->current;
+        *c++ = cmd << 24;
+        for (int i = 0; i < 4; i++) {
+            union { float f; unsigned u; } x = { row[i]->x }, y = { row[i]->y }, z = { row[i]->z };
+            *c++ = (cmd + 1) << 24 | x.u >> 8;
+            *c++ = (cmd + 1) << 24 | y.u >> 8;
+            *c++ = (cmd + 1) << 24 | z.u >> 8;
+        }
+        gu_list->current = c;
+        return;
+    }
     ScePspFMatrix4 out = {
         { m->right.x, m->right.y, m->right.z, 0 }, { m->up.x, m->up.y, m->up.z, 0 },
         { m->at.x, m->at.y, m->at.z, 0 }, { m->pos.x, m->pos.y, m->pos.z, 1 },
@@ -444,10 +538,11 @@ static int draw_vertex_alpha(int vtype, int count, const void *indices, const vo
         m = draw_fixed_alpha[0], big = draw_fixed_alpha[1];
     } else {
         tested_scans++;
-        int stride = vtype & GU_NORMAL_BITS ? sizeof(Vertex3DN) : sizeof(Vertex3D);
+        int short_uv = (vtype & GU_TEXTURE_BITS) == GU_TEXTURE_16BIT;
+        int stride = (vtype & GU_NORMAL_BITS ? sizeof(Vertex3DN) : sizeof(Vertex3D)) - (short_uv ? 4 : 0);
         const unsigned short *ix = (vtype & GU_INDEX_BITS) ? indices : 0;
         for (int k = 0; k < count; k++) {
-            unsigned a = *(const unsigned *)((const char *)vertices + (ix ? ix[k] : k) * stride + 8) >> 24; /* colour after u, v */
+            unsigned a = *(const unsigned *)((const char *)vertices + (ix ? ix[k] : k) * stride + (short_uv ? 4 : 8)) >> 24;
             if (a < m) m = a;
             if (a > big) big = a;
         }
@@ -692,6 +787,7 @@ static void draw_guarded_chunks(int prim, const unsigned short *idx, int nidx, c
             }
         }
         guard_clipped++;
+        guard_cut_stats(tri, planes);
         prof_end(PROF_GCLIP);
         continue;
 

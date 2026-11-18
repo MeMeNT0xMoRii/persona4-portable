@@ -20,6 +20,9 @@
    Check (p4_static_list_check 1): every 64th frame a hit is recorded again and its words compared with the list's
    (vertex and index addresses aside); differences are logged and the new recording kept. */
 #include "ge_prepare.h"
+#include "static_position.h"
+int p4_static_position_pack = 1;
+static unsigned sl_position_vertices, sl_position_bytes;
 int p4_static_list = 1, p4_static_list_check = 0, p4_static_list_budget = 4 << 20;
 int p4_static_mesh_lists = 1; /* b264: independent lists/bounds per mesh; real-PSP battle A/B saves ~1 ms */
 int p4_ge_static_clip = 0, p4_ge_clip_growth = 256; /* b267: enable after real-PSP image/performance checks */
@@ -33,12 +36,14 @@ typedef struct {
     int count, modulate, words, draws, bytes;
     unsigned *list;   /* own words + RET */
     void *data;       /* own copies of the mesh cache slots the words point into */
+    float position_scale; /* zero: float positions; otherwise exact s16 decode */
     float (*parts)[4]; /* b259: spheres of up to SL_PART triangles (model space), for an atomic whose own sphere crosses the guard band */
     int nparts;
     int split;
     struct SlMeshSet *meshes;
     unsigned *gview;  /* b288: recorded from guard results: the view (SL_VIEW words) the cut triangles are for */
     unsigned gchurn;  /* b289: guard lists dropped soon after recording, in a row */
+    unsigned char why; /* b355: why the last list was refused or dropped (SL_WHY_*), for the no-list counters */
 } StaticList;
 typedef struct {
     Geometry geometry;
@@ -68,6 +73,22 @@ static unsigned sl_size_why[4], sl_size_logged;
 static unsigned sl_evictions; /* b277: an entry drawn within 8 frames dropped for another atomic */
 static unsigned sl_hits, sl_records, sl_refused[8], sl_checks, sl_check_diffs, sl_misses[8];
 static unsigned sl_mesh_hits, sl_mesh_fallback, sl_mesh_builds;
+/* b355: draws without a list, by cause: not seen the frame before, then waiting after a guard view change, input churn,
+   guard result not ready at recording, late pass, refused by sl_keep (size, slots, flow), and none (recorded now). */
+enum { SL_WHY_UNSEEN, SL_WHY_VIEW, SL_WHY_CHURN, SL_WHY_GUARD, SL_WHY_LATE, SL_WHY_KEEP, SL_WHY_NOW, SL_WHY_N };
+static unsigned sl_nolist[SL_WHY_N], sl_nolist_parts[SL_WHY_N];
+static int sl_in_part; /* sl_draw called for a mesh part of a split atomic */
+/* What an offline (PC-built) static pack could save: time spent recording lists, in total and in the worst frame. */
+static unsigned sl_record_us, sl_record_frame_us, sl_record_worst_us, sl_record_frame;
+static unsigned sl_keep_us; /* the part of it that is not the draw itself: copying, packing, mesh-list builds */
+static void sl_record_time(unsigned us)
+{
+    if (sl_record_frame != cache_frame)
+        sl_record_frame = cache_frame, sl_record_frame_us = 0;
+    sl_record_us += us, sl_record_frame_us += us;
+    if (sl_record_frame_us > sl_record_worst_us)
+        sl_record_worst_us = sl_record_frame_us;
+}
 
 static void sl_note(MeshCache *slot)
 {
@@ -89,8 +110,17 @@ enum { SL_VIEW = 38, SL_EXTRA = 16 }; /* GuardResultKey model[12] camera[18] opt
 static const void *sl_xp[SL_EXTRA];
 static unsigned sl_xb[SL_EXTRA];
 static int sl_nextra, sl_gbad, sl_gview_set;
+static unsigned sl_uv_slots;
 static unsigned sl_gview_rec[SL_VIEW];
 static unsigned sl_guard_lists, sl_guard_moved, sl_guard_refused, sl_guard_hits, sl_guard_churned, sl_guard_why[3];
+/* Keep the packed vertices and only the index portion of their original cache slot. */
+static int sl_note_uv(MeshCache *slot, const void *data, unsigned bytes)
+{
+    if (sl_nslots <= 0 || sl_nslots > SL_MESHES || sl_slot[sl_nslots - 1] != slot || sl_nextra >= SL_EXTRA) return 0;
+    sl_uv_slots |= 1u << (sl_nslots - 1);
+    sl_xp[sl_nextra] = data; sl_xb[sl_nextra++] = bytes;
+    return 1;
+}
 /* b290: the camera key holds the view rows with their fourth words (RwMatrix flags and pads); the projection does not
    read them, and the flags may change while the matrix stays (b289 Heaven: every list dropped for "camera" while the
    guard results, keyed with those words too, hit from two entries). Zero them in a list's view. */
@@ -196,6 +226,16 @@ static void sl_drop(StaticList *e)
     }
     e->list = 0, e->data = 0, e->words = 0, e->bytes = 0;
 }
+/* b375: every prepared list dropped and the graves emptied; the caller has waited for the GE */
+static unsigned sl_release_all(void)
+{
+    unsigned before = sl_bytes;
+    for (int i = 0; sl_table && i < SL_SLOTS; i++)
+        sl_drop(&sl_table[i]);
+    for (unsigned i = 0; sl_grave && i < SL_GRAVE; i++)
+        free(sl_grave[i].p), sl_grave[i].p = 0;
+    return before - sl_bytes;
+}
 static unsigned sl_state_key_full(void)
 {
     unsigned h = hash_words(2166136261u, render_state, sizeof render_state);
@@ -246,7 +286,8 @@ static unsigned sl_material_key(const Geometry *g)
 static unsigned sl_fog_key(void);
 static unsigned sl_bits(void)
 {
-    return state_bits() ^ (unsigned)p4_light_prelit << 20 ^ (unsigned)p4_light_unprelit << 21 ^ sl_fog_key();
+    return state_bits() ^ (unsigned)p4_light_prelit << 20 ^ (unsigned)p4_light_unprelit << 21 ^ sl_fog_key() ^
+           (unsigned)p4_static_uv_pack * 0x9e3779b1u ^ (unsigned)p4_static_position_pack * 0x85ebca6bu;
 }
 static StaticList *sl_find(const void *atomic)
 {
@@ -271,6 +312,66 @@ static StaticList *sl_find(const void *atomic)
 }
 /* the words of a GE address: BASE (bits 24-27) and the 24-bit low part */
 static inline unsigned sl_address(unsigned base, unsigned low) { return (base & 0xf0000) << 8 | (low & 0xffffff); }
+
+/* Bytes before the position in a UV-packed vertex: u16 UV + colour, and the s8 normal with its pad when lit. A uniform
+   decode scale in the model matrix also scales lit normals; the GE divides lighting by the normal's length (as the
+   packed skins since b205 rely on), so the light stays. */
+static int sl_position_head(int i) { return sl_slot[i]->vtype & GU_NORMAL_BITS ? 12 : 8; }
+/* Every mesh stream of the list, UV-packed: extra buffer i holds slot i's packed vertices (sl_note_uv appends them in
+   slot order). Guard-cut lists keep floats. The geometry's sphere gives the one grid all its meshes share
+   (static_position.h), so a single decode scale in the replayed model matrix serves the whole list. */
+/* Vertices of recorded lists that kept float positions, by reason: 0 guard-cut or GE-clipped list, 1 streams and
+   extra buffers do not pair up, 2 UVs not packed, 3 other commands (matrix, format, address), 4 outside the sphere. */
+static unsigned sl_position_why[5];
+static float sl_position_refuse(int why)
+{
+    unsigned n = 0;
+    for (int i = 0; i < sl_nslots && i < SL_MESHES; i++) n += sl_slot[i] ? sl_slot[i]->vertices : 0;
+    sl_position_why[why] += n;
+    return 0;
+}
+static float sl_position_candidate(const unsigned *from, const unsigned *to, const Geometry *geometry)
+{
+    if (!p4_static_position_pack || !geometry || !geometry->morphTarget) return 0;
+    if (sl_ge_uncut || sl_gview_set) return sl_position_refuse(0);
+    if (sl_nslots <= 0 || sl_nslots > SL_MESHES || sl_nextra != sl_nslots) return sl_position_refuse(1);
+    if (sl_uv_slots != (1u << sl_nslots) - 1) return sl_position_refuse(2); /* SL_MESHES 16 fits */
+    for (int i = 0; i < sl_nslots; i++)
+        if (sl_xb[i] != sl_slot[i]->vertices * (sl_position_head(i) + 12u) || (sl_slot[i]->vtype & GU_WEIGHT_BITS))
+            return sl_position_refuse(2);
+    unsigned base = 0;
+    int seen = 0;
+    for (const unsigned *w = from; w < to; w++) {
+        unsigned cmd = *w >> 24;
+        /* Additional WORLD matrix commands would override the replay's decode. */
+        if ((cmd == 0x3a || cmd == 0x3b) && (w < mesh_model_begin || w >= mesh_model_mark)) return sl_position_refuse(3);
+        if (cmd == 0x10) base = *w;
+        if (cmd == 0x12) { /* each format must be one of the packed streams' */
+            int ok = 0;
+            for (int i = 0; i < sl_nslots && !ok; i++)
+                ok = (*w & 0xffffff) == ((sl_slot[i]->vtype & ~GU_TEXTURE_BITS) | GU_TEXTURE_16BIT);
+            if (!ok) return sl_position_refuse(3);
+            seen = 1;
+        }
+        if (cmd == 0x01) { /* each vertex address must start one of the packed buffers */
+            int ok = 0;
+            for (int i = 0; i < sl_nslots && !ok; i++)
+                ok = sl_address(base, *w) == ((unsigned)sl_xp[i] & 0xfffffff);
+            if (!ok) return sl_position_refuse(3);
+        }
+    }
+    if (!seen) return sl_position_refuse(3);
+    const float *s = geometry->morphTarget->sphere;
+    float c = fabsf(s[0]) > fabsf(s[1]) ? fabsf(s[0]) : fabsf(s[1]);
+    if (fabsf(s[2]) > c) c = fabsf(s[2]);
+    float scale = 0;
+    for (int i = 0; i < sl_nslots; i++) {
+        float si = static_position_scale(sl_xp[i], sl_slot[i]->vertices, sl_position_head(i), c + s[3]);
+        if (!si || (scale && si != scale)) return sl_position_refuse(4);
+        scale = si;
+    }
+    return scale;
+}
 
 /* words from..to (the draw just made) into e; 0 refused (reason in sl_refused) */
 static int sl_keep(StaticList *e, const unsigned *from, const unsigned *to, int check, const Geometry *geometry)
@@ -301,7 +402,12 @@ static int sl_keep(StaticList *e, const unsigned *from, const unsigned *to, int 
             sl_refused[2]++;
             return 0;
         }
-        rp[nreg] = sl_slot[i]->v, rb[nreg++] = sl_slot[i]->capacity;
+        if (sl_uv_slots >> i & 1) {
+            rp[nreg] = (const char *)sl_slot[i]->idx;
+            rb[nreg++] = sl_slot[i]->indices * sizeof(unsigned short);
+        } else {
+            rp[nreg] = sl_slot[i]->v, rb[nreg++] = sl_slot[i]->capacity;
+        }
     }
     for (int i = 0; i < sl_nextra; i++) {
         if (!sl_xp[i] || !sl_xb[i]) {
@@ -313,6 +419,16 @@ static int sl_keep(StaticList *e, const unsigned *from, const unsigned *to, int 
     for (int i = 0; i < nreg; i++) {
         offset[i] = bytes;
         bytes += (rb[i] + 15) & ~15;
+    }
+    float position_scale = sl_position_candidate(from, to, geometry);
+    if (position_scale) { /* the packed buffers (regions after the slots' indices) shrink by 4 bytes a vertex */
+        bytes = 0;
+        for (int i = 0; i < nreg; i++) {
+            if (i >= sl_nslots)
+                rb[i] = sl_slot[i - sl_nslots]->vertices * (sl_position_head(i - sl_nslots) + 8u);
+            offset[i] = bytes;
+            bytes += (rb[i] + 15) & ~15;
+        }
     }
     int box_offset = bytes;
     if (prefix) bytes += 8 * 3 * sizeof(float);
@@ -340,6 +456,8 @@ static int sl_keep(StaticList *e, const unsigned *from, const unsigned *to, int 
             return 0;
         }
         list[k] = *w;
+        if (position_scale && cmd == 0x12)
+            list[k] = (*w & ~GU_VERTEX_BITS) | GU_VERTEX_16BIT;
         if (cmd == 0x10)
             base_at = k;
         if (cmd == 0x01 || cmd == 0x02) { /* VADDR, IADDR: must be in a slot the draw used */
@@ -395,12 +513,21 @@ static int sl_keep(StaticList *e, const unsigned *from, const unsigned *to, int 
         if (!same && sl_check_diffs++ < 8)
             p4_log("TRACE static list differs: atomic %p geometry %p words %d recorded %d\n", e->atomic, (void *)e->g, k + 1, e->words);
     }
-    for (int i = 0; i < nreg; i++)
-        memcpy(data + offset[i], rp[i], rb[i]);
+    for (int i = 0; i < nreg; i++) {
+        if (position_scale && i >= sl_nslots)
+            static_position_copy(data + offset[i], rp[i], sl_slot[i - sl_nslots]->vertices, position_scale,
+                                 sl_position_head(i - sl_nslots));
+        else memcpy(data + offset[i], rp[i], rb[i]);
+    }
     sceKernelDcacheWritebackRange(data, bytes);
     sceKernelDcacheWritebackRange(list, (k + 1) * 4);
     sl_drop(e);
     e->list = list, e->data = data, e->words = k + 1, e->draws = draws, e->bytes = bytes + (k + 1) * 4;
+    e->position_scale = position_scale;
+    for (int i = 0; position_scale && i < sl_nslots; i++) {
+        sl_position_vertices += sl_slot[i]->vertices;
+        sl_position_bytes += sl_slot[i]->vertices * 4u;
+    }
     e->split = 0;
     sl_bytes += e->bytes;
     sl_records++;
@@ -605,6 +732,18 @@ refused:
 }
 
 
+/* Uniform positive scale leaves unlit geometry and winding unchanged; translation stays in world units. */
+static void sl_model(const StaticList *e, const Matrix *model)
+{
+    if (!e->position_scale) { set_matrix(GU_MODEL, model); return; }
+    Matrix m = model ? *model : (Matrix){.right={1,0,0},.up={0,1,0},.at={0,0,1}};
+    float scale = e->position_scale;
+    m.right.x *= scale; m.right.y *= scale; m.right.z *= scale;
+    m.up.x *= scale; m.up.y *= scale; m.up.z *= scale;
+    m.at.x *= scale; m.at.y *= scale; m.at.z *= scale;
+    set_matrix(GU_MODEL, &m);
+}
+
 /* b281 p4_inst_call: the next atomic of the same geometry, drawn right after a verified hit in the same state, takes the
    same list with its own matrix: no keys, no lookup. The list is in model space and starts from a forgotten GE state,
    so it serves every instance (Heaven: 84 flowers a frame, before b281 copied to world space every frame by
@@ -619,7 +758,7 @@ static struct {
     unsigned *list;
     int render[MAX_STATE];
     unsigned sky[8];
-    int lit;
+    int lit, uv_pack, position_pack;
     SceneLight light;
 } sl_memo;
 static unsigned sl_memo_hits, sl_memo_why[8]; /* b282: why the memo was not taken (same geometry only) */
@@ -632,6 +771,8 @@ static void sl_memo_set(const StaticList *e, const Geometry *g, const V3 *normal
         return;
     }
     sl_memo.lit = normals != 0;
+    sl_memo.uv_pack = p4_static_uv_pack;
+    sl_memo.position_pack = p4_static_position_pack;
     if (normals) /* b282: lit instances too, while the scene's lights stay (GE lights are in the world) */
         sl_memo.light = scene_lights();
     sl_memo.g = g, sl_memo.e = e, sl_memo.camera = current_camera, sl_memo.frame = cache_frame;
@@ -644,7 +785,8 @@ static int sl_memo_try(const Geometry *g, const Matrix *model, const V3 *normals
 {
     if (!p4_inst_call || sl_memo.g != g)
         return 0;
-    int why = sl_memo.lit != (normals != 0) ? 1 : sl_memo.frame != cache_frame || sl_memo.camera != current_camera ? 2 :
+    int why = sl_memo.lit != (normals != 0) || sl_memo.uv_pack != p4_static_uv_pack ||
+              sl_memo.position_pack != p4_static_position_pack ? 1 : sl_memo.frame != cache_frame || sl_memo.camera != current_camera ? 2 :
               sl_memo.texgen != texture_generation || sl_memo.mask != pixel_mask ? 3 : sl_memo.e->list != sl_memo.list || !sl_memo.list ? 4 :
               shadow_shear_m || rtt_target || draw_fixed_alpha || draw_skin_alpha ? 5 : memcmp(sl_memo.sky, sky_state, sizeof sl_memo.sky) ? 6 :
               memcmp(sl_memo.render, render_state, sizeof sl_memo.render) ? 7 : 0;
@@ -661,7 +803,7 @@ static int sl_memo_try(const Geometry *g, const Matrix *model, const V3 *normals
     begin_frame();
     gu_mesh_begin();
     set_camera();
-    set_matrix(GU_MODEL, model);
+    sl_model(sl_memo.e, model);
     unsigned *l = gu_list->current;
     l[0] = 0x10u << 24 | ((unsigned)sl_memo.list >> 8 & 0xf0000); /* BASE */
     l[1] = 0x0Au << 24 | ((unsigned)sl_memo.list & 0xffffff);      /* CALL */
@@ -686,6 +828,7 @@ static int sl_draw(StaticList *e, const void *atomic, const Geometry *g, const M
     if (!e->list && last + 1 != cache_frame) { /* b259: recorded from the second frame in a row it is seen */
         e->stamp = cache_frame;
         sl_misses[1]++;
+        (sl_in_part ? sl_nolist_parts : sl_nolist)[SL_WHY_UNSEEN]++;
         return 0;
     }
     /* b297 p4_sl_trust (EXPERIMENT, picture may break): how fast the short path is without our checks. Bit 1: an
@@ -714,6 +857,7 @@ static int sl_draw(StaticList *e, const void *atomic, const Geometry *g, const M
                that drifts, a moving part) goes the long way for a while instead of recording again and again */
             e->gchurn = cache_frame - e->built < 32 ? e->gchurn + 1 : 0;
             e->retry = cache_frame + (e->gchurn >= 2 ? 300 : 2);
+            e->why = SL_WHY_VIEW;
             sl_guard_churned += e->gchurn >= 2;
             sl_drop(e);
             e->stamp = cache_frame;
@@ -737,12 +881,12 @@ static int sl_draw(StaticList *e, const void *atomic, const Geometry *g, const M
     int hit = e->list && same && !g->locked && e->state == state && e->materials == materials && e->texgen == texgen && e->bits == bits &&
               e->light == light;
     e->stamp = cache_frame;
-    if (hit && !(p4_static_list_check && !(cache_frame & 63))) {
+    if (hit && !((p4_static_list_check || p4_static_uv_check) && !(cache_frame & 63))) {
     draw_list:
         begin_frame();
         gu_mesh_begin();
         set_camera();
-        set_matrix(GU_MODEL, model);
+        sl_model(e, model);
         unsigned *l = gu_list->current;
         l[0] = 0x10u << 24 | ((unsigned)e->list >> 8 & 0xf0000); /* BASE */
         l[1] = 0x0Au << 24 | ((unsigned)e->list & 0xffffff);      /* CALL */
@@ -760,15 +904,19 @@ static int sl_draw(StaticList *e, const void *atomic, const Geometry *g, const M
     }
     if (!hit) {
         sl_misses[!e->list ? 1 : !same ? 2 : g->locked ? 3 : e->state != state ? 4 : e->materials != materials ? 5 : e->texgen != texgen ? 6 : 7]++;
+        if (!e->list)
+            (sl_in_part ? sl_nolist_parts : sl_nolist)[(int)(e->retry - cache_frame) > 0 ? e->why : SL_WHY_NOW]++;
         if ((int)(e->retry - cache_frame) > 0)
             return 0; /* refused or changing lately: the usual path for a while */
         if (e->list && cache_frame - e->built < 8 && ++e->churn >= 3) { /* inputs that keep changing */
             sl_drop(e);
             e->churn = 0, e->retry = cache_frame + 256;
+            e->why = SL_WHY_CHURN;
             return 0;
         }
     }
     /* record: the body from a forgotten state, inline */
+    unsigned record_t0 = sceKernelGetSystemTimeLow();
     begin_frame();
     gu_mesh_begin();
     set_camera();
@@ -777,7 +925,7 @@ static int sl_draw(StaticList *e, const void *atomic, const Geometry *g, const M
     unsigned late = late_queued;
     unsigned *from = gu_list->current;
     sl_recording = 1, sl_nslots = 0;
-    sl_nextra = 0, sl_gbad = 0, sl_gview_set = 0;
+    sl_nextra = 0, sl_gbad = 0, sl_gview_set = 0, sl_uv_slots = 0, sl_uv_short = 0;
     mesh_model_begin = mesh_model_mark = 0;
     gu_object_stack_depth++; /* no stall-address update inside the words */
     draw_geometry = (Geometry *)g;
@@ -786,6 +934,8 @@ static int sl_draw(StaticList *e, const void *atomic, const Geometry *g, const M
     draw_material_ge = 0;
     gu_object_stack_depth--;
     sl_recording = 0;
+    if (sl_uv_short) /* b353: record with packed UVs once temporary memory is back */
+        sl_gbad = 1, static_uv_retries++;
     unsigned view[SL_VIEW];
     if (sl_gview_set && !sl_gbad) { /* the cut was made for the matrix this entry is drawn with */
         sl_view_now(view, model);
@@ -795,10 +945,12 @@ static int sl_draw(StaticList *e, const void *atomic, const Geometry *g, const M
     unsigned *gview = sl_gview_set && !sl_gbad ? malloc(sizeof view) : 0;
     if (sl_gview_set && !sl_gbad && !gview)
         sl_gbad = 1;
+    unsigned keep_t0 = sceKernelGetSystemTimeLow();
     int kept = late_queued == late && !sl_gbad && sl_keep(e, from, gu_list->current, hit, g);
+    sl_keep_us += sceKernelGetSystemTimeLow() - keep_t0;
     if (late_queued != late)
         sl_refused[6]++;
-    else if (sl_gbad)
+    else if (sl_gbad && !sl_uv_short)
         sl_guard_refused++;
     if (kept && gview) {
         memcpy(gview, view, sizeof view);
@@ -817,7 +969,9 @@ static int sl_draw(StaticList *e, const void *atomic, const Geometry *g, const M
         /* try again later (a mesh not in the cache yet records on a later frame); b288: a guard result not ready yet
            (moving camera, or the result's two frames) soon */
         e->retry = cache_frame + (sl_gbad && late_queued == late ? 2 : 32);
+        e->why = late_queued != late ? SL_WHY_LATE : sl_gbad ? SL_WHY_GUARD : SL_WHY_KEEP;
     }
+    sl_record_time(sceKernelGetSystemTimeLow() - record_t0);
     if (draws_since_stall >= (unsigned)p4_draw_batch && !gu_object_stack_depth)
         stall_flush();
     return 1;
@@ -833,7 +987,10 @@ static int sl_mesh_draw(SlMeshSet *s, const Matrix *model, const V3 *normals)
         sl_ge_uncut = p4_ge_static_clip && p->prepared && p->max_edge < sl_ge_limit(model,p->bounds);
         if (sl_ge_uncut) sl_ge_hits++; else if (p4_ge_static_clip) sl_ge_fallbacks++;
         unsigned hits = sl_hits;
-        if (!sl_draw(&p->entry, &p->geometry, &p->geometry, model, part_normals)) {
+        sl_in_part = 1;
+        int drawn = sl_draw(&p->entry, &p->geometry, &p->geometry, model, part_normals);
+        sl_in_part = 0;
+        if (!drawn) {
             draw_geometry = &p->geometry;
             draw_meshes(p->geometry.mesh, p->target.verts, p->geometry.numTexCoordSets ? p->geometry.texCoords[0] : 0,
                         p->geometry.preLit, p->geometry.numVertices, model, p->geometry.flags & 0x40, part_normals, p->target.sphere);
@@ -864,7 +1021,11 @@ static int sl_try(const void *atomic, const Geometry *g, const Matrix *model, co
     }
     if (p4_static_mesh_lists && !e->meshes && !g->locked && e->stamp + 1 == cache_frame &&
         (e->split || g->mesh->numMeshes > SL_MESHES)) {
+        unsigned t0 = sceKernelGetSystemTimeLow();
         SlMeshSet *s = sl_mesh_build(g, normals, model);
+        unsigned us = sceKernelGetSystemTimeLow() - t0;
+        sl_record_time(us);
+        sl_keep_us += us; /* all of it is preparation: nothing is drawn here */
         if (s) {
             sl_drop(e);
             e->meshes = s;
@@ -882,6 +1043,18 @@ static int sl_try(const void *atomic, const Geometry *g, const Matrix *model, co
 }
 static void sl_report(void)
 {
+    p4_log("static UV pack %d check %d: vertices %u vertex_bytes_saved %u temp_bytes %u refused %u checks %u diffs %u per 256 frames\n",
+           p4_static_uv_pack, p4_static_uv_check, static_uv_vertices, static_uv_bytes, static_uv_temp_bytes, static_uv_refused, static_uv_checks, static_uv_diffs);
+    p4_log("static UV kept float: small %u translucent %u matfx %u format %u range %u memory %u (lists retried %u) per 256 frames\n",
+           static_uv_why[0], static_uv_why[1], static_uv_why[2], static_uv_why[3], static_uv_why[4], static_uv_why[5], static_uv_retries);
+    static_uv_retries = 0;
+    memset(static_uv_why, 0, sizeof static_uv_why);
+    p4_log("static position pack %d: vertices %u vertex_bytes_saved %u; kept float: cut %u streams %u uv %u commands %u sphere %u per 256 frames\n",
+           p4_static_position_pack, sl_position_vertices, sl_position_bytes,
+           sl_position_why[0], sl_position_why[1], sl_position_why[2], sl_position_why[3], sl_position_why[4]);
+    memset(sl_position_why, 0, sizeof sl_position_why);
+    sl_position_vertices = sl_position_bytes = 0;
+    static_uv_vertices = static_uv_bytes = static_uv_refused = static_uv_checks = static_uv_diffs = 0;
     p4_log("static state cache %d check %d: reuse %u rebuild %u diffs %u per 256 frames\n", p4_static_state_cache, p4_static_state_check, sl_state_reuses, sl_state_rebuilds, sl_state_diffs);
     sl_state_reuses = sl_state_rebuilds = sl_state_diffs = 0;
     p4_log("static list %d check %d per 256 frames: hits %u records %u, %u KB; misses new %u changed %u guard %u locked %u state %u material %u texture %u other %u\n",
@@ -910,6 +1083,12 @@ static void sl_report(void)
            p4_ge_static_clip,p4_ge_clip_growth,sl_ge_hits,sl_ge_fallbacks,sl_ge_builds,sl_ge_refused);
     sl_ge_hits=sl_ge_fallbacks=sl_ge_builds=sl_ge_refused=0;
     sl_mesh_hits = sl_mesh_fallback = sl_mesh_builds = 0;
+    p4_log("static no-list draws (whole/parts) per 256 frames: unseen %u/%u view %u/%u churn %u/%u guard %u/%u late %u/%u keep %u/%u now %u/%u\n",
+           sl_nolist[0], sl_nolist_parts[0], sl_nolist[1], sl_nolist_parts[1], sl_nolist[2], sl_nolist_parts[2], sl_nolist[3], sl_nolist_parts[3],
+           sl_nolist[4], sl_nolist_parts[4], sl_nolist[5], sl_nolist_parts[5], sl_nolist[6], sl_nolist_parts[6]);
+    memset(sl_nolist, 0, sizeof sl_nolist), memset(sl_nolist_parts, 0, sizeof sl_nolist_parts);
+    p4_log("static record time: %u us (keep %u us), worst frame %u us per 256 frames\n", sl_record_us, sl_keep_us, sl_record_worst_us);
+    sl_record_us = sl_keep_us = sl_record_worst_us = 0;
     sl_hits = sl_records = sl_checks = 0;
     memset(sl_refused, 0, sizeof sl_refused);
     memset(sl_misses, 0, sizeof sl_misses);

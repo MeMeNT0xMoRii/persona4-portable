@@ -118,10 +118,56 @@ static void tex_wrap(int wrap)
         sceGuTexWrap((wrap - 2) & 1, (wrap - 2) >> 1);
 }
 static void bind_raster_body(Raster *r, int wrap);
+/* b374 p4_tex2d_census 1 (poke): the 2D draws' textures by depth and size over the next window (256 frames), to find
+   32-bit images (portraits, UI) worth a CLUT8 copy: "tex2d" lines, the biggest 12 by texel bytes x binds. */
+int p4_tex2d_census = 0;
+static int tex2d_now;
+enum { TEX2D_SLOTS = 128 };
+static struct { const Raster *r; unsigned short w, h; unsigned char depth; unsigned binds; } *tex2d;
+static void tex2d_note(const Raster *r)
+{
+    if (!r || !r->originalPixels || (!tex2d && !(tex2d = calloc(TEX2D_SLOTS, sizeof *tex2d))))
+        return;
+    for (int i = 0; i < TEX2D_SLOTS; i++)
+        if (tex2d[i].r == r || !tex2d[i].r) {
+            tex2d[i].r = r, tex2d[i].w = r->width, tex2d[i].h = r->height, tex2d[i].depth = r->depth, tex2d[i].binds++;
+            return;
+        }
+}
+static void tex2d_report(void)
+{
+    if (!tex2d)
+        return;
+    unsigned by_depth[4] = { 0 }, bytes_depth[4] = { 0 };
+    for (int i = 0; i < TEX2D_SLOTS && tex2d[i].r; i++) {
+        int d = tex2d[i].depth == 32 ? 3 : tex2d[i].depth == 16 ? 2 : tex2d[i].depth == 8 ? 1 : 0;
+        by_depth[d]++, bytes_depth[d] += tex2d[i].w * tex2d[i].h * tex2d[i].depth / 8;
+    }
+    p4_log("tex2d textures by depth 4/8/16/32: %u %u %u %u, KB %u %u %u %u\n", by_depth[0], by_depth[1], by_depth[2], by_depth[3],
+           bytes_depth[0] >> 10, bytes_depth[1] >> 10, bytes_depth[2] >> 10, bytes_depth[3] >> 10);
+    for (int k = 0; k < 12; k++) {
+        int best = -1;
+        unsigned best_cost = 0;
+        for (int i = 0; i < TEX2D_SLOTS && tex2d[i].r; i++) {
+            unsigned cost = tex2d[i].w * tex2d[i].h * tex2d[i].depth / 8 * (tex2d[i].binds ? 1 : 0);
+            if (tex2d[i].binds && cost >= best_cost)
+                best = i, best_cost = cost;
+        }
+        if (best < 0)
+            break;
+        p4_log("tex2d %dx%dx%d binds %u raster %x\n", tex2d[best].w, tex2d[best].h, tex2d[best].depth, tex2d[best].binds, (unsigned)tex2d[best].r);
+        tex2d[best].binds = 0;
+    }
+    free(tex2d), tex2d = 0;
+}
 static void bind_raster(Raster *r, int wrap)
 {
+    if (tex2d_now && p4_tex2d_census)
+        tex2d_note(r);
     unsigned kept = kept_textures;
     rtt_sampled += r && r != &display_raster && rtt_find(r); /* b330 */
+    if (p4_clut32 && r && r->depth == 32 && r != &display_raster && !rtt_find(r))
+        r = clut32_find(r); /* b370 */
     prof_begin(PROF_TBIND);
     bind_raster_body(r, wrap);
     prof_end(PROF_TBIND);
@@ -205,6 +251,46 @@ static void bind_raster_body(Raster *r, int wrap)
     }
     int psm = r->depth == 32 ? GU_PSM_8888 : r->depth == 16 ? GU_PSM_5551 : r->depth == 8 ? GU_PSM_T8 : GU_PSM_T4;
     st_enable(GU_TEXTURE_2D, 1);
+    if (p4_ge_raw) { /* b365: the same words libpspgu sends, one TEXFLUSH at the end instead of one per call */
+        if (r->depth <= 8) {
+            ge_word(0xC5, GU_PSM_8888 | 0xff << 8);                                   /* CMODE */
+            ge_word(0xB0, (unsigned)r->palette & 0xffffff);                            /* CBP */
+            ge_word(0xB1, (unsigned)r->palette >> 8 & 0xf0000);                       /* CBW */
+            ge_word(0xC4, 1 << (r->depth - 1 ? r->depth - 3 : 0));                     /* CLOAD */
+        }
+        const SwizzleHead *sw = swizzle_head(r->originalPixels);
+        bound_alpha_min = sw ? sw->alpha_min : 0;
+        bound_alpha_max = sw ? sw->alpha_max : 255;
+        int levels = sw && p4_mipmaps ? sw->levels : 1;
+        ge_word(0xC2, (levels - 1) << 16 | (sw != 0));                                 /* TMODE */
+        ge_word(0xC3, psm);                                                             /* TPSM */
+        const unsigned char *level = r->originalPixels;
+        for (int l = 0; l < levels; l++) {
+            int w = l ? r->width >> l : pow2_at_least(r->width), h = l ? r->height >> l : pow2_at_least(r->height), tbw;
+            int size = 0;
+            if (l) {
+                int wbytes, rows;
+                size = mip_level_size(r, l, &wbytes, &rows);
+                tbw = wbytes * 8 / r->depth;
+            } else
+                tbw = sw ? sw->wbytes * 8 / r->depth : r->width;
+            int ew = 9, eh = 9;
+            while (ew > 0 && !(w >> ew & 1)) ew--;
+            while (eh > 0 && !(h >> eh & 1)) eh--;
+            ge_word(0xA0 + l, (unsigned)level & 0xffffff);                             /* TBPn */
+            ge_word(0xA8 + l, ((unsigned)level >> 8 & 0x0f0000) | tbw);                /* TBWn */
+            ge_word(0xB8 + l, eh << 8 | ew);                                            /* TSIZEn */
+            level += l ? size : (sw ? sw->wbytes * sw->rows : 0);
+        }
+        ge_word(0xC9, GU_TCC_RGBA << 8 | GU_TFX_MODULATE);                             /* TFUNC */
+        ge_word(0xC6, GU_LINEAR << 8 | (levels > 1 ? GU_LINEAR_MIPMAP_NEAREST : GU_LINEAR)); /* TFILTER */
+        ge_word(0xC8, GU_TEXTURE_AUTO);                                                 /* TLEVEL, bias 0 */
+        ge_word(0xC7, wrap < 2 ? (wrap << 8 | wrap) : (((wrap - 2) >> 1) << 8 | ((wrap - 2) & 1))); /* TWRAP */
+        ge_word(0xCB, 0);                                                               /* TFLUSH */
+        texture_w = r->width;
+        texture_h = r->height;
+        return;
+    }
     if (r->depth <= 8) {
         sceGuClutMode(GU_PSM_8888, 0, 0xff, 0);
         sceGuClutLoad(1 << (r->depth - 1 ? r->depth - 3 : 0), r->palette);
@@ -229,7 +315,7 @@ static void bind_raster_body(Raster *r, int wrap)
     texture_h = r->height;
 }
 
-static void bind_texture(void) { bind_raster((Raster *)render_state[1], GU_CLAMP); }
+static void bind_texture(void) { tex2d_now = 1; bind_raster((Raster *)render_state[1], GU_CLAMP); tex2d_now = 0; }
 
 /* ALPHA_1 is (A - B) * C + D with 0 source, 1 destination, 2 zero. */
 enum { BLEND_NORMAL = 0x44, BLEND_ADD = 0x48, BLEND_SUBTRACT = 0x42, BLEND_REVERSE = 0x06 };
@@ -289,22 +375,45 @@ static void set_blend(unsigned alpha)
     int op = ns && !nd ? GU_REVERSE_SUBTRACT : nd && !ns ? GU_SUBTRACT : GU_ADD;
     if (ns && nd) /* both negative: the GS clamps to 0 */
         src = dst = GU_FIX, src_fix = dst_fix = 0;
-    sceGuBlendFunc(op, src, dst, src_fix, dst_fix);
+    if (p4_ge_raw) { /* b366: ALPHA (op, src, dst), SFIX, DFIX as libpspgu writes them */
+        ge_word(0xDF, op << 8 | dst << 4 | src);
+        ge_word(0xE0, src_fix);
+        ge_word(0xE1, dst_fix);
+    } else
+        sceGuBlendFunc(op, src, dst, src_fix, dst_fix);
 }
 
 static void bind_blend(void)
 {
     if (!render_state[12] && !sky_state[2]) {
-        sceGuDisable(GU_BLEND);
+        st_enable(GU_BLEND, 0);
         return;
     }
-    sceGuEnable(GU_BLEND);
+    st_enable(GU_BLEND, 1);
     set_blend(sky_state[2] ? sky_state[2] : BLEND_NORMAL);
+}
+
+/* b379 p4_keep_previous: a frame whose screen colour the game does not clear before it draws starts from the frame
+   shown before it, as on the PS2, where the one draw buffer still holds it. The Velvet Room's new persona (fusion):
+   only depth cleared (camera clear mask 2), the old picture darkened by 0x90-alpha tiles and screen-copy glow layers
+   added; with our two alternating buffers each one kept its own history and the glow flickered at half the frame
+   rate. The copy is one VRAM to VRAM sceGuCopyImage, in the list before the frame's first draw. 0: as before. */
+int p4_keep_previous = 0; /* b384: 0 again - the fusion scene clears its colour every frame (mask 3; the mask 2 clear is a
+   later camera), so the copy fixed nothing there and only cost GE time in Heaven (87 of 128 frames) */
+static void keep_previous_copy(void)
+{
+    frame_colour_pending = 0;
+    gu_dirty();
+    void *shown = (void *)(0x04000000 | (unsigned)(draw_buffer ? (void *)0 : (void *)(STRIDE * SCREEN_H * 4)));
+    sceGuCopyImage(GU_PSM_8888, 0, 0, SCREEN_W, SCREEN_H, STRIDE, shown, 0, 0, STRIDE, (void *)(0x04000000 | (unsigned)draw_buffer));
+    sceGuTexSync();
+    keep_previous_copies++;
 }
 
 static void begin_frame(void)
 {
     if (!in_frame) {
+        frame_colour_pending = 1;
         gu_dirty(); /* a new list */
         in_frame = 1;
         sceGuStart(GU_DIRECT, list);
@@ -314,6 +423,12 @@ static void begin_frame(void)
             rtt_restore = 0;
             rtt_bind_target(0);
         }
+    }
+    if (frame_colour_pending && !in_camera_clear) {
+        if (p4_keep_previous)
+            keep_previous_copy();
+        else
+            frame_colour_pending = 0;
     }
 }
 
@@ -689,7 +804,7 @@ void p4_draw_texture_tint(unsigned rgba, float x, float y, float mask_x, float m
         tint_sprite(mask, x, y, w, h, 0);
         sceGuDrawArray(GU_SPRITES, format, 2, 0, mask);
 
-        bind_raster(raster, GU_CLAMP);
+        tex2d_now = 1, bind_raster(raster, GU_CLAMP), tex2d_now = 0;
         tint_sprite(mask + 2, mask_x, mask_y, w, h, 0xffffffff);
         sceGuEnable(GU_ALPHA_TEST);
         sceGuAlphaFunc(GU_EQUAL, 255, 0xff);
@@ -701,7 +816,7 @@ void p4_draw_texture_tint(unsigned rgba, float x, float y, float mask_x, float m
         sceGuStencilFunc(GU_EQUAL, 0, 0x80);
         sceGuStencilOp(GU_KEEP, GU_KEEP, GU_KEEP);
     } else {
-        bind_raster(raster, GU_CLAMP);
+        tex2d_now = 1, bind_raster(raster, GU_CLAMP), tex2d_now = 0;
     }
 
     unsigned colour = rgba >> 24 | (rgba >> 8 & 0xff00) | (rgba << 8 & 0xff0000) | a << 24;

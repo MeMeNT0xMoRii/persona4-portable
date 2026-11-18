@@ -67,6 +67,10 @@ def main():
     if what == "watch":  # watch address: stop the CPU on the next write there
         print(debug.ask("memory.breakpoint.add", address=int(sys.argv[2], 16), size=4, enabled=True, log=True, read=False, write=True, change=False))
         return
+    if what == "rwatch":  # rwatch address size: log every read there to PPSSPP's log, the game keeps running
+        print(debug.ask("memory.breakpoint.add", address=int(sys.argv[2], 16), size=int(sys.argv[3], 0), enabled=False, log=True,
+                        read=True, write=False, change=False))
+        return
     if what == "press":  # press button [frames]: leaves the game running
         print(debug.ask("input.buttons.press", button=sys.argv[2], duration=int(sys.argv[3]) if len(sys.argv) > 3 else 4))
         return

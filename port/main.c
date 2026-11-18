@@ -15,7 +15,7 @@ PSP_MAIN_THREAD_STACK_SIZE_KB(1024);
 PSP_HEAP_SIZE_KB(-1); /* the heap is claimed before main */
 PSP_HEAP_THRESHOLD_SIZE_KB(4096); /* left free: thread stacks */
 
-#define BUILD 344
+#define BUILD 388
 #define P4_IMAGE_SIZE 0x40B000 /* retail 0x52da00..0x938a00: data and bss */
 #include "paths.h"
 #define GAME_DIR "ms0:/PSP/GAME/P4/" /* only until p4_paths_init: the log before it */
@@ -126,7 +126,7 @@ void p4_log_flush(void)
    wrapper, the port's from its own functions. Blocks libc allocates internally are not seen. */
 #include <malloc.h>
 #include <unistd.h>
-int p4_memstat = 0; /* 1 for a census build: it must be on from boot, the table takes 768 KB of heap */
+int p4_memstat = 0; /* b372-b376 census builds had it on; 1 for a census build: it must be on from boot, the table takes 768 KB of heap */
 void *__real_malloc(size_t); void *__real_calloc(size_t, size_t); void *__real_realloc(void *, size_t);
 void *__real_memalign(size_t, size_t); void __real_free(void *);
 enum { MS_SLOTS = 1 << 16, MS_SITES = 1024 };
@@ -219,19 +219,41 @@ static unsigned heap_largest(void)
     }
     return lo;
 }
+void p4_heap_map(const char *why);
+void p4_memstat_report(void);
 static unsigned heap_release(unsigned n)
 {
+    if (n >= 256 * 1024 && n < 64u << 20) { /* b372: who holds the heap when a big block is refused */
+        p4_memstat_report();
+        p4_heap_map("before release");
+    }
     struct mallinfo a = mallinfo();
     unsigned free_before = a.fordblks + p4_heap_unclaimed(), big_before = heap_largest();
-    unsigned freed = p4_anim_tracks_release();
-    freed += p4_mesh_cache_release();
-    if (n >= 1u << 20 && heap_largest() < n + 65536) { /* b340 (issue #12): still no run that size: every cache */
+    extern int p4_arena_active(void);
+    unsigned freed = 0;
+    void *fits = 0;
+    if (p4_arena_active()) { /* b376: the caches live in their arena: freeing them gives the heap nothing */
+        fits = (void *)1;
+    } else {
+        freed = p4_anim_tracks_release() + p4_mesh_cache_release();
+        fits = __real_malloc(n);
+    }
+    if (fits) {
+        if (fits != (void *)1)
+            __real_free(fits);
+    } else { /* b340 (issue #12): still no run that size: every cache. b375: any size (b373: 545 KB refused, 9.5 MB
+                of static lists and skins kept since the rule took only 1 MB and more) */
         extern unsigned p4_heap_release_all(void);
-        freed += p4_heap_release_all();
+        unsigned all = p4_heap_release_all();
+        if (!all)
+            p4_log("heap short on thread %x: the caches can only be released on the drawing thread\n", sceKernelGetThreadId());
+        freed += all;
     }
     struct mallinfo b = mallinfo();
     p4_log("heap short: request %u, free %u largest %u; released %u, now free %u largest %u, arena %u\n", n, free_before,
            big_before, freed, b.fordblks + p4_heap_unclaimed(), heap_largest(), (unsigned)b.arena);
+    if (n >= 256 * 1024 && n < 64u << 20)
+        p4_heap_map("after release");
     p4_log_flush();
     return freed;
 }
@@ -259,9 +281,20 @@ void *__wrap_memalign(size_t a, size_t n)
     ms_add(p, n, MS_RA);
     return p;
 }
-void __wrap_free(void *p) { ms_remove(p); __real_free(p); }
+int p4_arena_owns(const void *p); void p4a_free(void *p); void *p4a_realloc(void *old, unsigned n);
+void __wrap_free(void *p)
+{
+    if (p4_arena_owns(p)) { /* b376: a cache block (rwsky.c arena.h), whoever frees it */
+        p4a_free(p);
+        return;
+    }
+    ms_remove(p);
+    __real_free(p);
+}
 void *__wrap_realloc(void *old, size_t n)
 {
+    if (p4_arena_owns(old))
+        return p4a_realloc(old, n);
     void *p = __real_realloc(old, n);
     if (!p && n && heap_release(n))
         p = __real_realloc(old, n);
@@ -297,6 +330,92 @@ unsigned p4_heap_unclaimed(void)
     return top > now ? top - now : 0;
 }
 
+/* b372 heap map: newlib's malloc (mallocr.c, dlmalloc 2.6) chunks walked from __malloc_sbrk_base to the top chunk.
+   Each chunk: prev_size, size | PREV_INUSE (bit 0); in use when the next chunk has PREV_INUSE. A free run of at least
+   min bytes ends a "gap"; for every gap the blocks in it and the three call sites holding the most of it are logged
+   (sites from the memstat table: a census build), so the blocks that split the free memory have names
+   (psp-addr2line). Logged when a large allocation fails, and on a poke of p4_heapmap (at the next memstat report). */
+int p4_heapmap = 0, p4_heapmap_min = 64 * 1024;
+extern char *__malloc_sbrk_base;
+extern void *__malloc_av_[];
+static unsigned ms_site_ra(const void *p)
+{
+    if (!ms_table)
+        return 0;
+    unsigned i = ms_hash((unsigned)p, 16);
+    while (ms_table[i].p && ms_table[i].p != p)
+        i = (i + 1) & (MS_SLOTS - 1);
+    return ms_table[i].p ? ms_site[ms_table[i].site].ra : 0;
+}
+void p4_heap_map(const char *why)
+{
+    __malloc_lock(_REENT);
+    unsigned char *base = (unsigned char *)__malloc_sbrk_base, *top = (unsigned char *)__malloc_av_[2];
+    if (!base || base == (unsigned char *)-1 || !top || top < base) {
+        __malloc_unlock(_REENT);
+        p4_log("heapmap %s: no heap (base %x top %x)\n", why, (unsigned)base, (unsigned)top);
+        return;
+    }
+    unsigned char *c = base;
+    while (((unsigned)(c + 8) & 15)) /* the first chunk's payload is 16-aligned (PSP newlib: base + 8 holds it) */
+        c += 4;
+    unsigned min = p4_heapmap_min > 4096 ? (unsigned)p4_heapmap_min : 4096;
+    unsigned gap_blocks = 0, gap_bytes = 0, gaps = 0, free_big = 0, free_small = 0, used = 0, unknown = 0;
+    unsigned site[3] = { 0 }, site_bytes[3] = { 0 }, largest = 0;
+    unsigned char *gap_start = c;
+    p4_log("heapmap %s: heap %x..%x (%u KB), runs of free >= %u KB end a gap\n", why, (unsigned)c, (unsigned)top,
+           (unsigned)(top - c) >> 10, min >> 10);
+    while (c < top) {
+        unsigned size = ((unsigned *)c)[1] & ~3u;
+        if (size < 16 || (size & 7) || c + size > top + 16) {
+            p4_log("heapmap: bad chunk at %x size %x: walk stopped\n", (unsigned)c, size);
+            break;
+        }
+        unsigned char *next = c + size;
+        int in_use = next >= top ? ((unsigned *)top)[1] & 1 : ((unsigned *)next)[1] & 1;
+        if (in_use) {
+            unsigned ra = ms_site_ra(c + 8);
+            used += size, gap_blocks++, gap_bytes += size;
+            unknown += ra ? 0 : size;
+            int k = 0;
+            while (k < 3 && site[k] && site[k] != ra)
+                k++;
+            if (k < 3) {
+                site[k] = ra, site_bytes[k] += size;
+            } else { /* replace the smallest of the three when this site already outweighs it: approximate top 3 */
+                int s = site_bytes[0] < site_bytes[1] ? (site_bytes[0] < site_bytes[2] ? 0 : 2) : (site_bytes[1] < site_bytes[2] ? 1 : 2);
+                if (size > site_bytes[s])
+                    site[s] = ra, site_bytes[s] = size;
+            }
+        } else if (size >= min) {
+            if (gap_blocks)
+                p4_log("heapmap gap @%5u KB: %5u blocks %6u KB; %07x %u KB, %07x %u KB, %07x %u KB\n",
+                       (unsigned)(gap_start - base) >> 10, gap_blocks, gap_bytes >> 10, site[0] ? site[0] - 8 : 0, site_bytes[0] >> 10,
+                       site[1] ? site[1] - 8 : 0, site_bytes[1] >> 10, site[2] ? site[2] - 8 : 0, site_bytes[2] >> 10);
+            p4_log("heapmap free @%5u KB: %u KB\n", (unsigned)(c - base) >> 10, size >> 10);
+            gaps++, free_big += size;
+            if (size > largest)
+                largest = size;
+            gap_blocks = gap_bytes = 0;
+            memset(site, 0, sizeof site), memset(site_bytes, 0, sizeof site_bytes);
+            gap_start = next;
+        } else {
+            free_small += size, gap_bytes += size;
+        }
+        c = next;
+    }
+    unsigned top_size = ((unsigned *)top)[1] & ~3u;
+    if (gap_blocks)
+        p4_log("heapmap gap @%5u KB: %5u blocks %6u KB; %07x %u KB, %07x %u KB, %07x %u KB\n",
+               (unsigned)(gap_start - base) >> 10, gap_blocks, gap_bytes >> 10, site[0] ? site[0] - 8 : 0, site_bytes[0] >> 10,
+               site[1] ? site[1] - 8 : 0, site_bytes[1] >> 10, site[2] ? site[2] - 8 : 0, site_bytes[2] >> 10);
+    __malloc_unlock(_REENT);
+    p4_log("heapmap end: used %u KB (untracked %u KB), free in runs >= %u KB: %u KB in %u (largest %u KB), in smaller "
+           "pieces %u KB; top chunk %u KB + unclaimed %u KB\n", used >> 10, unknown >> 10, min >> 10, free_big >> 10, gaps,
+           largest >> 10, free_small >> 10, top_size >> 10, p4_heap_unclaimed() >> 10);
+    p4_log_flush();
+}
+
 /* every 256 frames (rwsky.c): totals, then the 24 callers holding the most */
 void p4_memstat_report(void)
 {
@@ -307,6 +426,8 @@ void p4_memstat_report(void)
     memcpy(ms_copy, ms_site, sizeof ms_copy);
     unsigned live = ms_live, peak = ms_peak, used = ms_used, lost = ms_lost, allocs = ms_allocs;
     pspSdkEnableInterrupts(intr);
+    if (p4_heapmap)
+        p4_heapmap = 0, p4_heap_map("poke");
     p4_log("memstat live %u KB peak %u KB blocks %u allocs %u lost %u table %u KB\n", live >> 10, peak >> 10, used, allocs, lost,
            (unsigned)(MS_SLOTS * sizeof(MsBlock)) >> 10);
     p4_log("memstat heap arena %d KB used %d KB free %d KB unclaimed %u KB | sys free %d KB\n", m.arena >> 10, m.uordblks >> 10,
@@ -490,6 +611,10 @@ int main(int argc, char **argv)
         }
         snprintf(log_path, sizeof log_path, "%s%s", p4_game_dir, LOG_FILE);
         p4_log("game folder %s\n", p4_game_dir);
+    }
+    { /* b376: the caches' arena, before the game takes its first block */
+        extern void p4_arena_init(void);
+        p4_arena_init();
     }
     { /* b321: an empty FPS file next to the EBOOT turns the frame-rate overlay on (rwsky.c) */
         extern int p4_fps_overlay;

@@ -1213,6 +1213,328 @@ static inline void copy64(void *d, const void *s) /* 4-byte aligned words, no ca
         x[k] = y[k];
 }
 
+/* b358 p4_frame_census 1 (poke it; census only): which bone frames written by p4_hanim_update are read back through
+   RwFrameGetLTM (both of its names are wrapped in profiling builds), and from where. Step 1 of the P3P-style plan in
+   docs/animation_psp.md: bone frames written only when someone reads them. Direct reads of frame memory are not
+   seen. The set is cleared at every report, so a freed and reused frame is not counted for long. */
+int p4_frame_census = 0;
+enum { FC_SLOTS = 4096, FC_CALLERS = 12 };
+static const void **fc_set;
+static unsigned fc_reads, fc_bone_reads, fc_marked, fc_full;
+static struct { unsigned ra, n; } fc_caller[FC_CALLERS];
+static unsigned fc_hash(const void *f) { return ((unsigned)f >> 4) * 2654435761u >> 20; }
+static void fc_mark(const void *f)
+{
+    if (!fc_set && !(fc_set = calloc(FC_SLOTS, sizeof *fc_set)))
+        return;
+    for (unsigned p = 0, h = fc_hash(f); p < FC_SLOTS; p++) {
+        const void **s = &fc_set[(h + p) & (FC_SLOTS - 1)];
+        if (*s == f)
+            return;
+        if (!*s) {
+            *s = f, fc_marked++;
+            return;
+        }
+    }
+    fc_full++;
+}
+static int fc_bone(const void *f)
+{
+    if (!fc_set)
+        return 0;
+    for (unsigned p = 0, h = fc_hash(f); p < FC_SLOTS; p++) {
+        const void *s = fc_set[(h + p) & (FC_SLOTS - 1)];
+        if (s == f)
+            return 1;
+        if (!s)
+            return 0;
+    }
+    return 0;
+}
+static void fc_note(const void *f, unsigned ra)
+{
+    fc_reads++;
+    if (!fc_bone(f))
+        return;
+    fc_bone_reads++;
+    for (int i = 0; i < FC_CALLERS; i++)
+        if (fc_caller[i].ra == ra || !fc_caller[i].ra) {
+            fc_caller[i].ra = ra, fc_caller[i].n++;
+            return;
+        }
+}
+/* RwMatrixMultiply (rwmath.c) with a bone frame's modelling (+16) or LTM (+80) matrix as an input or the output */
+static unsigned fc_mul, fc_mul_out;
+static struct { unsigned ra, n; } fc_mul_caller[FC_CALLERS];
+static int fc_frame_matrix(const void *m)
+{
+    return fc_bone((const char *)m - 16) || fc_bone((const char *)m - 80);
+}
+void p4_fc_matrix_note(const void *out, const void *a, const void *b, unsigned ra)
+{
+    int in = fc_frame_matrix(a) || fc_frame_matrix(b), to = fc_frame_matrix(out);
+    if (!in && !to)
+        return;
+    fc_mul++, fc_mul_out += to;
+    for (int i = 0; i < FC_CALLERS; i++)
+        if (fc_mul_caller[i].ra == ra || !fc_mul_caller[i].ra) {
+            fc_mul_caller[i].ra = ra, fc_mul_caller[i].n++;
+            return;
+        }
+}
+static void fc_report(void)
+{
+    if (!p4_frame_census)
+        return;
+    p4_log("frame census: RwMatrixMultiply with a bone frame matrix %u (into one %u) per 256 frames\n", fc_mul, fc_mul_out);
+    for (int i = 0; i < FC_CALLERS && fc_mul_caller[i].ra; i++)
+        p4_log("frame census multiply caller %08x (elf %06x): %u\n", fc_mul_caller[i].ra, fc_mul_caller[i].ra - 0x08804000u, fc_mul_caller[i].n);
+    memset(fc_mul_caller, 0, sizeof fc_mul_caller);
+    fc_mul = fc_mul_out = 0;
+    p4_log("frame census: GetLTM reads %u, of bone frames %u; bone frames marked %u (set full %u) per 256 frames\n", fc_reads, fc_bone_reads,
+           fc_marked, fc_full);
+    for (int k = 0, shown = 0; fc_set && k < FC_SLOTS && shown < 4; k++) /* samples for a read watch in PPSSPP */
+        if (fc_set[k])
+            p4_log("frame census sample bone frame %p\n", fc_set[k]), shown++;
+    for (int i = 0; i < FC_CALLERS && fc_caller[i].ra; i++)
+        p4_log("frame census caller %08x (elf %06x): %u\n", fc_caller[i].ra, fc_caller[i].ra - 0x08804000u, fc_caller[i].n);
+    memset(fc_caller, 0, sizeof fc_caller);
+    if (fc_set)
+        memset(fc_set, 0, FC_SLOTS * sizeof *fc_set);
+    fc_reads = fc_bone_reads = fc_marked = fc_full = 0;
+}
+#ifdef P4_HW_PROFILE
+const Matrix *__real_func_003e9700(void *frame);
+const Matrix *__real_p4r_003e9700(void *frame);
+const Matrix *__wrap_func_003e9700(void *frame)
+{
+    if (p4_frame_census)
+        fc_note(frame, (unsigned)__builtin_return_address(0));
+    return __real_func_003e9700(frame);
+}
+const Matrix *__wrap_p4r_003e9700(void *frame)
+{
+    if (p4_frame_census)
+        fc_note(frame, (unsigned)__builtin_return_address(0));
+    return __real_p4r_003e9700(frame);
+}
+#endif
+
+/* b358 p4_sync_skip_fresh 1 (experiment): RenderWare's frame sync (FrameSyncHierarchyRecurse, retail 0x3ED450,
+   src/renderware/core/basync.c) recomputes ltm = modelling x parent ltm for every frame under a root that moved; the
+   model root moves every tick (mdlAdvanceModel), so every bone frame gets a second multiply right after
+   p4_hanim_update wrote the same LTM (Margaret, PPSSPP: ~640 a frame, b358 census). P3P keeps no frame per bone at all.
+   A bone frame whose LTM p4_hanim_update wrote carries SL_FRAME_FRESH (0x80, a private flag RenderWare does not use)
+   until the sync, which then keeps that LTM. Objects attached to the frame are still synced. p4_sync_skip_check 1:
+   the multiply is still done for a fresh frame and compared with the kept LTM. This definition replaces the retail
+   function (port objects first, --allow-multiple-definition). */
+int p4_sync_skip_fresh = 0, p4_sync_skip_check = 0;
+enum { FRAME_FRESH = 0x80 };
+static unsigned sync_multiplies, sync_kept, sync_checks, sync_diffs, sync_diff_logged;
+static float sync_max_diff;
+/* Bits passed down beside RenderWare's flags: SYNC_KEPT the parent's LTM was kept as p4_hanim_update wrote it,
+   SYNC_STALE a frame above was recomputed although it was fresh (the root moved after the pose: b358 saw it only on
+   the top bone), so nothing below may be kept. A fresh top bone is multiplied once and compared. */
+/* b360 p4_frame_lazy 1 (experiment): bone frames written only when someone reads them, as P3P keeps no frame per
+   bone. b358 census, Margaret: ~640 bone frames written a tick, ~35 read (RwFrameGetLTM: atomics on bones, capsule
+   shadows, attach matrices); RenderWare's syncs also read them. For a plain hierarchy (0x2000 without 0x4000 or 1:
+   LTM = the node's matrix) p4_hanim_update leaves the frame alone and sets FRAME_LAZY in its private flags; the
+   frame is written (modelling from the interpolator's key, LTM from the hierarchy's matrix) when RwFrameGetLTM asks
+   for it, before the objects on it are synced, and before a child frame that is not a bone multiplies its LTM. The
+   three recursive syncs skip the multiply for a lazy frame. Readers of frame memory that go around all of these are
+   not covered: "lost" counts a lazy frame whose hierarchy was not found (its data stays old). */
+int p4_frame_lazy = 0;
+enum { FRAME_LAZY = 0x40, LAZY_HIER = 64 };
+static struct { const unsigned *h; const unsigned char *root; unsigned tick; } flz_h[LAZY_HIER];
+static unsigned flz_nodes, flz_written[4], flz_lost, flz_evicted; /* written: 0 GetLTM, 1 objects, 2 child, 3 evicted */
+static void flz_write(unsigned char *f, const unsigned *h, int i)
+{
+    const char *interp = (const char *)h[8];
+    if (h[0] & 0x1000) {
+        Matrix local __attribute__((aligned(16)));
+        void (*key_to_matrix)(Matrix *, const char *) = *(void (**)(Matrix *, const char *))(interp + 60);
+        const char *key = interp + 76 + i * *(const int *)(interp + 36);
+        if ((char *)key_to_matrix == func_003954b0)
+            hanim_key_to_matrix(&local, key);
+        else
+            key_to_matrix(&local, key);
+        memcpy(f + 16, &local, sizeof local);
+    }
+    memcpy(f + 80, (const Matrix *)h[2] + i, sizeof(Matrix));
+    f[3] &= ~FRAME_LAZY;
+}
+static void flz_find(unsigned char *f, int why)
+{
+    const unsigned char *root = *(unsigned char **)(f + 160);
+    for (int k = 0; k < LAZY_HIER; k++) {
+        const unsigned *h = flz_h[k].h;
+        if (!h || flz_h[k].root != root)
+            continue;
+        const unsigned *info = (const unsigned *)h[4];
+        for (int i = 0, n = (int)h[1]; i < n; i++)
+            if (info[i * 4 + 3] == (unsigned)f) {
+                flz_write(f, h, i);
+                flz_written[why]++;
+                return;
+            }
+    }
+    f[3] &= ~FRAME_LAZY;
+    flz_lost++;
+}
+static inline void flz_need(unsigned char *f, int why)
+{
+    if (f && (f[3] & FRAME_LAZY))
+        flz_find(f, why);
+}
+/* b361: every lazy frame from f up to its root written (callers that walk modelling matrices upwards) */
+void p4_frame_chain(void *f)
+{
+    for (unsigned char *p = f; p; p = *(unsigned char **)(p + 4))
+        flz_need(p, 2);
+}
+static void flz_note(const unsigned *h, const unsigned char *root)
+{
+    int k, free_k = -1, old_k = 0;
+    for (k = 0; k < LAZY_HIER; k++) {
+        if (flz_h[k].h == h) {
+            flz_h[k].root = root, flz_h[k].tick = p4_anim_tick;
+            return;
+        }
+        if (!flz_h[k].h && free_k < 0)
+            free_k = k;
+        if ((int)(flz_h[k].tick - flz_h[old_k].tick) < 0)
+            old_k = k;
+    }
+    if (free_k < 0) { /* full: the oldest one's lazy frames are written now (if it is recent enough to still exist) */
+        const unsigned *old = flz_h[old_k].h;
+        if (p4_anim_tick - flz_h[old_k].tick < 600) {
+            const unsigned *info = (const unsigned *)old[4];
+            for (int i = 0; i < (int)old[1]; i++) {
+                unsigned char *f = (unsigned char *)info[i * 4 + 3];
+                if (f && (f[3] & FRAME_LAZY))
+                    flz_write(f, old, i), flz_written[3]++;
+            }
+        }
+        flz_evicted++;
+        free_k = old_k;
+    }
+    flz_h[free_k].h = h, flz_h[free_k].root = root, flz_h[free_k].tick = p4_anim_tick;
+}
+
+enum { SYNC_KEPT = 0x200, SYNC_STALE = 0x100 };
+static unsigned sync_top_checks, sync_top_stale;
+/* the pose's LTM and RenderWare's differ by a few ULP (the pose multiplies its own parent chain); a moved root by far more */
+static int sync_near(const float *x, const float *y)
+{
+    for (int k = 0; k < 15; k++)
+        if ((k & 3) != 3 && !(fabsf(x[k] - y[k]) <= 1e-5f * (1 + fabsf(x[k]))))
+            return 0;
+    return 1;
+}
+void p4r_003ed450(unsigned char *frame, int flags)
+{
+    while (frame) {
+        int acc = (flags & ~SYNC_KEPT) | frame[3], below = 0;
+        unsigned char *parent = *(unsigned char **)(frame + 4);
+        if ((acc & 4) && (frame[3] & FRAME_LAZY)) {
+            /* b360: its LTM comes from the hierarchy when it is read */
+        } else if (acc & 4) {
+            flz_need(parent, 2);
+            int fresh = (frame[3] & FRAME_FRESH) && p4_sync_skip_fresh && !(flags & SYNC_STALE);
+            if (fresh && !(flags & SYNC_KEPT)) { /* top bone: its parent was synced here, check it against the pose */
+                Matrix t __attribute__((aligned(16)));
+                RwMatrixMultiply(&t, frame + 16, parent + 80);
+                sync_top_checks++;
+                if (!sync_near(&t.right.x, (const float *)(frame + 80))) {
+                    memcpy(frame + 80, &t, sizeof t);
+                    sync_top_stale++;
+                    fresh = 0, below = SYNC_STALE;
+                }
+            }
+            if (fresh) {
+                sync_kept++;
+                below = SYNC_KEPT;
+                if (p4_sync_skip_check) {
+                    Matrix t __attribute__((aligned(16)));
+                    RwMatrixMultiply(&t, frame + 16, parent + 80);
+                    const float *x = &t.right.x, *y = (const float *)(frame + 80);
+                    int differs = 0;
+                    for (int k = 0; k < 16; k++) {
+                        if ((k & 3) == 3)
+                            continue;
+                        float d = fabsf(x[k] - y[k]) / (1 + fabsf(x[k]));
+                        differs |= !(d <= 1e-4f);
+                        if (d > sync_max_diff)
+                            sync_max_diff = d;
+                    }
+                    sync_checks++, sync_diffs += differs;
+                    if (differs && sync_diff_logged < 16) {
+                        sync_diff_logged++;
+                        p4_log("TRACE sync kept a stale frame %p parent %p flags %x acc %x\n", (void *)frame, (void *)parent, frame[3], acc);
+                    }
+                }
+            } else {
+                RwMatrixMultiply(frame + 80, frame + 16, parent + 80);
+                sync_multiplies++;
+            }
+        }
+        unsigned char *end = frame + 144;
+        if (*(unsigned char **)end != end)
+            flz_need(frame, 1);
+        for (unsigned char *link = *(unsigned char **)end; link != end; link = *(unsigned char **)link) {
+            unsigned char *object = link - 8; /* RwObjectHasFrame: object, lFrame, sync */
+            (*(void (**)(void *))(object + 16))(object);
+        }
+        frame[3] &= ~(4 | 8 | FRAME_FRESH);
+        p4r_003ed450(*(unsigned char **)(frame + 152), acc | below);
+        frame = *(unsigned char **)(frame + 156);
+    }
+}
+/* b360: RenderWare's FrameSyncHierarchyRecurseNoLTM (0x3ED540, basync.c): the objects of a frame, no LTM */
+void p4r_003ed540(unsigned char *frame)
+{
+    while (frame) {
+        unsigned char *end = frame + 144;
+        if (*(unsigned char **)end != end)
+            flz_need(frame, 1);
+        for (unsigned char *link = *(unsigned char **)end; link != end; link = *(unsigned char **)link) {
+            unsigned char *object = link - 8;
+            (*(void (**)(void *))(object + 16))(object);
+        }
+        frame[3] &= ~8;
+        p4r_003ed540(*(unsigned char **)(frame + 152));
+        frame = *(unsigned char **)(frame + 156);
+    }
+}
+/* b360: RenderWare's FrameSyncHierarchyLTMRecurse (0x3ED850, basync.c), from RwFrameGetLTM on a dirty root */
+void p4r_003ed850(unsigned char *frame, int flags)
+{
+    while (frame) {
+        int acc = flags | frame[3];
+        if (acc & 4) {
+            if (!(frame[3] & FRAME_LAZY)) {
+                unsigned char *parent = *(unsigned char **)(frame + 4);
+                flz_need(parent, 2);
+                RwMatrixMultiply(frame + 80, frame + 16, parent + 80);
+            }
+            frame[3] &= ~4;
+        }
+        p4r_003ed850(*(unsigned char **)(frame + 152), acc);
+        frame = *(unsigned char **)(frame + 156);
+    }
+}
+/* b360: RwFrameGetLTM (0x3E9700, baframe.c) and its other name: a lazy bone frame is written before it is returned */
+void p4r_003ed960(void *root);
+const Matrix *p4r_003e9700(void *frame_)
+{
+    unsigned char *f = frame_, *root = *(unsigned char **)(f + 160);
+    if (root[3] & 1)
+        p4r_003ed960(root);
+    flz_need(f, 0);
+    return (const Matrix *)(f + 80);
+}
+const Matrix *func_003e9700(void *frame_) __attribute__((alias("p4r_003e9700")));
+
 int p4_hanim_update(unsigned *h)
 {
     unsigned flags = h[0];
@@ -1243,6 +1565,7 @@ int p4_hanim_update(unsigned *h)
         } else if (!func_003e9240(above)) {
             ltm_parent = *(const Matrix *)p4r_003e9700(above);
         } else {
+            p4_frame_chain(above); /* b361: a lazy bone frame above (this model hangs on another one's bone) */
             ltm_parent = *(const Matrix *)(above + 16);
             for (char *p = *(char **)(above + 4); p; p = *(char **)(p + 4)) {
                 Matrix t = ltm_parent;
@@ -1251,6 +1574,9 @@ int p4_hanim_update(unsigned *h)
         }
     }
     int update_ltm = flags & 0x2000;
+    int lazy = p4_frame_lazy && update_ltm && !(flags & 0x4001) && h[5];
+    if (lazy)
+        flz_note(h, *(unsigned char **)((char *)h[5] + 160));
     if (update_ltm) {
         unsigned char *root = *(unsigned char **)((char *)h[5] + 160);
         if (!(root[3] & 3)) { /* rwLinkListAddLLLink(dirty frames, &root->inDirtyListLink) */
@@ -1293,7 +1619,12 @@ int p4_hanim_update(unsigned *h)
         hanim_t_math += t_b - t_a;
         unsigned char *f = (unsigned char *)info[3];
         hanim_t_framed += f != 0;
-        if (f) {
+        if (f && p4_frame_census)
+            fc_mark(f);
+        if (f && lazy) {
+            f[3] = (f[3] & ~(4 | FRAME_FRESH)) | 8 | FRAME_LAZY;
+            flz_nodes++;
+        } else if (f) {
             if (flags & 0x1000) {
                 if (fused && !((unsigned)f & 3))
                     copy64(f + 16, &local);
@@ -1309,7 +1640,7 @@ int p4_hanim_update(unsigned *h)
                     copy64(f + 80, m);
                 else
                     memcpy(f + 80, m, sizeof *m);
-                f[3] = (f[3] & ~4) | 8;
+                f[3] = (f[3] & ~(4 | FRAME_LAZY)) | 8 | (p4_sync_skip_fresh ? FRAME_FRESH : 0);
             }
         }
         hanim_t_frame += HANIM_NOW() - t_b;
@@ -1389,6 +1720,16 @@ int p4_hanim_dispatch(unsigned *h, int (*original)(void *))
 }
 static void hanim_report(void)
 {
+    fc_report();
+    p4_log("frame lazy %d: deferred %u, written on GetLTM %u objects %u child %u evicted %u; lost %u, hierarchies evicted %u per 256 frames\n",
+           p4_frame_lazy, flz_nodes, flz_written[0], flz_written[1], flz_written[2], flz_written[3], flz_lost, flz_evicted);
+    flz_nodes = flz_lost = flz_evicted = 0;
+    memset(flz_written, 0, sizeof flz_written);
+    p4_log("frame sync skip fresh %d check %d: multiplies %u kept %u; checks %u diffs %u max diff %d/1000000; top bones %u stale %u per 256 frames\n",
+           p4_sync_skip_fresh, p4_sync_skip_check, sync_multiplies, sync_kept, sync_checks, sync_diffs, (int)(sync_max_diff * 1000000),
+           sync_top_checks, sync_top_stale);
+    sync_multiplies = sync_kept = sync_checks = sync_diffs = sync_top_checks = sync_top_stale = 0;
+    sync_max_diff = 0;
     p4_log("hanim c %d vfpu %d check %d: calls %u checks %u differing floats %u max diff %d/1000000 unaligned %u\n", p4_hanim_c,
            p4_hanim_vfpu, p4_hanim_check, hanim_calls, hanim_checks, hanim_diffs, (int)(hanim_max_diff * 1000000), hanim_vfpu_unaligned);
     p4_log("hanim fused nodes %u of them not through func_003954b0 %u\n", hanim_fused_nodes, hanim_hook_nodes);

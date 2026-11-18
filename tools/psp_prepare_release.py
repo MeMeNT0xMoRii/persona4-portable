@@ -17,7 +17,7 @@ import sys
 import tempfile
 
 from psp_prepare import apply_recipe, sha256
-from psp_build import (UPSTREAM_COMMIT, UPSTREAM_URL, UPSTREAM_TREE_SHA256,
+from psp_build import (check_path_lengths, UPSTREAM_COMMIT, UPSTREAM_URL, UPSTREAM_TREE_SHA256,
                        payload_files, find_pspdev)
 import re
 
@@ -158,6 +158,7 @@ def main():
                 '--hidden-import', 'tkinter.ttk', '--add-data', str(ROOT / 'tools/audio_vag_encoder.cs') + ';tools',
                 '--hidden-import', 'runpy', '--hidden-import', 'concurrent.futures.thread',
                 str(ROOT / 'tools/psp_prepare.py')], check=True)
+            print(f'Longest freeze path: {check_path_lengths(temp, 0)} characters', flush=True)
             shutil.copytree(temp / 'dist/Prepare P4', out, dirs_exist_ok=True)
     else:
         # Developer package: public packages should use --freeze.

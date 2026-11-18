@@ -164,3 +164,77 @@ Next, in order:
    running in skipped ticks for their side effects - find which callbacks really need it.
 
 The 20 FPS step needs cpu_us (drawn + skipped tick, wall) under ~48 ms: Heaven 55.6, dialogue ~52, battle ~46-52.
+
+## P3P's animation compared (2026-11-17, b357, branch perf/offline-mesh)
+
+Read from the P3P decompilation (`ext/P3P`, model runtime 0x0034b000-0x00354xxx, no symbols). Per model and frame:
+
+1. Each active motion advances its own clock (speed, loop or clamp range).
+2. Each channel of a motion finds its key pair by binary search on time (stateless, `00353778`), interpolates by a
+   small per-curve-type jump table and writes the value into the target bone's T, R or S **with a weight**: a running
+   weighted mean (lerp/slerp by w / sum of w, `0034e598`) plus dirty bits on the bone. Several motions blend straight
+   into the bone slots: no per-layer pose buffers, no separate blend pass.
+3. The bones are one flat array, parents first (`0034c820` -> `0034f564`): a dirty bone rebuilds its local matrix
+   from TRS on the VFPU, then world = local x parent world (one `vmmul`). No recursion, no matrix stack, no frame
+   object per bone.
+
+P4 (RenderWare) per layer: an `RtAnimInterpolator` with its own key buffer for every node, interpolated through a
+per-node callback; crossfades blend two interpolators into a third; `RpHAnimHierarchyUpdateMatrices` walks a matrix
+stack and writes two 64-byte matrices into every bone's `RwFrame`. Bone frames are read: attachments go through
+`mdlComputeIndexedAttachMatrix` -> `K_Clump_FindIntUsrDataFrame` -> `RwFrameGetLTM`.
+
+PPSSPP, Margaret dialogue, b356 `p4_prof_clock` (emulated instructions, not device time; one drawn frame):
+`aadv` 955 k = `alayer` 770 k (`kadd` 537 k of which `kinterp` 289 k for 503 node interpolations and ~248 k key
+bookkeeping; `kset` 76 k; hierarchy `kmat` 211 k for 643 nodes) + `actrl` 123 k. Of the whole CPU work (~4 M) about
+a quarter.
+
+What this means with the device evidence above (b234-b239): exact VFPU rewrites of the interpolation and of the
+matrices measured nothing, because the cost on the PSP is cache misses, and the frame writes are the largest part of
+`kmat`. So the P3P lesson is the memory it does not touch: no frame per bone, compact per-bone state, untouched bones
+skipped, layers blended in place. Not faster math.
+
+Plan, in order (each behind a switch with a check mode; judge on the PSP only):
+
+0. **Ceiling on the device.** `p4_anim_freeze` (b273, never measured on the PSP): Margaret, profiler off, arms
+   0 / 1 (no layer advance) / 2 (no bone matrices) / 4 (no anim control), 3+ windows each. Says how many ms an ideal
+   rewrite of each part can win; with `profmode t` also `hanim time` (matrices vs frame writes).
+1. **Bone frames written on demand.** Census done (b358, `p4_frame_census`): Margaret, ~640 bone frames written a
+   tick, ~35 read through `RwFrameGetLTM` (our `atomic_render_body` for atomics on bones, capsule shadows, the
+   game's `mdlComputeAttachMatrix` / `mdlCopyIndexedMatrix`); direct reads (PPSSPP read watches) are RenderWare's
+   frame sync only. That sync (`FrameSyncHierarchyRecurse`, 0x3ED450) multiplied every bone frame a second time,
+   since the model root moves every tick. **b358 `p4_sync_skip_fresh`** (default 0): the sync keeps the LTM the pose
+   wrote, checking the top bone of each hierarchy (a root moved after the pose recomputes the subtree); check mode
+   0 differences in PPSSPP, ~430-670 multiplies a frame saved. Measure on the PSP (off/on/off/on).
+   **b360 `p4_frame_lazy`** (default 0): the pose leaves bone frames of plain hierarchies alone (private flag 0x40);
+   a frame is written when `RwFrameGetLTM` reads it, before its objects are synced, and before a non-bone child
+   multiplies its LTM (`RwFrameGetLTM` and the syncs 0x3ED450/0x3ED540/0x3ED850 replaced in C). PPSSPP: Margaret
+   ~435 deferred and ~29 written a frame, battle ~250 deferred and ~67 written; 0 lost; pictures the same. PSP:
+   off/on/off/on in the dialogue and a battle; it includes the sync skip's effect for those frames.
+2. **Layers blended into compact per-bone TRS** for hierarchies without look-at (`flags 0x81E0` clear), on top of
+   the lazy-animation materialization (`p4_anim_materialize`) for readers of the RW interpolators.
+
+## b360 on the PSP (2026-11-17, Margaret dialogue, 333 MHz, profiler off, 4 windows of 128 frames an arm)
+
+| Arm | cpu ms | frame ms | GE wait ms |
+|---|---|---|---|
+| all off (8 arms) | 47.60-47.88 | 67.1-67.6 | 19.2-19.9 |
+| `p4_frame_lazy` 1 (6 arms) | **46.12-46.19** | 66.9-67.1 | 20.7-20.8 |
+| `p4_sync_skip_fresh` 1 (2 arms) | 46.89 / 47.19 | 67.1 | 20.2 / 19.8 |
+| both (2 arms) | 46.12 / 46.17 | 67.0 | 20.8 |
+| `p4_guard_big` 1.0 (3 arms) | 47.62-47.94 | 67.4-68.0 | 19.6-20.1 (log: 1 geometry, 184-256 uncut, 0 cut: nothing to win here) |
+| `p4_anim_freeze` 7 / 1 / 2 | 39.66 / 40.94 / 42.58 | 66.9 | 27.2 / 25.9 / 24.3 |
+| half of all atomics hidden (`p4_probe_flags` 16, keep every 2) | 34.68 | **50.0** | 15.3 |
+
+- `p4_frame_lazy`: -1.5 ms CPU, steady in every pair; the screenshot is the same as off. With it on, `p4_sync_skip_fresh`
+  adds nothing (lazy already covers those frames); alone the sync skip is worth ~0.6 ms.
+- Ceiling: no animation at all is -8 ms CPU; no layer advance -6.7, no bone matrices -5.1 ms.
+- The dialogue's frame is held at 67 ms by the GE, not the CPU: every CPU saving above only moves into GE wait.
+  Hiding half the atomics (characters and set alike, draw only, logic still runs) reaches the 50 ms step.
+- Not measured yet: a battle; Heaven (the arms there were taken while the scene was changing, discarded).
+
+GE in the same dialogue (b360, `p4_pipeline` 0): serial, the GE runs ~26 ms after the CPU's last draw (78 ms frame;
+anim freeze does not change it, half the atomics hidden -> 16.7 ms). `p4_exp_ge_time` 1: characters 10.6 ms (8 skins,
+1.15-1.6 ms each: bc003/bc005 bodies, Margaret ...), 2D 8.4 ms; scenery on static lists is not timed. With static lists
+and instance batching off (old path, an upper bound) atomics 37.5 ms; top: f028_002_cloud full-screen plane 2.7 ms,
+f028_002_flower 84 instances 2.6 ms, f028_002_cloud02 (256x256 32-bit, full screen) 2.4 ms, f044_wall_deco02 floor
+(full screen) 2.0 ms, f028_sekizou_03 statues 1.9 ms. Every one alpha-blended (blend 44).

@@ -335,6 +335,13 @@ FIXES["src/Graphics/Model/mdlManager.c"] += [
     ('    RpClumpForAllAtomics(clump, mdlMatColorScaleCallback, &colorScaleContext);\n',
      '    { extern int p4_skip_visual_prep(int); if (!p4_skip_visual_prep(2))\n        RpClumpForAllAtomics(clump, mdlMatColorScaleCallback, &colorScaleContext); }\n'),
 ]
+# b361 p4_frame_lazy: mdlUpdateHierarchyPose walks the modelling matrices of the frames above a hierarchy when its root
+# is dirty; one of them may be a lazy bone frame of another hierarchy (a model attached to a bone): written first.
+FIXES["src/Graphics/Model/mdlManager.c"] += [
+    ('        baseMatrix = *(const RwMatrix *)&((MdlFrame *)frameOrStride)->modelling;\n',
+     '        { extern void p4_frame_chain(void *); p4_frame_chain((void *)frameOrStride); }\n'
+     '        baseMatrix = *(const RwMatrix *)&((MdlFrame *)frameOrStride)->modelling;\n'),
+]
 # b218 p4_head_trace: probes inside the head look-at (node 0x1389) of mdlUpdateHierarchyPose; rwsky.c prints them when
 # the call leaves the look rotation non-finite (b215: one call turns a finite rotation into NaN, inputs finite).
 FIXES["src/Graphics/Model/mdlManager.c"] += [

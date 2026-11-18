@@ -59,31 +59,47 @@ static int gu_factor(int rw, unsigned *fix)
 
 /* Large particle tanks may exceed the fixed pool. Keep extra draw batches alive for
    four presented frames, as prepared-list retirement does, and bound their memory. */
-typedef struct PtankSpill { struct PtankSpill *next; unsigned frame, bytes, pad; } __attribute__((aligned(16))) PtankSpill;
+typedef struct PtankSpill { struct PtankSpill *next; unsigned frame, bytes, kind; } __attribute__((aligned(16))) PtankSpill;
 static PtankSpill *ptank_spills;
 int p4_ptank_spill_budget = 2 << 20;
 static unsigned ptank_spill_bytes, ptank_spill_batches, ptank_spill_refused;
+static unsigned static_uv_temp_bytes;
 static void ptank_spill_collect(int all)
 {
     PtankSpill **p = &ptank_spills;
     while (*p) {
         PtankSpill *s = *p;
         if (all || cache_frame - s->frame > 4) {
-            *p = s->next; ptank_spill_bytes -= s->bytes; free(s);
+            *p = s->next;
+            if (s->kind) static_uv_temp_bytes -= s->bytes; else ptank_spill_bytes -= s->bytes;
+            free(s);
         } else p = &s->next;
     }
 }
+static void *frame_spill_alloc(unsigned payload, int kind)
+{
+    unsigned budget = kind ? 256 * 1024 : p4_ptank_spill_budget > 0 ? (unsigned)p4_ptank_spill_budget : 0;
+    unsigned used = kind ? static_uv_temp_bytes : ptank_spill_bytes;
+    if (payload > budget || sizeof(PtankSpill) > budget - payload || used > budget - payload - sizeof(PtankSpill)) {
+        if (!kind) ptank_spill_refused++;
+        return 0;
+    }
+    unsigned bytes = sizeof(PtankSpill) + payload;
+    PtankSpill *s = memalign(16, bytes);
+    if (!s) { if (!kind) ptank_spill_refused++; return 0; }
+    s->next = ptank_spills; s->frame = cache_frame; s->bytes = bytes; s->kind = kind; ptank_spills = s;
+    if (kind) static_uv_temp_bytes += bytes;
+    else { ptank_spill_bytes += bytes; ptank_spill_batches++; }
+    return s + 1;
+}
 static Vertex3D *ptank_spill_alloc(int capacity)
 {
-    unsigned bytes = sizeof(PtankSpill) + capacity * sizeof(Vertex3D);
-    if (p4_ptank_spill_budget <= 0 || bytes > (unsigned)p4_ptank_spill_budget || ptank_spill_bytes > (unsigned)p4_ptank_spill_budget - bytes) {
-        ptank_spill_refused++; return 0;
-    }
-    PtankSpill *s = memalign(16, bytes);
-    if (!s) { ptank_spill_refused++; return 0; }
-    s->next = ptank_spills; s->frame = cache_frame; s->bytes = bytes; ptank_spills = s;
-    ptank_spill_bytes += bytes; ptank_spill_batches++;
-    return (Vertex3D *)(s + 1);
+    if (capacity <= 0 || (unsigned)capacity > 0x7fffffffu / sizeof(Vertex3D)) return 0;
+    return frame_spill_alloc(capacity * sizeof(Vertex3D), 0);
+}
+static void *static_uv_alloc(unsigned bytes)
+{
+    return frame_spill_alloc(bytes, 1);
 }
 static int ptank_submit(Vertex3D *vertices, int count, int pooled)
 {

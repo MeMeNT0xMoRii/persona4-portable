@@ -11,8 +11,12 @@ typedef struct { Row right, up, at, pos; } Matrix; /* 64 bytes, rows like RwMatr
 } while (0)
 
 /* out = a * b. RenderWare keeps two words of flags: the result has lost identity and may have lost orthonormality. */
+extern int p4_frame_census;
+void p4_fc_matrix_note(const void *out, const void *a, const void *b, unsigned ra); /* hanim.h, b358 census */
 unsigned char *RwMatrixMultiply(unsigned char *out_, unsigned char *a_, unsigned char *b_)
 {
+    if (p4_frame_census)
+        p4_fc_matrix_note(out_, a_, b_, (unsigned)__builtin_return_address(0));
     Matrix *out = (Matrix *)out_, *a = (Matrix *)a_, *b = (Matrix *)b_;
     /* The PS2 loads both inputs before it writes: out may be a or b (fix from MeMeNT0xMoRii's fork). */
     unsigned flags = a->right.flags & b->right.flags;
