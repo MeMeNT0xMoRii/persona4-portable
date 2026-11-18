@@ -8,6 +8,38 @@ import unittest
 
 
 class RasterMemory(unittest.TestCase):
+    def test_generated_mip_chain_requires_source_flag(self):
+        cc = shutil.which("gcc")
+        if not cc:
+            self.skipTest("C compiler required")
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "port/rwsky.c").read_text()
+        body = re.search(r"^static int mip_levels\([^\n]+\)\n\{.*?^\}", source, re.M | re.S)[0]
+        program = """
+#include <assert.h>
+typedef struct { int width, height, depth, cFormat; } Raster;
+enum { MAX_MIPS = 8 };
+static int p4_mip_build = 1, p4_mip_min = 64;
+""" + body + """
+int main(void) {
+    Raster r = {128, 128, 8, 0x25};
+    assert(mip_levels(&r) == 1);
+    r.cFormat |= 0x80;
+    assert(mip_levels(&r) == 4);
+    r.width = 127;
+    assert(mip_levels(&r) == 1);
+    r.width = 32;
+    assert(mip_levels(&r) == 1);
+    r.width = 128;
+    p4_mip_build = 0;
+    assert(mip_levels(&r) == 1);
+}
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            exe = Path(tmp) / "mip-test"
+            subprocess.run([cc, "-O2", "-x", "c", "-", "-o", exe], input=program, text=True, check=True)
+            subprocess.run([exe], check=True)
+
     def test_partial_create_and_failed_cpu_lock(self):
         cc = shutil.which("cc")
         if not cc:
