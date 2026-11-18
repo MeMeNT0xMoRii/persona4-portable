@@ -1632,6 +1632,10 @@ int func_003f79b0(void *raster, void *device, int flags)
         SceCtrlData pad;
         const unsigned combo = PSP_CTRL_LTRIGGER | PSP_CTRL_RTRIGGER | PSP_CTRL_SELECT;
         int read = sceCtrlPeekBufferPositive(&pad, 1) > 0;
+#ifdef P4_FRAME_TIMING
+        const unsigned ui_combo = PSP_CTRL_LTRIGGER | PSP_CTRL_RTRIGGER | PSP_CTRL_TRIANGLE;
+        timing_ui_poll(read ? (pad.Buttons & ui_combo) == ui_combo : timing_ui_held, present_new_frame, frames);
+#endif
 #ifdef P4_GE_DUMP
         if (read && !p4_pipeline)
             gd_poll(pad.Buttons);
@@ -2922,6 +2926,11 @@ typedef struct { const void *raster; unsigned blend, mask, prim, calls, w, h; fl
 static Census2D census2d[64]; /* census2d_shown (declared above): single draws logged in this window */
 static void census2d_note(int prim, const Vertex2D *vertices, const unsigned short *indices, int count)
 {
+#ifdef P4_FRAME_TIMING
+    unsigned trace = timing_ui_active ? ++timing_ui_count : 0;
+    if (trace > TIMING_UI_LIMIT && !p4_probe_2d)
+        return;
+#endif
     float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
     for (int i = 0; i < count; i++) {
         const Vertex2D *v = &vertices[indices ? indices[i] : i];
@@ -2932,6 +2941,18 @@ static void census2d_note(int prim, const Vertex2D *vertices, const unsigned sho
     }
     const void *raster = (const void *)render_state[1];
     unsigned blend = sky_state[2] & 0xff, mask = pixel_mask;
+#ifdef P4_FRAME_TIMING
+    if (trace && trace <= TIMING_UI_LIMIT) {
+        const Raster *r = raster;
+        p4_log("hwui %u prim=%d n=%d box=%d,%d,%d,%d target=%dx%d test=%x blend=%x mask=%x\n",
+               trace, prim, count, (int)x0, (int)y0, (int)x1, (int)y1, target_w, target_h, sky_state[3], sky_state[2], mask);
+        p4_log("hwtex %u r=%p texels=%p clut=%p size=%dx%dx%d gen=%u fb=%d\n", trace, raster,
+               r ? r->originalPixels : NULL, r ? r->palette : NULL, r ? r->width : 0, r ? r->height : 0,
+               r ? r->depth : 0, texture_generation, r == &display_raster);
+        if (!p4_probe_2d)
+            return;
+    }
+#endif
     /* b165: single draws for the empty minimap. 2: draws smaller than 1/16 of the screen; 3: every draw. */
     /* b220: 4 = textured draws only, with their first vertices (the battle's attack cursor: stripes on the PSP) */
     if (p4_probe_2d == 4 && census2d_shown < 48 && raster != (const void *)&display_raster &&
@@ -3371,7 +3392,11 @@ static int ui_state_eligible(int prim, int count, const unsigned short *indices)
 
 static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *indices, int count)
 {
-    if (p4_probe_2d && count > 0)
+    int census = p4_probe_2d;
+#ifdef P4_FRAME_TIMING
+    census |= timing_ui_active;
+#endif
+    if (census && count > 0)
         census2d_note(prim, vertices, indices, count);
     /* b223: 2D primitives with a non-finite position. The battle command panel (btlPanelDrawBackdropGrid, FUN_0020B3A0)
        passes a scale it never set once the panel has finished growing (retail: whatever $f20 held); here that is NaN,

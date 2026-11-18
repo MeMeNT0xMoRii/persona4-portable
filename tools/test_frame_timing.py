@@ -26,6 +26,13 @@ int main(void) {
     assert(timing_ge_tail(99,30,1,1,92)==0);
     assert(timing_ge_tail(99,30,1,1,139)==30);
     assert(timing_ge_tail(0xfffffff0,30,1,1,2)==18);
+    timing_ui_poll(1,1,1); assert(timing_ui_active);
+    timing_ui_count=72;
+    timing_ui_poll(1,0,2); assert(timing_ui_active);
+    timing_ui_poll(1,1,3); assert(!timing_ui_active);
+    timing_ui_poll(1,1,4); assert(!timing_ui_active);
+    timing_ui_poll(0,1,5); timing_ui_poll(1,1,6);
+    assert(timing_ui_active && !timing_ui_count);
     unsigned now=0xffffffb0;
     timing_record(0,now,now,now,0,0,1);
     for (unsigned n=1; n<=32; ++n) {
@@ -48,6 +55,7 @@ int main(void) {
             subprocess.run([cc, "-std=c99", "-I", port, "-x", "c", "-", "-o", exe],
                            input=source, text=True, check=True)
             log = subprocess.check_output([exe], text=True)
+        self.assertIn("hwui end f=3 inputs=72 logged=64", log)
         self.assertIn("last=32 n=32 pipe=32 p50=165 p95=315 cpu=165 wait=2 ge_tail=1 post=3", log)
         self.assertIn("pipe=1 wall=325 cpu=320 wait=2 ge_tail=1 post=3 listB=128 rasterWB=96 copyB=64", log)
         self.assertIn("hwfirst f=33 t=900020 wall=20 listB=80 pipe=1", log)

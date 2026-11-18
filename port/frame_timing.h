@@ -85,4 +85,24 @@ static void timing_movie(int resuming, unsigned now)
     timing_started = timing_first = resuming;
     timing_writeback = timing_copy_bytes = 0;
 }
+/* One manually requested frame. Only the timing build inspects the button
+   edge or logs Im2D submissions. Keep ordinary timing runs free of this I/O. */
+enum { TIMING_UI_LIMIT = 64 };
+static int timing_ui_active, timing_ui_held;
+static unsigned timing_ui_count;
+
+static void timing_ui_poll(int pressed, int had_list, unsigned frame)
+{
+    if (timing_ui_active && had_list) {
+        p4_log("hwui end f=%u inputs=%u logged=%u\n", frame, timing_ui_count,
+               timing_ui_count < TIMING_UI_LIMIT ? timing_ui_count : TIMING_UI_LIMIT);
+        timing_ui_active = 0;
+    }
+    if (pressed && !timing_ui_held) {
+        timing_ui_active = 1;
+        timing_ui_count = 0;
+        p4_log("hwui armed after f=%u\n", frame);
+    }
+    timing_ui_held = pressed;
+}
 #endif
