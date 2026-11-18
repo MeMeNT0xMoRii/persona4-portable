@@ -3321,6 +3321,23 @@ static void draw_effect_mask(int prim, int count, const GuVertex *vertices)
     sceGuDepthMask(!render_state[RS_ZWRITE]);
 }
 
+/* For a fully opaque native texture MODULATE passes through vertex alpha.
+   Restrict this to ordinary power-of-two images: a padded edge can sample
+   transparent texels outside the bounds used to compute alpha_min. */
+static int flat_effect_alpha(const Raster *r, const GuVertex *vertices, int count)
+{
+    if (bound_alpha_min != 255 || !r->originalPixels || count > 6 ||
+        r->width < 1 || r->height < 1 || r->width > 512 || r->height > 512 ||
+        (r->width & (r->width - 1)) || (r->height & (r->height - 1)) ||
+        !swizzle_head(r->originalPixels))
+        return -1;
+    unsigned alpha = vertices[0].colour >> 24;
+    for (int i = 1; i < count; i++)
+        if ((vertices[i].colour >> 24) != alpha)
+            return -1;
+    return (int)alpha;
+}
+
 /* Split the coloured and grey date glyphs at the edges of the highlighted
    column. Their equal-depth mask rectangles cannot separate them on the PSP. */
 static void draw_calendar_date(int prim, int count, const GuVertex *out, int alpha_writer)
@@ -3483,7 +3500,20 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     for (int i = 0; i < count; i++)
         put_vertex(&out[i], &vertices[indices ? indices[i] : i]);
     if (effect_mask) {
-        draw_effect_mask(gu_prim[prim], count, out);
+        int alpha = flat_effect_alpha((Raster *)render_state[1], out, count);
+        if (alpha >= 0) {
+            sceGuEnable(GU_STENCIL_TEST);
+            sceGuStencilOp(GU_KEEP, GU_KEEP, GU_REPLACE);
+            sceGuStencilFunc(GU_ALWAYS, alpha, 0xff);
+            sceGuDisable(GU_ALPHA_TEST);
+            sceGuDepthMask(GU_TRUE);
+            sceGuPixelMask(0x00ffffff);
+            sceGuDrawArray(gu_prim[prim], GU_2D_FORMAT, count, 0, out);
+            sceGuDisable(GU_STENCIL_TEST);
+            sceGuDepthMask(!render_state[RS_ZWRITE]);
+        } else {
+            draw_effect_mask(gu_prim[prim], count, out);
+        }
         return 1;
     }
     if (calendar_date_clip) {

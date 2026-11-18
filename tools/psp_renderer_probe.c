@@ -391,6 +391,51 @@ static void check_mip_chains(FILE *report)
     }
 }
 
+static void check_flat_effects(FILE *report)
+{
+    Raster r = {.width=64,.height=64,.depth=32,.stride=256};
+    r.originalPixels = memalign(64, r.stride * r.height);
+    if (!r.originalPixels) { fputs("flat allocation failed\n", report); return; }
+    memset(r.originalPixels, 255, r.stride * r.height);
+    swizzle_raster(&r);
+    if (!swizzle_head(r.originalPixels)) { free(r.originalPixels); fputs("flat swizzle failed\n", report); return; }
+    start_picture();
+    render_state[1] = (int)&r;
+    render_state[RS_ZTEST] = render_state[RS_ZWRITE] = 0;
+    pixel_mask = 0x00ffffff;
+    sky_state[2] = BLEND_NORMAL;
+    sky_state[3] = 0x31001;
+    int prims = 0;
+    for (int a = 0; a < 256; a++) {
+        Vertex2D v[4];
+        for (int k = 0; k < 4; k++) {
+            v[k] = (Vertex2D){.x=((a%32)*12+(k&1)*8)/target_sx,
+                .y=((a/32)*14+(k>>1)*10)/target_sy,.z=32000,.u=(k&1),.v=(k>>1),
+                .r=255,.g=255,.b=255,.a=a};
+        }
+        unsigned *first = gu_list->current;
+        draw(4,v,NULL,4);
+        /* The list also carries inline vertices. Their x, y, z, UV and
+           all-white RGB are chosen so none carries a PRIM opcode. */
+        for (unsigned *word=first; word<gu_list->current; word++) {
+            if (*word >> 24 == 0x04 && (*word & 0xffff) == 4)
+                prims++;
+        }
+    }
+    finish_picture();
+    unsigned wrong = 0;
+    for (int a = 0; a < 256; a++) {
+        unsigned expected = ((unsigned)a << 24) | 0x204040;
+        for (int y = 2; y < 8; y++)
+            for (int x = 2; x < 6; x++)
+                wrong += pixels[(a/32)*14+y][(a%32)*12+x] != expected;
+    }
+    fprintf(report, "flat-mask samples 6144 wrong %u prims %d\n", wrong, prims);
+    pixel_mask = 0;
+    render_state[1] = (int)&rasters[0];
+    free(r.originalPixels - SWIZZLE_HEAD);
+}
+
 static void measure_submission(FILE *report)
 {
     enum { SAMPLES = 9, LISTS = 12, DRAWS = 120 };
@@ -466,6 +511,7 @@ int main(void)
     fclose(raw);
     check_mask_order(report);
     check_mip_chains(report);
+    check_flat_effects(report);
     measure_submission(report);
     measure_call_key(report);
     fputs("done\n", report);
