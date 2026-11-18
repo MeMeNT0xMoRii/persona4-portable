@@ -25,7 +25,11 @@ static char data_path[P4_PATH_MAX], strings_path[P4_PATH_MAX], log_path[P4_PATH_
 #define LOG_FILE "p4_hwdbg.log"
 #else
 #define DATA_FILE "p4data.bin"
+#ifdef P4_FRAME_TIMING
+#define LOG_FILE "p4-timing.log"
+#else
 #define LOG_FILE "p4.log"
+#endif
 #endif
 #define MAX_MISSING 512
 #define P4_STR2(x) #x
@@ -431,6 +435,9 @@ int main(int argc, char **argv)
     p4_log(P4_BUILD_ID ": HOME exit callback ready\n");
 #ifdef P4_GE_DUMP
     p4_log("v0.27-dev GE dump diagnostic: serial renderer\n");
+#endif
+#ifdef P4_FRAME_TIMING
+    p4_log("v0.27 XMB frame timing: pipelined renderer, times in us\n");
 #endif
     p4_log("game directory %s\n", p4_game_dir);
 #ifdef P4_HW_PROFILE

@@ -29,8 +29,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=ROOT / "build" / "psplink_diag")
     parser.add_argument("--release", action="store_true", help="Build an XMB release without hardware profiling")
-    parser.add_argument("--ge-dump", action="store_true", help="Build a serial GE-frame capture diagnostic for PPSSPP replay")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--frame-timing", action="store_true", help="Build a light XMB pipeline profiler with p4-timing.log")
+    modes.add_argument("--ge-dump", action="store_true", help="Build a serial GE-frame capture diagnostic for PPSSPP replay")
     args = parser.parse_args()
+    if args.frame_timing and not args.release:
+        parser.error("--frame-timing needs --release for the XMB runtime layout")
     sdkroot = Path(os.environ["PSPDEV"])
     binpath, sdk = sdkroot / "bin", sdkroot / "psp" / "sdk"
     base = ROOT / "build" / "psp"
@@ -58,6 +62,8 @@ def main():
         flags.append("-DP4_HW_PROFILE=1")
     if args.ge_dump:
         flags.append("-DP4_GE_DUMP=1")
+    if args.frame_timing:
+        flags.append("-DP4_FRAME_TIMING=1")
     source_hashes = {}
     for name in PORT:
         source_path = ROOT / "port" / f"{name}.c"
@@ -113,6 +119,8 @@ def main():
     title = (build_id or TITLE) if args.release else f"{TITLE} HW Debug b{build_number}"
     if args.ge_dump:
         title = f"{TITLE} GE Dump"
+    if args.frame_timing:
+        title = f"{title} Timing"
     pack_eboot(ROOT, out, binpath, run, out / "p4.prx", title=title)
     print(run(binpath / "psp-size.exe", elf).strip())
     destination.mkdir(parents=True, exist_ok=True)
@@ -123,7 +131,7 @@ def main():
     for name in (*ARTWORK, "tools/psp_xmb.py"):
         source_hashes[name] = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
     manifest = {"build": build_number, "build_id": build_id,
-                "release": args.release and not args.ge_dump, "ge_dump": args.ge_dump,
+                "release": args.release and not (args.ge_dump or args.frame_timing), "frame_timing": args.frame_timing, "ge_dump": args.ge_dump,
                 "source_sha256": source_hashes,
                 "object_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in original_objects}, "artifact_sha256": {
         name: hashlib.sha256((destination / name).read_bytes()).hexdigest()

@@ -542,6 +542,9 @@ extern int ge_list_executed[];
    thread in GELISTSYNC for good in PPSSPP). */
 static unsigned ge_queued;
 static volatile unsigned ge_finished;
+#ifdef P4_FRAME_TIMING
+#include "frame_timing.h"
+#endif
 /* b120 Heaven: p4flip polling every 200 us took 12% of the CPU (thinfo RunClocks: 2.56 s of 21 s) and preempted
    user_main ~3500 times a second. Now it sleeps on an event flag: bit 1 is set by the GE finish callback and by a
    frame handed over, bit 2 by a frame shown. The timeouts keep the old behaviour if a set is ever lost. */
@@ -561,6 +564,9 @@ static void flip_signal(unsigned bits)
 static void on_ge_finish(int arg)
 {
     (void)arg;
+#ifdef P4_FRAME_TIMING
+    timing_finish_us = sceKernelGetSystemTimeLow();
+#endif
     ge_finished++;
     flip_signal(FLIP_WORK);
 }
@@ -1160,6 +1166,9 @@ static void swizzle_raster(Raster *r)
     *head = (SwizzleHead){ SWIZZLE_MAGIC, (unsigned)pixels ^ SWIZZLE_MAGIC, wbytes, rows, {0}, 0, levels };
     raster_used_entries(r, head->used); /* the levels' texels are a subset of level 0's: same entries, alpha */
     head->alpha_min = raster_alpha_min(r, head->used, &head->alpha_max);
+#ifdef P4_FRAME_TIMING
+    timing_writeback += SWIZZLE_HEAD + total;
+#endif
     sceKernelDcacheWritebackRange(base, SWIZZLE_HEAD + total);
     free(r->originalPixels);
     r->originalPixels = pixels;
@@ -1470,6 +1479,12 @@ int func_003f79b0(void *raster, void *device, int flags)
     if (present_end)
         cpu_us += before_sync - present_end;
 #endif
+#ifdef P4_FRAME_TIMING
+    unsigned timing_enter = sceKernelGetSystemTimeLow();
+    unsigned timing_seq = ge_queued;
+    int timing_pending = (int)(timing_seq - ge_finished) > 0;
+    unsigned timing_bytes = in_frame ? (unsigned)(gu_list->current - gu_list->start) * 4 : 0;
+#endif
     watch_device_table(frames);
     if (p4_exp_ge_time)
         ge_time_frames++;
@@ -1544,6 +1559,11 @@ int func_003f79b0(void *raster, void *device, int flags)
             report_fusion_visual(fusion_visual, draw_buffer);
     }
     prof_end(PROF_SYNC);
+#ifdef P4_FRAME_TIMING
+    unsigned timing_synced = sceKernelGetSystemTimeLow();
+    unsigned timing_tail = pipe ? timing_ge_tail(timing_enter, timing_synced - timing_enter, timing_pending,
+        (int)(ge_finished - timing_seq) >= 0, timing_finish_us) : 0;
+#endif
 #ifdef P4_HW_PROFILE
     unsigned after_sync = sceKernelGetSystemTimeLow();
     ge_us += after_sync - before_sync;
@@ -1639,6 +1659,9 @@ int func_003f79b0(void *raster, void *device, int flags)
         ge_us = vblank_us = 0;
     }
     present_end = after_present;
+#endif
+#ifdef P4_FRAME_TIMING
+    timing_record(frames, timing_enter, timing_synced, sceKernelGetSystemTimeLow(), timing_tail, timing_bytes, pipe);
 #endif
     watch();
     if (!(++frames & 255)) {
@@ -2269,6 +2292,9 @@ int func_003fd230(void *out, Raster *r)
         for (int i = r->width * r->height; i > 0; i--, p += 4)
             *p = *p >= 0x80 ? 0xff : *p * 2;
     }
+#ifdef P4_FRAME_TIMING
+    timing_writeback += r->stride * r->height;
+#endif
     sceKernelDcacheWritebackRange(r->originalPixels, r->stride * r->height);
     r->cpPixels = 0;
     return 1;
@@ -2307,6 +2333,9 @@ int func_003fd520(void *out, Raster *r)
         unsigned a = entry[i] >> 24;
         entry[i] = (entry[i] & 0xffffff) | (a >= 0x80 ? 0xffu : a * 2) << 24;
     }
+#ifdef P4_FRAME_TIMING
+    timing_writeback += 4 << r->depth;
+#endif
     sceKernelDcacheWritebackRange(r->palette, 4 << r->depth);
     SwizzleHead *head = (SwizzleHead *)swizzle_head(r->originalPixels);
     if (head)
@@ -2473,6 +2502,9 @@ static float texture_w, texture_h;
 
 static void capture_feedback(void)
 {
+#ifdef P4_FRAME_TIMING
+    timing_copy_bytes += 512u * 512 * 4;
+#endif
     gu_dirty(); /* raw sceGu below: the mesh state cache no longer holds */
     sceGuCopyImage(GU_PSM_8888, 0, 0, SCREEN_W, SCREEN_H, STRIDE,
                    (void *)((unsigned)draw_buffer | 0x04000000), 0, 0, 512, feedback_pixels);
@@ -2506,6 +2538,9 @@ int p4_feedback_half = 1;
 
 static void capture_feedback_vram(void)
 {
+#ifdef P4_FRAME_TIMING
+    timing_copy_bytes += (SCREEN_W + 1u) * (SCREEN_H + 1u) * 4;
+#endif
     gu_dirty(); /* raw sceGu below: the mesh state cache no longer holds */
     void *dst = (void *)(0x04000000 + HALF_VRAM), *src = (void *)((unsigned)draw_buffer | 0x04000000);
     sceGuCopyImage(GU_PSM_8888, 0, 0, SCREEN_W, SCREEN_H, STRIDE, src, 0, 0, STRIDE, dst);
@@ -11231,12 +11266,18 @@ int p4_video_renderer_begin(void)
     cache_bytes = 0;
     if (skin_cache)
         for (int i = 0; i < SKIN_GEOMETRIES; i++) skin_free(&skin_cache[i]);
+#ifdef P4_FRAME_TIMING
+    timing_movie(0, sceKernelGetSystemTimeLow());
+#endif
     p4_log("video renderer idle, released %u bytes of geometry caches\n", released);
     return 0;
 }
 
 void p4_video_renderer_end(void)
 {
+#ifdef P4_FRAME_TIMING
+    timing_movie(1, sceKernelGetSystemTimeLow());
+#endif
     /* Movies present directly from both GE framebuffer banks. Resume in the
        bank the display is not reading, regardless of the final movie parity. */
     void *front;
