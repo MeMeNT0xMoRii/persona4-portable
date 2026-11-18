@@ -2,7 +2,7 @@
 param(
     [ValidateSet('OpenGL','Software')][string]$Renderer = 'OpenGL',
     [string]$Route,
-    [ValidateSet('P4','P4-perf03','P4-perf04','P4-perf04-timing','P4-perf05','P4-perf05-timing')][string]$GameFolder = 'P4',
+    [ValidateSet('P4','P4-perf03','P4-perf04','P4-perf04-timing','P4-perf05','P4-perf05-timing','P4-perf05-manuell')][string]$GameFolder = 'P4',
     [ValidateRange(5,900)][int]$TimeoutSeconds = 120,
     [Alias("CaptureJunes")][switch]$CaptureScene,
     [string]$SceneMarker = "f009_004_cart filter mode",

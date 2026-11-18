@@ -62,6 +62,8 @@ def main():
              f"-I{sdk / 'include'}", f"-I{ROOT / 'port'}"]
     if not args.release:
         flags.append("-DP4_HW_PROFILE=1")
+    else:
+        flags.append("-DP4_VERIFY_RUNTIME=1")
     if args.ge_dump:
         flags.append("-DP4_GE_DUMP=1")
     if args.frame_timing:
@@ -101,11 +103,30 @@ def main():
                   "FldResource_QueueDrawCallbacks", "FldResource_QueueDrawCallbacksPrimary",
                   "FldResource_QueueDrawCallbacksSecondary", "PrimAllocQueueNode", "PrimAppendNode",
                   "func_003d5bc0", "func_003d5e40", "func_003d5e90", "func_003d5840", "func_003e9680"]
-    run(binpath / "psp-gcc.exe", "-G0", f"-L{sdk / 'lib'}", "-Wl,-zmax-page-size=128",
+    digest_source = out / "runtime-digests.S"
+    digest_object = out / "runtime-digests.o"
+
+    def assemble_digests(payload):
+        digest_source.write_text(".section .rodata\n.balign 4\n.global p4_runtime_digests\n"
+                                 "p4_runtime_digests:\n.byte " + ",".join(map(str, payload)) + "\n")
+        run(binpath / "psp-gcc.exe", "-G0", "-c", digest_source, "-o", digest_object)
+
+    if args.release:
+        assemble_digests(bytes(40))
+        port.append(digest_object)
+    link = [binpath / "psp-gcc.exe", "-G0", f"-L{sdk / 'lib'}", "-Wl,-zmax-page-size=128",
         f"-specs={sdk / 'lib' / 'prxspecs'}", f"-Wl,-q,-T{(stage / 'linkfile.prx').as_posix()}",
         "-Wl,--allow-multiple-definition", *[f"-Wl,--wrap={name}" for name in wraps],
         *port, sdk / "lib" / "prxexports.o",
-        stage / "stubs.o", stage / "reasm.o", f"@{rsp.as_posix()}", stage / "symbols.ld", *LIB_FLAGS, "-o", elf)
+        stage / "stubs.o", stage / "reasm.o", f"@{rsp.as_posix()}", stage / "symbols.ld", *LIB_FLAGS, "-o", elf]
+    run(*link)
+    if args.release:
+        # Retail data contains addresses from this link. Reserve the digest space
+        # first, then fill it and verify that the final link produces identical data.
+        first_data, first_offsets = build(elf=elf, load_base=LOAD_BASE)
+        first_strings = struct.pack(f"<{len(first_offsets)}I", *first_offsets)
+        assemble_digests(hashlib.sha1(first_data).digest() + hashlib.sha1(first_strings).digest())
+        run(*link)
     run(binpath / "psp-fixup-imports.exe", elf)
     print(f"Validated {check_import_ranges(elf)} PSP import libraries", flush=True)
     nm = run(binpath / "psp-nm.exe", elf)
@@ -114,6 +135,8 @@ def main():
     assert image + LOAD_BASE == PSP_IMAGE, f"data image moved: {image:#x}"
     run(binpath / "psp-prxgen.exe", elf, out / "p4.prx")
     data, strings = build(elf=elf, load_base=LOAD_BASE)
+    if args.release and (data != first_data or list(strings) != list(first_offsets)):
+        raise RuntimeError("Embedding the runtime digests changed the relocated data")
     data_name = "p4data.bin" if args.release else "p4data.hwdbg.bin"
     (out / data_name).write_bytes(data)
     (out / "p4str.bin").write_bytes(struct.pack(f"<{len(strings)}I", *strings))
