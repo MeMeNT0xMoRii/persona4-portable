@@ -1,0 +1,48 @@
+# v0.27 · Fehler und Fortschritt
+
+Ausgangspunkt ist perf01 nach dem [PSP-Go-Test](v027_perf01_hardware.md). Für jeden historischen Eintrag bleiben Originalbeobachtung, Szene, Medienverweise und damaliger Build im [Playtest-Katalog](playtest.md) bzw. im [home26-Handoff](https://github.com/MeMeNT0xMoRii/persona4-portable/blob/538946094b63345d0fac75c44845f3aa3cb35004/docs/handoff/home26-2026-11-17/KNOWN_ISSUES.md) nachlesbar. Gleiche Nummern mit verschiedenen Präfixen bezeichnen verschiedene Einträge. Die Statusangaben gelten für den jeweils genannten Teilfall.
+
+## Aktuelle Gerätebefunde und Untersuchungen
+
+| ID oder Beobachtung | Stand und nächster Vergleich |
+| --- | --- |
+| P4P-001 / P4-053 · Lichtkugeln | Auf Go weiter bei Zio und Fusion, historisch bei weiteren Skills, All-Out und in Feldszenen. PTank-Z-Write und exakte Quad-Masken sind technisch geprüft. Für jeden Effekt den ersten auffälligen Writer und den späteren Blend-/Feedback-Leser bestimmen. |
+| P4P-002 / P4-005 / P4-014 · Vordergrund | Schlafzimmer und Konishi-Laden mit fester Kamera. Junes-Einkaufswagen bleiben auf perf01 fehlerhaft. Je Objekt Mesh, Tiefenwerte, Clip und Reihenfolge bestimmen. |
+| P4P-003 / P4-058 · Apsaras | Auf Go weiterhin alternierend hell/dunkel. home25-Log zeigt wechselndes Feedback/Additiv bei gleicher Meshzahl. Bankrichtung wechselt je Lauf. Slot 10, benachbarte abgeschlossene Frames vergleichen. Igor-/Tischschatten separat. |
+| P4P-004 / P4-022 · Nebel | Schwarze Traumstreifen und weiße Bodenlinien in Yukikos Castle sind getrennte Go-Befunde. Distanznebel ist seit home19 technisch wiederhergestellt. Feste Kamera, Clip-, Tiefen- und Screen-Copy-Grenzen prüfen. |
+| P4P-005 / P4-001 · CRIWARE | Darstellung historisch wiederhergestellt, Zentrierung auf home26 und perf01 auf Go bestätigt. Kaltstart als Kontrolle. |
+| P4P-006 / P4P-007 · Wetter / Rush | Icons ragen aus den TV-Kacheln, oberer Rush-Header sitzt zu hoch. Beide auf Go offen. Je Sprite Anker, Scissor und Animationsphase erfassen. |
+| P4P-008 / P4P-009 / P4P-010 · Tageswechsel, Fusion, Social Link | Tageswechselfarben weiter zum Original vergleichen. Dunkle Blöcke um beabsichtigte Fusionslisten-Striche offen. Social-Link-Porträts und Velvet-Room-UI eventuell zu breit. Vergleich je Element gegen natives PS2-4:3 und separat den US-16:9-Patch. |
+| P4P-011 / P4P-012 · Intro/Titel | Langsamer Übergang und einfarbiger Return-to-Title-Blitz auf Go. Skip, kompletter Film, TV-Eintritt und Schwierigkeitswahl separat. Der home26-Bankwechsel ist im isolierten Test korrekt. |
+| P4P-013 / P4P-014 · Teddie-Audio / Margaret | Stimmen-/Animationszuordnung benötigt zeitgleichen PS2-Vergleich. Margaret erscheint auf perf01 weiterhin matt-bläulich (auch P4-041). |
+| P4P-015 / P4P-016 · Absturz / HOME | Schulweg nach Yosukes Mülleimerszene und sporadisches Hängen beim Exit. Perf01 bestand den getesteten Exit. Beim Auftreten Log vor Neustart sichern. |
+| Teddies Dungeon-Porträt | Zweimal im selben Lauf fehlend, nach komplettem Neustart sichtbar. Slot 10, Eintritt/Wiedereintritt mit kaltem Start vergleichen. UI-Draw, Ressource, Raster und CLUT unterscheiden. |
+| P4-026 · All-Out-Porträts | Auf perf01 bei zwei und vier Figuren beschnitten, drei Figuren sind Kontrollfall. Rushing-Modelle und Schlusslicht separat prüfen. |
+| Schulkorridor · Ferntextur | Go zeigt unscharfen Boden, der beim Annähern schärfer wird. Erst Material, UV und Mip-Stufe in gleicher Kamera identifizieren. P4-054 betrifft frühere schwarze Polygone. |
+| P4-017 · Laufzeit | Junes West, Shopping North/South, TV-Hub, Schulversammlung, Korridor, Titel, Kampfeinstieg und All-Out getrennt messen. Overlay-Beobachtungen und ältere Gerätewerte stehen in [perf01](v027_perf01_hardware.md) und [Performancehistorie](perf_status.md). |
+
+## Vollständiger historischer Index P4-001 bis P4-058
+
+„Gerät“ bezeichnet die damalige Bestätigung im angegebenen Testumfang. „Technik“ steht für implementierte, per Code, Host oder Emulator geprüfte Teilkorrekturen. Alle offenen Teilfälle behalten ihre [Spielstände und Routen](replay_saves.md).
+
+| IDs | Gegenstand und Evidenz |
+| --- | --- |
+| P4-001, P4-003, P4-019, P4-049 | Gerät: Logo, normaler HOME-Exit, XMB-Pfad und Ziffern der Save-Dials. Perf01 bestätigt auch Speichern/Laden. Kritische Exit-Situationen siehe P4-033. |
+| P4-002, P4-005, P4-007, P4-014 | Offen: Igor-Kartenblitze, Wandverdeckung, verschachtelte TV-Übergänge, Konishi-Kameracut. TV-Eintritt teilweise in PPSSPP geprüft. |
+| P4-004, P4-052 | Gerät home17: Füllung des Tagesdatums und Social-Stats-Pentagon. Farbbeobachtung P4P-008 bleibt eigenständig. |
+| P4-006, P4-008, P4-009, P4-018 | Technik: Effektpositionsschreiber. Gerätehinweise zu Regen, offene Szenen für Fragezeichen/Schirme. Schulversammlung mit defektem Protagonisten sporadisch. |
+| P4-010, P4-013, P4-016 | Gerät home5 für Menü-Grünstich und getestete Textabstände. Zusätzliche Textfälle und Abstand vor Dreieck-Tutorial prüfen. |
+| P4-011, P4-012, P4-015 | Gegner-Erscheinen/Auflösen und Level-up-Balken mit PPSSPP-Teilbelegen, Boss-Replay offen. Garu-Cut-in zu tief laut Go-Foto, Sollphase offen. |
+| P4-017, P4-020, P4-021, P4-025 | Frametime-Einbrüche, Dreieck bei Nanako. Torwand und helle Seitenflächen am Castle auf älteren Geräten verbessert, Kamerareplays behalten. |
+| P4-022, P4-023, P4-024, P4-030 | Technik für Distanznebel. Gerät home6 für fliegenden/stehenden Shadow-Körper bzw. Maske. Fragmentierte Truhe weiter offen, Belohnung funktionierte im Emulator. |
+| P4-026, P4-027, P4-028 | All-Out nach Teilnehmerzahl und Phase, Chies Erwachenslicht, Fool-Karte über Teddie. Effekte und Layout offen. |
+| P4-029, P4-033, P4-055 | Sporadisch: Daytime-Rückkehr nach Chie, HOME bei Shadow Chie, Castle-Eintritt. Erfolgreiche Wiederholungen und Loader-/Callback-Teiltests vorhanden. |
+| P4-031, P4-032 | Köpfe im Bosskampf zeitweise fehlend. Shuffle-Time-Flächen/Slime in home16 PPSSPP korrekt, Geräteprüfung des Reveals offen. |
+| P4-034, P4-035, P4-036, P4-037 | Offen: geskriptete Posen/Bewegungen, Dojima nach Abfahrt, Yukikos Kopf, harte Lichtkante im Posterzimmer. |
+| P4-038, P4-039, P4-040, P4-041, P4-042 | Offen: flache Tutorial-Shadows, Shadow-Yosuke-Modell, Schlafzimmervorhang, Margarets Farbe, Magician-Aufhellung. |
+| P4-043, P4-044, P4-045, P4-046 | South-Streifen nach home13 auf Go verschwunden, North-Geometrie offen. Dungeon-Shadow-Sound in home9 gehört, beide Cues separat. Shuffle-Kartenhöhe und roter Teppich offen. |
+| P4-047, P4-048, P4-050 | Battle-Kommando-Outline im getesteten Skill bestätigt, weitere Labelphasen prüfen. Fool-Aufhellung offen. Equip-Koordinaten technisch korrigiert, Scrollen und PS2-Framing offen. |
+| P4-051, P4-053, P4-054 | Town-Map-Atlas auf home15 Go bestätigt. Skill-Bursts offen. Schwarze Korridorkeile auf home13 Go nicht mehr beobachtet. |
+| P4-056, P4-057, P4-058 | Systemmenü-Farbband auch auf PS2 vorhanden, Ausprägung offen. Apsaras-Erwerb auf home18 Go nach korrigierten unaligned Loads gelungen. Späte Fusion/NG+ und visuelles Flackern separat. |
+
+Weitere Referenzen: Statische TVs in Margarets Bossarena, ältere Kopf- und Cursor-Fixes in den [visuellen Befunden](visual_issues.md). Langzeithänger bei SAS/AVC mit Ton und Firmware-Exit sind getrennte Fälle, siehe [Medien-Handoff](audio_video_hang.md). Die [Phase-1-Matrix](v027_phase1.md) und der [perf01-Vergleich](v027_perf01.md) führen die bisherigen Integrationen, synthetischen Messergebnisse und zurückgestellten Upstream-Funktionen.
