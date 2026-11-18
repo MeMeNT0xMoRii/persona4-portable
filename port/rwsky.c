@@ -1103,7 +1103,9 @@ static int mip_level_size(const Raster *r, int level, int *wbytes, int *rows)
 }
 static int mip_levels(const Raster *r)
 {
-    if (!p4_mip_build || r->width < p4_mip_min || r->height < p4_mip_min || (r->width & (r->width - 1)) || (r->height & (r->height - 1)))
+    /* The raster format stores the upper byte of the RenderWare format.
+       Only a mipmapped source requests minification through smaller images. */
+    if (!(r->cFormat & 0x80) || !p4_mip_build || r->width < p4_mip_min || r->height < p4_mip_min || (r->width & (r->width - 1)) || (r->height & (r->height - 1)))
         return 1;
     int levels = 1;
     while (levels < MAX_MIPS && (r->width >> levels) * r->depth / 8 >= 16 && (r->height >> levels) >= 8)

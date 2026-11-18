@@ -2,7 +2,7 @@
 param(
     [ValidateSet('OpenGL','Software')][string]$Renderer = 'OpenGL',
     [string]$Route,
-    [ValidateSet('P4','P4-perf03','P4-perf04','P4-perf04-timing')][string]$GameFolder = 'P4',
+    [ValidateSet('P4','P4-perf03','P4-perf04','P4-perf04-timing','P4-perf05','P4-perf05-timing')][string]$GameFolder = 'P4',
     [ValidateRange(5,900)][int]$TimeoutSeconds = 120,
     [Alias("CaptureJunes")][switch]$CaptureScene,
     [string]$SceneMarker = "f009_004_cart filter mode",
@@ -21,7 +21,7 @@ $game = Join-Path $psp (Join-Path "GAME\CAT_Ports" $GameFolder)
 if (Get-Process PPSSPPWindows64 -ErrorAction SilentlyContinue | Where-Object Path -EQ $exe) {
     throw 'Close the isolated PPSSPP window before starting another run.'
 }
-$timingRun = $GameFolder -eq 'P4-perf04-timing'
+$timingRun = $GameFolder.EndsWith('-timing')
 $logName = if ($timingRun) { 'p4-timing.log' } else { 'p4.log' }
 $inputs = @()
 if ($Route) {
