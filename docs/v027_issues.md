@@ -1,5 +1,19 @@
 # v0.27 · Fehler und Fortschritt
 
+## perf06-Recovery
+
+Auf echter PSP Go bestätigte perf05 die Rush-Position und die TV-Wetterkarten. Gleichzeitig fiel die Framerate in zahlreichen Feldern, besonders am Samegawa Riverbed (etwa 5,4 FPS). Das Castle-Innere war deutlich weniger betroffen. perf06 setzt die globale Mip-Erzeugung auf den perf04-Stand zurück. GE-Dumps belegen die Wirkung in Junes und am Riverbed. Die tatsächliche Hardware-Framerate und die Distanzschärfe im Korridor sind erneut abzunehmen.
+
+Margaret steht im Kontrolllauf nach einer Fusion und sitzt im perf06-Hauptmenü bei identischer Route. Der Rückweg stellt gezielt die beim Eintritt verwendete Sitzanimation wieder her. Die PSP-Go-Abnahme steht aus. Die weiterhin stabilen Fusionseffekte auf Go beziehen sich auf die früher getesteten Builds.
+
+Die orangefarbenen Boden- und Randflächen vor Dojima bleiben offen. Der orangefarbene Himmel am Samegawa wird vorerst als mögliche Originalgestaltung geführt. Eine zuletzt unauffällige Castle-Fernwand genügt nicht zum Schließen des sporadischen Fehlers. Dünne Bodenlinien, Traumnebelstreifen, Zio-Lichtkugeln, Teddies Porträt, Junes-Wagen, Shopping-Flackern, Schatten, Intro-/Titelblitz, HOME sowie offene Porträt- und All-Out-Probleme bleiben in der Geräteabnahme. [Messungen und Replays](v027_perf06.md)
+
+## Stand nach dem perf04-Gerätetest und perf05
+
+Das Fusionsmodell blieb laut mehreren perf04-Läufen auf der Go stabil. Die zuvor beobachteten Fusions-Lichtkugeln traten dabei nicht wieder auf. Zio mit Izanagi und Apsaras bleibt ein bestätigter eigener Fall. Für Margaret nach der Fusion und die weiße Fernwand im Castle fehlt der Nachweis einer perf04-Regression. Die dünnen Bodenlinien werden separat geführt.
+
+perf05 korrigiert die Tiefenmasken der TV-Wettersymbole und respektiert das Mipmap-Formatbit der Quelltexturen. Wetterkarten sind im isoliert aufgerufenen Spielrenderer visuell überprüft. Im Klassenzimmer wurden 411.264 Byte zusätzliche Mip-Daten eingespart. Rush/Stop sitzt nach Korrektur einer falsch gebundenen US-Datenadresse im PPSSPP-Kampf sichtbar unten links. Die weiße Fernwand ließ sich aus Slot 10 in Yukikos Castle reproduzieren. Der Wandausschnitt blieb beim diagnostischen Abschalten des GE-Nebels pixelgleich, während sich der benachbarte Gangabschnitt sichtbar änderte. Die Geräteabnahme, Shopping-Flackern, Teddie, Return to Title und HOME bleiben offen. Messbedingungen, Szenen und Paketprüfung stehen im [perf05-Bericht](v027_perf05.md).
+
 Ausgangspunkt ist perf01 nach dem [PSP-Go-Test](v027_perf01_hardware.md). Für jeden historischen Eintrag bleiben Originalbeobachtung, Szene, Medienverweise und damaliger Build im [Playtest-Katalog](playtest.md) bzw. im [home26-Handoff](https://github.com/MeMeNT0xMoRii/persona4-portable/blob/538946094b63345d0fac75c44845f3aa3cb35004/docs/handoff/home26-2026-11-17/KNOWN_ISSUES.md) nachlesbar. Gleiche Nummern mit verschiedenen Präfixen bezeichnen verschiedene Einträge. Die Statusangaben gelten für den jeweils genannten Teilfall.
 
 ## Entwicklung seit dem perf01-Gerätetest
