@@ -2,6 +2,19 @@
 
 Ausgangspunkt ist perf01 nach dem [PSP-Go-Test](v027_perf01_hardware.md). Für jeden historischen Eintrag bleiben Originalbeobachtung, Szene, Medienverweise und damaliger Build im [Playtest-Katalog](playtest.md) bzw. im [home26-Handoff](https://github.com/MeMeNT0xMoRii/persona4-portable/blob/538946094b63345d0fac75c44845f3aa3cb35004/docs/handoff/home26-2026-11-17/KNOWN_ISSUES.md) nachlesbar. Gleiche Nummern mit verschiedenen Präfixen bezeichnen verschiedene Einträge. Die Statusangaben gelten für den jeweils genannten Teilfall.
 
+## Entwicklung seit dem perf01-Gerätetest
+
+Der [perf02-Bericht](v027_perf02.md) führt Pixelvergleiche, Messbedingungen, Artefakthashes und die Abnahmeroute. Quellstand des Testbuilds ist `410fb09`. Für perf02 liegt noch kein Gerätetest vor.
+
+| Bereich | Befund, Status und nächster Nachweis |
+| --- | --- |
+| P4-017 und Ladezeiten | **Technisch verbessert.** Die optionale Skin-Batch-Schätzung blockiert standardmäßig keinen Erstaufbau mehr (`609830d`). Native Texturblöcke werden zeilenweise kopiert (`5e1c3b9`), Mip-Deskriptoren gesammelt gebunden (`08eeac5`). CPU- und Befehlsersparnis sind synthetisch gemessen. Der Engpass in Junes, Titelframerate und Kampfspitzen sind auf Hardware offen. |
+| P4P-001, P4P-003, P4-053, P4-058 | **Zwei isolierte Maskenfälle technisch korrigiert.** Der spätere überlappende Writer besitzt sein Pixel (`dfe256d`). Gleichmäßiges Alpha auf opaker nativer Textur wird in einem Durchgang geschrieben (`b3b83a8`). Pixelvergleiche in beiden Emulator-Backends bestanden. Lichtkugeln, Apsaras-Flackern, Igor-Schatten und Margarets Farbe bleiben als eigenständige sichtbare Probleme offen. |
+| Teddies Porträt, P4P-015/016 und P4-029/033/055 | **Allokationsfehler technisch behoben, Szenenursache offen.** Fehler beim Erstellen indizierter Texturen und beim CPU-Lock halten das Raster konsistent (`8612fa1`), geprüft durch erzwungenen Speichermangel. Zwei warme Eintritte gegen Kaltstart stellen. Sporadische Abstürze und HOME-Hänger behalten ihren bisherigen Status. |
+| P4-026, P4P-006/007/009/010, Schulkorridor | **Offen.** PS2-Patch und vorhandene Standbilder wurden geprüft. Eine phasengleiche Referenz für die beschnittenen Porträts und das Bodenmaterial fehlt. Der optionale Im2D-Trace (`0f09375`, Test `7717589`) erfasst die ersten 64 Eingaben je angefordertem Frame. Geometrie, Filter und UV-Korrekturen erst nach Zuordnung des Draws bewerten. |
+| P4P-011/012, P4P-002/004 | **Offen.** `3027f1b` macht Filmgrenze, Pacing und die langsamsten Intervalle im separaten Pipeline-Timingbuild sichtbar. Titelblitz, Vordergrund/Wagen sowie die beiden Linienbefunde bleiben für den Vergleich an derselben Kamera und Filmphase vorgemerkt. |
+| b339–b344 | **Teilweise integriert.** Statische Langzeitlisten, Offline-Skin-Packs, globale Cache-Freigabe, gröbere Alpha-Stufen, Cloud-Cache und weitere Qualitätsschalter sind mit Speicherbedarf und Messvoraussetzungen im [Kandidatenvergleich](v027_perf02.md#upstream-und-auswahl) zurückgestellt. |
+
 ## Aktuelle Gerätebefunde und Untersuchungen
 
 | ID oder Beobachtung | Stand und nächster Vergleich |
