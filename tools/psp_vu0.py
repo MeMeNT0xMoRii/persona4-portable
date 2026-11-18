@@ -122,6 +122,8 @@ class Block:
         parts = line.split(None, 1)
         op = parts[0]
         args = [a.strip() for a in parts[1].split(",")] if len(parts) > 1 else []
+        if op == ".word" and len(args) == 1 and int(args[0], 0) == 0x4A0203BD:
+            return self.line("vsqrt $Q, $vf2x")
         if op in ("nop", "vnop", "vwaitq"):
             return ""
         m = ARITH.match(op)
@@ -229,7 +231,7 @@ def translate(inner, parameters=()):
         block = Block(ops)
         body, decls, after = [], [], []
         lines = [raw.strip() for raw in re.split(r"[\n;]", template)]
-        lines = [line for line in lines if line and not line.startswith(".")]
+        lines = [line for line in lines if line and (not line.startswith(".") or line.split()[0] == ".word")]
         for n in incoming(lines):
             if n - 4 >= len(parameters):
                 raise Unknown("argument register without an argument")

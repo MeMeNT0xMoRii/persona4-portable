@@ -2,7 +2,7 @@
 param(
     [ValidateSet('OpenGL','Software')][string]$Renderer = 'OpenGL',
     [string]$Route,
-    [ValidateSet('P4','P4-perf03')][string]$GameFolder = 'P4',
+    [ValidateSet('P4','P4-perf03','P4-perf04','P4-perf04-timing')][string]$GameFolder = 'P4',
     [ValidateRange(5,900)][int]$TimeoutSeconds = 120,
     [Alias("CaptureJunes")][switch]$CaptureScene,
     [string]$SceneMarker = "f009_004_cart filter mode",
@@ -20,6 +20,8 @@ $game = Join-Path $psp (Join-Path "GAME\CAT_Ports" $GameFolder)
 if (Get-Process PPSSPPWindows64 -ErrorAction SilentlyContinue | Where-Object Path -EQ $exe) {
     throw 'Close the isolated PPSSPP window before starting another run.'
 }
+$timingRun = $GameFolder -eq 'P4-perf04-timing'
+$logName = if ($timingRun) { 'p4-timing.log' } else { 'p4.log' }
 $inputs = @()
 if ($Route) {
     $inputs = @(Get-Content -LiteralPath $Route)
@@ -31,7 +33,7 @@ if ($Route) {
 
 $run = Join-Path $LabRoot ('results\{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'), $Renderer)
 $null = New-Item -ItemType Directory -Path $run
-foreach ($name in 'p4.log','route.txt') {
+foreach ($name in $logName,'route.txt') {
     $path = Join-Path $game $name
     if (Test-Path -LiteralPath $path) {
         Move-Item -LiteralPath $path -Destination (Join-Path $run "previous-$name")
@@ -76,8 +78,8 @@ try {
         $found = $false
         while (!$proc.HasExited -and [DateTime]::UtcNow -lt $deadline) {
             Start-Sleep -Milliseconds 500
-            if ($CaptureScene -and (Test-Path -LiteralPath "$game\p4.log") -and
-                (Select-String -LiteralPath "$game\p4.log" -SimpleMatch $SceneMarker -Quiet)) {
+            if ($CaptureScene -and (Test-Path -LiteralPath "$game\$logName") -and
+                (Select-String -LiteralPath "$game\$logName" -SimpleMatch $SceneMarker -Quiet)) {
                 Start-Sleep -Seconds 4
                 $proc.Refresh()
                 $window = $proc.MainWindowHandle
@@ -99,13 +101,13 @@ try {
     }
 } finally {
     if (!$proc.HasExited) {
-        if (Test-Path -LiteralPath "$game\p4.log") { Copy-Item -LiteralPath "$game\p4.log" -Destination "$run\before-close.log" }
+        if (Test-Path -LiteralPath "$game\$logName") { Copy-Item -LiteralPath "$game\$logName" -Destination "$run\before-close.log" }
         $closed = $proc.CloseMainWindow() -and $proc.WaitForExit(15000)
         if (!$closed) { Write-Warning "Process $($proc.Id) did not close within 15 seconds." }
     }
 }
-if (Test-Path -LiteralPath "$game\p4.log") {
-    Copy-Item -LiteralPath "$game\p4.log" -Destination $run
+if (Test-Path -LiteralPath "$game\$logName") {
+    Copy-Item -LiteralPath "$game\$logName" -Destination $run
 }
 Get-LabCapture |
     Where-Object { $_.FullName -notin $captures } |

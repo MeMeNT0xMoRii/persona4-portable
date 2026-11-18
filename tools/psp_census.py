@@ -643,7 +643,6 @@ ASM_FIXES = {
         ("mtc1 $zero, $f0", "nop"),
         ("mfc1 %0, $f0", "or %0, $zero, $zero"),
         ("mfc1 $2, $f0", "or $2, $zero, $zero"),
-        (".word 0x4a0203bd", "vsqrt $Q, $vf2x"),
         ("mtc1 $2, $f0", "nop"),
         ("sw $2, 64($sp)", "sw $2, 0(%0)"),
         ("sw $2, 68($sp)", "sw $2, 4(%0)"),

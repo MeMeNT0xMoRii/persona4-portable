@@ -3447,6 +3447,16 @@ static int draw_body(int prim, const Vertex2D *vertices, const unsigned short *i
     }
     int alpha_writer = pixel_mask == 0x00ffffff && render_state[1] && (Raster *)render_state[1] != &display_raster;
     if (fusion_visual.sample) {
+#ifdef P4_FRAME_TIMING
+        if (fusion_visual.sample <= 2 && (alpha_writer || (Raster *)render_state[1] == &display_raster)) {
+            extern void p4_backtrace(void);
+            const Vertex2D *v = &vertices[indices ? indices[0] : 0];
+            p4_log("fusion draw f%u screen%d mask%x blend%x test%x n%d xy %d %d\n",
+                   fusion_visual.sample, (Raster *)render_state[1] == &display_raster, pixel_mask,
+                   sky_state[2], sky_state[3], count, (int)v->x, (int)v->y);
+            p4_backtrace();
+        }
+#endif
         fusion_visual.masks += alpha_writer;
         fusion_visual.additive += (sky_state[2] & 0xff) == BLEND_ADD || (sky_state[2] & 0xff) == 0x58;
     }

@@ -28,6 +28,8 @@ LOAD_BASE = 0x08804000  # main checks the loader used this base before touching 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=ROOT / "build" / "psplink_diag")
+    parser.add_argument("--object-dir", type=Path, default=ROOT / "build" / "obj",
+                        help="Prepared game objects matching the linker census in build/psp")
     parser.add_argument("--release", action="store_true", help="Build an XMB release without hardware profiling")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--frame-timing", action="store_true", help="Build a light XMB pipeline profiler with p4-timing.log")
@@ -47,7 +49,7 @@ def main():
     print(f"Staging network objects in {out}", flush=True)
     stage = out / "objects"
     stage.mkdir()
-    original_objects = [ROOT / "build" / "obj" / Path(line.strip().strip('"')).name
+    original_objects = [args.object_dir.resolve() / Path(line.strip().strip('"')).name
                         for line in (base / "objects.rsp").read_text().splitlines() if line.strip()]
     inputs = list(original_objects)
     inputs += [base / name for name in ("stubs.o", "reasm.o", "image.ld", "symbols.ld")]

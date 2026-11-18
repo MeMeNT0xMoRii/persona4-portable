@@ -17,7 +17,7 @@ PSP_HEAP_SIZE_KB(-1); /* the heap is claimed before main */
 PSP_HEAP_THRESHOLD_SIZE_KB(4096); /* left free: thread stacks */
 
 #define BUILD 249
-#define P4_BUILD_ID "Persona4-PORTABLE-v0.27-dev-perf03"
+#define P4_BUILD_ID "Persona4-PORTABLE-v0.27-dev-perf04"
 #define P4_IMAGE_SIZE 0x40B000 /* retail 0x52da00..0x938a00: data and bss */
 static char data_path[P4_PATH_MAX], strings_path[P4_PATH_MAX], log_path[P4_PATH_MAX];
 #ifdef P4_HW_PROFILE

@@ -9,6 +9,14 @@ from psp_vu0 import translate
 
 
 class QuadMemory(unittest.TestCase):
+    def test_encoded_square_root_updates_q_before_read(self):
+        encoded = translate(r'".word 0x4A0203BD\n" "cfc2.ni $2, $vi22\n"')
+        named = translate(r'"vsqrt $Q, $vf2x\n" "cfc2.ni $2, $vi22\n"')
+        self.assertIsNotNone(encoded)
+        self.assertEqual(encoded, named)
+        self.assertLess(encoded.index("p4_vsqrt"), encoded.index("p4_float_to_reg"))
+        self.assertIsNone(translate(r'".word 0xFFFFFFFF\n" "vwaitq\n"'))
+
     def test_quad_setter_keeps_assignment_in_return(self):
         from psp_census import void_quad_setters
 
