@@ -21,6 +21,10 @@ def _hide_child_windows():
     subprocess.Popen.__init__ = hidden
 
 
+if __name__ == '__main__':
+    import multiprocessing
+    multiprocessing.freeze_support()  # psp_strips' pool re-launches this executable
+
 # This must run before importing any embedded psp_* modules. Each build script
 # gets a fresh interpreter and imports the staged source tree, not frozen copies.
 if __name__ == '__main__' and sys.argv[1:2] == ['--build-worker']:
@@ -191,6 +195,7 @@ def prepare(iso, output, bundle=BUNDLE, workers=4, *, pspdev=None, build_cache=N
     iso, output, bundle = Path(iso).resolve(), Path(output).resolve(), Path(bundle).resolve()
     recipe = json.loads((bundle / 'prepare.json').read_text(encoding='utf-8'))
     verification = None
+    extras = {}  # optional built files beside the EBOOT (the strip pack): name -> (path, sha256)
     source_build = recipe.get('version') == 2 and recipe.get('mode') == 'source-build'
     if recipe.get('version') != 1 and not source_build:
         raise ValueError('Unsupported preparation package version.')
@@ -257,6 +262,7 @@ def prepare(iso, output, bundle=BUNDLE, workers=4, *, pspdev=None, build_cache=N
                           strings_sha256=hashes['p4str.bin'])
             eboot = built / 'EBOOT.PBP'
             data, strings = (built / 'p4data.bin').read_bytes(), (built / 'p4str.bin').read_bytes()
+            extras = {name: (built / name, hashes[name]) for name in ('p4strips.bin',) if name in hashes}
         identity = {'iso_sha256': iso_digest, 'eboot_sha256': recipe['eboot_sha256']}
         if source_build:
             identity['source_config_sha256'] = source_identity
@@ -275,9 +281,11 @@ def prepare(iso, output, bundle=BUNDLE, workers=4, *, pspdev=None, build_cache=N
             (destination / 'p4data.bin').write_bytes(data)
             (destination / 'p4str.bin').write_bytes(strings)
             shutil.copyfile(eboot, destination / 'EBOOT.PBP')
-            hashes = {name: sha256(destination / name) for name in ('EBOOT.PBP', 'p4data.bin', 'p4str.bin')}
+            for name, (path, _) in extras.items():
+                shutil.copyfile(path, destination / name)
+            hashes = {name: sha256(destination / name) for name in ('EBOOT.PBP', 'p4data.bin', 'p4str.bin', *extras)}
             for name, expected in (('EBOOT.PBP', recipe['eboot_sha256']), ('p4data.bin', recipe['data_sha256']),
-                                   ('p4str.bin', recipe['strings_sha256'])):
+                                   ('p4str.bin', recipe['strings_sha256']), *((n, d) for n, (_, d) in extras.items())):
                 if hashes[name] != expected:
                     raise ValueError('Launch file verification failed: ' + name)
             save_json(destination / 'build_manifest.json', dict(identity, build=recipe['build'], files=hashes,
@@ -324,7 +332,10 @@ def prepare(iso, output, bundle=BUNDLE, workers=4, *, pspdev=None, build_cache=N
         (destination / 'p4data.bin').write_bytes(data)
         (destination / 'p4str.bin').write_bytes(strings)
         shutil.copyfile(eboot, destination / 'EBOOT.PBP')
+        for name, (path, _) in extras.items():
+            shutil.copyfile(path, destination / name)
         files.update({'p4data.bin': recipe['data_sha256'], 'p4str.bin': recipe['strings_sha256'], 'EBOOT.PBP': recipe['eboot_sha256']})
+        files.update({name: digest for name, (_, digest) in extras.items()})
         for name, digest in files.items():
             if sha256(destination / name) != digest:
                 raise ValueError('Final verification failed: ' + name)

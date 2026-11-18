@@ -1,6 +1,6 @@
 # Changelog
 
-Builds b354-b388 (branch `perf/offline-mesh`, merged into `main` on 2026-11-18).
+Builds b354-b388 (branch `perf/offline-mesh`, merged into `main` on 2026-11-18), published as the b388 pre-release.
 Each entry lists what was tried and what it gave. "PSP" means a real PSP at 333 MHz
 with the profiler off. "PPSSPP" figures are emulated cycles: they show where the work is,
 not how long it takes on a device. The test scene is the Margaret dialogue
@@ -51,6 +51,10 @@ not how long it takes on a device. The test scene is the Margaret dialogue
   and the build stops early with a clear message when the longest workspace path plus 24 characters for
   compiler include joins would pass 250 (a deep custom cache folder). The freeze step reports its longest
   temporary path through the same check.
+- The utility builds the character strip pack (`p4strips.bin`) from the player's ISO and installs it next to the
+  EBOOT. Earlier packages never made it, so their EBOOT built strips on the PSP: 78.4 ms a frame against 67.6 ms
+  with the pack (b366 audit). The frozen executable's process pool hung until `freeze_support` was called and the
+  task function was passed by module name.
 - `pack-pbp` takes ICON0/PIC1 from a local, git-ignored `build/icons/` when present. No artwork is
   shipped; packaged builds without icons stay byte-identical to the reference.
 

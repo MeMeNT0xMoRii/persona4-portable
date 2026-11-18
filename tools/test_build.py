@@ -68,12 +68,12 @@ class SourceBuildTests(unittest.TestCase):
     def test_cache_rechecks_artifacts_and_rebuilds_corruption(self):
         with self.build_mocks(), patch.object(builder, 'run_stage', side_effect=self.fake_stage) as stage:
             release = self.invoke()
-            self.assertEqual(stage.call_count, 4)
+            self.assertEqual(stage.call_count, 5)
             self.assertEqual(self.invoke(), release)
-            self.assertEqual(stage.call_count, 4)
+            self.assertEqual(stage.call_count, 5)
             (release / 'p4data.bin').write_bytes(b'corruption')
             self.invoke()
-            self.assertEqual(stage.call_count, 8)
+            self.assertEqual(stage.call_count, 10)
             self.assertEqual((release / 'p4data.bin').read_bytes(), b'data')
 
     def test_optional_strip_pack_is_checked_and_unknown_artifacts_are_rejected(self):

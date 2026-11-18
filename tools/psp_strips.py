@@ -499,8 +499,11 @@ def main():
             print(f"{n['files']} files, {n['unique geometries']} geometries, {len(jobs)} batches, {time.time() - started:.0f} s", flush=True)
     print(f'{len(jobs)} batches to strip, {time.time() - started:.0f} s', flush=True)
     work = [(data, args.runs) for data in jobs]  # in the order found: a geometry's batches lie together in the file
+    # By module name, not __main__: a frozen Prepare P4.exe does not rebuild __main__ in its pool workers, which then
+    # fail to unpickle the task and the pool hangs (b389).
+    import psp_strips
     with multiprocessing.Pool(args.jobs) as pool:
-        for data, strips, joined in pool.imap(strip_batch, work, chunksize=8):
+        for data, strips, joined in pool.imap(psp_strips.strip_batch, work, chunksize=8):
             if strips is None:
                 raise SystemExit(f'{jobs[data]}: a strip does not match its batch')
             n['batches'] += 1
