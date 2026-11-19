@@ -1,0 +1,33 @@
+# Persona4-PORTABLE QA03 — active planning hub (WIP)
+
+**Updated:** 2026-11-19. **Status:** User-approved publication of **provisional research and documentation only**. This is **not** approval to implement, merge, release, or declare a bug fixed. Runtime baseline stays **perf06** on `dev/v0.27-perf06`; the reference build's source code has not been changed by this documentation work.
+
+## Canonical inputs and scope
+- **ONLY** the 2026-11-19 set of **120 Golden screenshots + 120 perf06 screenshots** is valid for Golden UI review: private `P4P-Golden-UI-Comparison-QA03-2026-11-19.zip`, numbered `G_1_…G_120_` and `P_1_…P_120_`, 120/120 exact pair IDs. The older Nov 18 **71-picture** Golden set and its ID mapping are **obsolete**, must never be mixed with the 120-pair index.
+- User confirms that every pair represents the **same in-game scenario or UI action**, but not necessarily the same calendar day, weather, character, rank, persona or animation frame. Compare **geometry and composition**, not the differing content.
+- Keep screenshot originals and game assets PRIVATE; publish scene IDs, measurements, source traces, analysis, validation outcomes only. The images are Atlus/Sega game content and the project is public.
+- Golden is an intentional **widescreen geometric reference**: position, proportion, roundness, anchor, spacing, safe-area, portrait crop. Original Persona 4 PS2 US remains the **gameplay/art/animation reference**. No import of Golden-exclusive assets, combat systems, Shuffle Time, navigator mechanics, or cut-in artwork.
+- For an explicitly non-vanilla aesthetic change (e.g. Castle distance white→black), obtain user approval. The alleged white PS2-original distant view is NOT automatically a renderer bug.
+- Real **PSP Go** is the acceptance hardware; PPSSPP is diagnostics/replay, not a definitive hardware FPS proof.
+
+## Documents (canonical now)
+1. [Complete 120-pair UI review](120_pairs_widescreen_WIP.md) — all 120 IDs, visual findings, confidence and required next checks.
+2. [Issue + evidence matrix](QA_MATRIX_WIP.md) — prioritized bugs, hypotheses, proof tiers and regression cases.
+3. [Source and dependency map](CODE_MAP_WIP.md) — verified file/line entry points and scalable decompilation inventory proposal.
+4. [Autonomous playthrough/bot design](AUTOPLAY_BOT_WIP.md) — PPSSPP smoke/regression runner, failure artifact contract.
+5. [Codex/Work masterprompt — DRAFT](MASTERPROMPT_WIP.md) — standalone orchestrator prompt; user will approve/finalize by Saturday Nov 21.
+6. [Change log / decision ledger](CHANGELOG.md) — append-only human-readable changes and explicit status.
+7. [Hardware comparison perf06 ↔ b388](../v027_qa03_b388_vs_perf06_hardware_2026-11-19.md) — b383/b386 findings, isolated upstream candidates. Earlier Golden numeric references in this document are **historical only**, not valid canonical 120 IDs.
+8. [perf06](../v027_perf06.md), [perf04](../v027_perf04.md), [issues](../v027_issues.md), [replay saves](../replay_saves.md), [building](../building.md).
+
+## Gates, in order
+- **G0 Evidence:** classify every claim as USER/HARDWARE, VISUAL, STATIC-SOURCE, EMULATOR-A/B or PSP-GO-A/B. A static line match is **not** proof of visible change. Record date, exact commit, scene ID, build, save provenance and artifacts.
+- **G1 Baseline freeze:** clean branch from perf06 runtime; screenshot manifest and checksums. Never overwrite known-working perf06 or user saves. No blind `main`/b388 merge.
+- **G2 Isolated upstream visual fixes:** b386 Im3D card-back culling and b383 material-scoped Igor floor culling separately; tests for Shuffle, curtains, walls, Junes, Margaret, light effects.
+- **G3 UI classes:** prove coordinate path and fix circle / portrait / HUD independently; compare Golden target positions in **480×272**, and preserve Vanilla story/art. Separate All-Out layer composition (2/3/4 participants). No global `target_sx = target_sy` hack.
+- **G4 Performance:** measure CPU/GE waits and p50/p95 under matched real PSP Go scenarios; test b365 raw GE, b366 offline strip packs, b385 skin guard box **one at a time** only if relevant. `p4strips.bin` is not `p4str.bin`. Avoid speculative broad merges.
+- **G5 Stability:** reinforcement freeze with original-save control, Compendium Register with minimal and clean saves, return-to-title flashes, saves/HOME, Teddie HUD, lighting and distant geometry.
+- **G6 Integration:** only combine separately proven fixes, full regression set, clean-room packaged build, explicit **user review / go-no-go**. Never publish disc-derived data or private screenshots.
+
+## Efficient collaboration
+The masterprompt should refer to **this single hub**, read linked docs once, build a short execution matrix, group tool calls and focused tests, and report at phase boundaries. If information arrives before Saturday, update evidence/docs first, then the masterprompt—**no repetitive full-repository rereads and no second baseline**. The human user runs hardware checks and supplies results. GitHub is the shared change-controlled knowledge base; this chat cannot execute work continuously while the user is absent.
