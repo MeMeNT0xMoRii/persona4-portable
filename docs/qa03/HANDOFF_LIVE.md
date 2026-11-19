@@ -2,6 +2,12 @@
 
 **Created:** 2026-11-19, Europe/Vienna. **Living index:** [QA03 README](README.md). This file is intended to be the **single entrypoint for a replacement Project chat** and a stable handoff target for hourly scheduled research. The user must manually create a new chat; an automation cannot create one or move this conversation. A scheduled research run may not have all prior conversational detail—prioritize this file and linked documentation, verify GitHub.
 
+## CURRENT FIRST-READ / most recent verified change
+
+- **Last interactive research update (2026-11-19):** [`EYE_CUTIN_FIELD_HUD_TRACE_WIP.md`](EYE_CUTIN_FIELD_HUD_TRACE_WIP.md) distinguishes PS2 cut-in request types **0 All-Out / 2 pursuit / 4 normal action** by exact pinned source; screenshot eye #116 type **still unknown**. Permanent field HUD source **still unknown**—time transition and six-day TV forecast are NOT evidence of its owner. The source-level triage is written up and linked from QA matrix and Saturday prompt. **T1 code evidence only; no T2 PPSSPP or T3 PSP Go validation.**
+- **Highest priority next source trace:** identify the permanent date/weather HUD's real draw call from top-right screen-space filtered existing 2D probe, and correlate #116 action to packet kind/resource and primitive draw. Alternatively locate All-Out effect primitive-kind dispatch. Do not repeat older 71-image analysis.
+- **Latest documentation commit:** [`927dccdd0c280536e771bdb47c1bd6f89ab4d1e7`](https://github.com/MeMeNT0xMoRii/persona4-portable/commit/927dccdd0c280536e771bdb47c1bd6f89ab4d1e7); this file's own HEAD may advance through future scheduled updates. Runtime remains frozen at perf06.
+
 ## Automated research and handoff update policy (confirmed 2026-11-19 18:37 CET)
 
 - **Scheduled:** hourly beginning 2026-11-19 **19:00** Europe/Vienna; run only until Saturday 2026-11-21 **13:30 CET** as requested, meaning the last regular hourly slot is **13:00**. No run is scheduled for 14:00 or later.
