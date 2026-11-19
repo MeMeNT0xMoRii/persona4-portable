@@ -26,6 +26,16 @@
 | CLOSED | Town map circular frame and blue marker (#97) | U confirms correct in perf06 | **NO change** | optional screenshot anchor audit only |
 | LONG TERM | Background autonomous PPSSPP QA bot | user proposal, not implemented | deterministic input + checkpoints + watchdog + logs; Codex intervenes only on failures | no unattended edits to source/game saves; reproducible triage artifacts |
 
+
+## 2026-11-19 successor image/perf audit — bounded evidence update
+
+- The actual 120-pair ZIP was reopened (private, not published). Normalized pixel-mask comparison of steady yellow field HUD #98/#100/#105 suggests a modest left/up and width difference, but **not an isolated sprite bbox**. This does **not** overturn the T1 four-group `calendarDrawBackdrop` attribution or validate changing `0xBF6`.
+- For Weather News #106 the six forecast cards are broadly in place while title-like text is lower/darker in P4P. Title source **still unknown**; scope title vs cards separately and do not move the whole calendar draw before a draw-order/XY trace.
+- All-Out #112/#118/#119 and eye #116 remain visual/composition issues; Golden art differs, so **do not infer Vanilla source crop** from Golden alone. Static candidate `mdlEffectUpdateScreenSprite` FUN_004B1AD0 projects 640×448 but exact All-Out primitive callback remains T0.
+- Performance: `p4_pipeline=1` and default frameskip are active in source; `p4_exp_ge_time` serializes GE and is *incompatible* with stock pipelined benchmarking. Start Junes F009_004 measurements with p50/p95, CPU/GE wait, presented frames and low-overhead timing; avoid attributing cost to RTT/alpha without scene logs. `p4_dst_alpha_passes=0` skips some under-half-screen destination-alpha passes by design; VFX implication **hypothesis only**.
+
+[Exact screenshot observations, source paths and diagnostic gates](RENDER_PATH_PERF_AUDIT_WIP.md). No runtime change, PPSSPP or PSP Go execution from this update.
+
 ## Evidence and performance conditions
 - A single overlaid FPS number is a **moment**, not a statistical result. Hardware acceptance: same PSP Go clock, same save/scene/camera, same active plugin state, 20s idle + 10s walk (where applicable), A/B/A, per-scene p50/p95 FPS/frame ms and GPU wait.
 - Avoid diagnosing altered battle behavior solely from the OP save. Never mutate original saves.
