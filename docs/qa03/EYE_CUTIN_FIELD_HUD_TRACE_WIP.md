@@ -2,6 +2,8 @@
 
 **2026-11-19, independent interactive code investigation.** Inputs: pinned PS2-US decompilation `Raikaru/Persona4-Decompilation@363eab8a966d60a9773b45f330f2344329ec4f0a` plus P4P perf06. **Code evidence T1 only**; no PPSSPP render A/B (T2), no PSP Go confirmation (T3), no gameplay code edits. The only valid UI images are the private **120 Golden + 120 P4P screenshot pairs**, specifically eye cut-in **#116** and field date/weather **#93–105**. No source screenshot content was published.
 
+> **2026-11-19 LATER SOURCE FINDING / PRIOR CONCLUSION SUPERSEDED:** The original permanent HUD draw owner has **now been found**: `calendarDrawBackdrop` FUN_00122A40, from `calendarStartTasks` FUN_00123730 in the pinned original PS2 source. See [FIELD_HUD_CALENDAR_SOURCE_TRACE_WIP.md](FIELD_HUD_CALENDAR_SOURCE_TRACE_WIP.md) for exact source and existing P4P `0xFF6→0xBF6` workaround. Section B below records the earlier excluded wrong candidates; it is **not** the current conclusion. The eye cut-in `kind` mapping and uncertainty are unchanged.
+
 ## A. Three *different* cut-in routes in the original battle system
 
 | Event/context | Original source + marker | What is verified | Remaining unknown |
@@ -25,7 +27,7 @@ For a reproduced #116 frame:
 
 **Implementation rule:** All-Out `kind=0`, pursuit `kind=2` and actor `kind=4` are **not** safe to alter as one monolithic cut-in class. Do not disable animation or substitute Golden assets to hide crop.
 
-## B. Persistent upper-right field date/weather (#93–105) — owner remains unresolved
+## B. Earlier candidate exclusions (historical) — true field HUD owner subsequently found
 
 Confirmed **nearby code that should NOT be automatically labeled the field HUD**:
 
@@ -48,6 +50,6 @@ The original field UI may be a resource-driven effect or task with a non-obvious
 ## Source ownership/status and next branch
 
 - **T1:** exact original function markers and request-type distinction; confirmed transient/TV/calendar helper responsibilities.
-- **T0:** exact `#116` kind, exact geometry/crop cause, persistent field HUD draw owner, whether the same renderer pass produces particular visual distortions.
+- **T0:** exact `#116` kind, exact geometry/crop cause, physical field HUD distortion and desired adjustment, whether the same renderer pass produces particular visual distortions. **T1 owner for field HUD now separately confirmed** in [FIELD_HUD_CALENDAR_SOURCE_TRACE_WIP.md](FIELD_HUD_CALENDAR_SOURCE_TRACE_WIP.md).
 - **T2/T3 not run.** No new files/assets/screenshots/game code were created beyond this **public Markdown research document**.
-- **Recommended next code focus:** resolve the **kind 4** effect resource path and per-primitive draw handler, or link the persistent field HUD to a draw via bounded `p4_probe_2d`/generated-census trace. In parallel still investigate particle/alpha GE and bones when a precise reproducible scene exists.
+- **Recommended next code focus:** resolve the **kind 4** effect resource path and per-primitive draw handler; for field HUD skip source-owner discovery, which is **completed**, and instead measure the known `calendarDrawBackdrop` individual sprite bounds via a narrowly scoped diagnostic. In parallel still investigate particle/alpha GE and bones when a precise reproducible scene exists.
