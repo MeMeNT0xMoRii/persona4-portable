@@ -2,6 +2,15 @@
 
 **Created:** 2026-11-19, Europe/Vienna. **Living index:** [QA03 README](README.md). This file is intended to be the **single entrypoint for a replacement Project chat** and a stable handoff target for hourly scheduled research. The user must manually create a new chat; an automation cannot create one or move this conversation. A scheduled research run may not have all prior conversational detail—prioritize this file and linked documentation, verify GitHub.
 
+## Automated research and handoff update policy (confirmed 2026-11-19 18:37 CET)
+
+- **Scheduled:** hourly beginning 2026-11-19 **19:00** Europe/Vienna; run only until Saturday 2026-11-21 **13:30 CET** as requested, meaning the last regular hourly slot is **13:00**. No run is scheduled for 14:00 or later.
+- **After every genuinely new finding** from user testing, public source inspection, or a scheduled research pass, update this `HANDOFF_LIVE.md` with exact evidence level, files/links/commit(s), effect on plans, unresolved uncertainty and next action. Preserve history and do not replace a verified statement with a guess.
+- During active chat, an assistant can update this file immediately after new findings. During scheduled runs the task is instructed to update it as part of each substantive round. **A new user message does not itself trigger an instant unattended GitHub commit.**
+- If no new evidence, no meaningless GitHub commit; otherwise ensure this handoff accurately points to the new WIP docs, corrected decisions and next high-ROI topic before ending that round.
+- A successor chat should begin by opening **this live file** rather than trusting a copied old handoff. Chat switch is manual; autonomous detection and creation of new conversation is unavailable.
+- **No changes** to perf06 runtime, source, original private 120×2 screenshots, copyrighted game assets or saves without separate permission. The user has authorized WIP text publication, not automatic code fixes.
+
 ## Canonical state
 
 - Public repo: `MeMeNT0xMoRii/persona4-portable`.
