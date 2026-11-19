@@ -45,7 +45,7 @@
 - Track all WIP updates in [CHANGELOG.md](CHANGELOG.md), only meaningful commits; avoid unnecessary token-costly complete rereads.
 
 ## Hourly research protocol (19–21 Nov 2026)
-- Saved automation **P4P Samstagsvorbereitung** scheduled **hourly from Nov 19 19:00 to Nov 21 23:00 Europe/Vienna**. Autonomous tasks are periodic, NOT continuous, and may depend on account/tool availability. Existing separate upstream watch may also be running.
+- Saved automation **P4P Samstagsvorbereitung** scheduled **hourly from Nov 19 19:00 to Sat Nov 21 13:30 Europe/Vienna (last regular slot at 13:00)**. Autonomous tasks are periodic, NOT continuous, and may depend on account/tool availability. Existing separate upstream watch may also be running.
 - At start read this file plus CHANGELOG, then choose exactly one previously insufficiently examined subsystem. Research sources or code; document **verified evidence only**, record exact links/commit and unresolved blockers. If no new evidence, **no empty commit**; try another independent focus.
 - At end append a compact dated section to this handoff: `slot | area | newly verified | changed docs / commit | blockers | next highest-ROI`. Avoid replacing original canonical goals.
 - Explicitly tell user when a manual new Project chat would be beneficial; **cannot monitor idle chat length perfectly nor create a new conversation automatically**.
@@ -54,6 +54,14 @@
 
 > Continue Persona4-PORTABLE QA03 without losing context. Read the latest `MeMeNT0xMoRii/persona4-portable` branch `dev/v0.27-perf06` file `docs/qa03/HANDOFF_LIVE.md`, then `docs/qa03/README.md`, `CHANGELOG.md` and linked WIP docs. The **120 matched Golden/perf06 UI pairs from 2026-11-19** are the only valid UI references; the 71-image collection is superseded. Continue research and GitHub WIP text documentation; do not modify game code, publish screenshots/assets, merge or release without new explicit permission. Respect the pinned decomp SHA and exact runtime baseline. Tell me what changed since the last handoff and the next high-value investigation.
 
+## Latest research outcome (2026-11-19 interactive continuation)
+
+- **T1 newly verified:** The original All-Out/roundup packet is built in `btlActionRoundupMesUpdate` **FUN_001AE800**, using `kind=0`, participant IDs and count; `btlCutinLoad` **FUN_001F9CF0** uses **`count+1`** in resource templates. The pinned directory table includes `BOKO/KOMA2`, `KOMA3`, `KOMA4`; **specific template output remains unverified**.
+- `btlCutinLoadStatus` **FUN_001F9FA0** builds resource effects; `btlCutinUpdate` **FUN_001FA190** calls `mdlEffectCommitTreeFrame` / `mdlEffectFlushTreeFrame`. The flush function **FUN_00485870** dispatches by primitive `kind` through `D_00713480`, drawing via callback at `+0x0C`. Potential geometry stages: `mdlEffectAdvanceTrackQuad` **FUN_004824A0** (UV/rect) and `EffSpriteUpdate` **FUN_004A5FC0** (sprite vertices/UV), but **exact All-Out kind and crop/scissor cause remain T0**. Eye cut-in #116 requires separate mapping.
+- **Research artifact:** [`ALL_OUT_CUTIN_TRACE_WIP.md`](ALL_OUT_CUTIN_TRACE_WIP.md), incorporated into [decomp map](DECOMP_SOURCE_MAP_WIP.md), [code map](CODE_MAP_WIP.md), [QA matrix](QA_MATRIX_WIP.md), [masterprompt](MASTERPROMPT_WIP.md), [change log](CHANGELOG.md). **No gameplay code, builds, emulator/hardware runs or private images changed/uploaded.**
+- **Next highest-ROI:** map `D_00713480` primitive-kind IDs and the resolved All-Out path formats (`D_00625060/0A0/0D0`), then link per-participant UV/rect to PSP GE. If blocked, pivot to Social-Link portrait owner or PPSSPP debugger handshake. Keep T1/T2/T3 separate.
+
 ## Rolling hourly entries
+- **2026-11-19 interactive `mach weiter`:** All-Out resource+effect dispatch T1 new. Artifact `ALL_OUT_CUTIN_TRACE_WIP.md` commit `f5d641a0c38ad61bbe086289e9f0a8f6b34effbf`; source/QA/masterprompt/changelog updated through `f621e0bd39e528fc50c4af911c51e710623009c4`. Exact visual crop T0; T2/T3 not run. Next: per-kind callback and UV geometry.
 - **2026-11-19 pre-19:00 research:** decomp target SHA verified; exact original game FUN names/callers mapped in `DECOMP_SOURCE_MAP_WIP.md`; PSP double color+depth eDRAM budget documented in `PSP_HARDWARE_LIMITS_WIP.md`; PPSSPP official input/screenshot/savestate/replay protocol logged in `PPSSPP_BOT_INTERFACE_WIP.md`. No runtime edits or builds. Next: deeper pinned-source UI controls, full index module inventory, bot handshake version pin and source cache assumptions.
 - **2026-11-19 initial:** handoff established; new source/hardware/debugger research files linked above. User request to increase research frequency to hourly; no automatic new chat transfer supported.
