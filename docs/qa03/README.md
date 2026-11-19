@@ -10,6 +10,14 @@
 - For an explicitly non-vanilla aesthetic change (e.g. Castle distance white→black), obtain user approval. The alleged white PS2-original distant view is NOT automatically a renderer bug.
 - Real **PSP Go** is the acceptance hardware; PPSSPP is diagnostics/replay, not a definitive hardware FPS proof.
 
+
+### New high-priority first reads (2026-11-19)
+
+1. [**Rolling priority queue and exact original→PSP source-line owner registry for Codex**](PRIORITY_QUEUE_CODE_OWNERS_FOR_CODEX_WIP.md) — P0 GE-list/memory/gameplay safety → 20/30 FPS → scene-based visual/UI work → all engine subsystems, QA bot, builder, optional mods; exact files/functions/line anchors, 15 priority IDs and A/B gates. Maintain this across each `mach weiter` and hourly run.
+2. [**PS2 visual fidelity with 20 FPS floor and 30 FPS objective**](PS2_VISUAL_FIDELITY_20FPS_30FPS_PLAN_WIP.md) — Junes West, school corridor, Shopping District North/South, Riverbed, dungeons, battle/Velvet/title; CPU/GE/present/VRAM pipeline, targeted conservatively faithful optimizations and cited OpenUG2-PSP/SHAR/PPSSPP GE techniques. No new P4P hardware FPS.
+3. [**GameBanana PS2 mod compatibility + native Manual Fusion Skill Inheritance mapping**](MODS_GAMEBANANA_COMPATIBILITY_WIP.md) — verified public P4 PS2 CLPS2C source with pinned original fclFuseRollPersona/fclCombineMenuFusion/shdPersonaDrawPanels owners, license risk and optional implementation/testing gates; other mods ranked by format, fidelity and memory.
+4. [**PPSSPP playthrough bot V2: official WebSocket API and failure evidence**](PLAYTHROUGH_BOT_REAL_INTERFACE_V2_WIP.md) — verified current upstream game.state.save/load/verify, input injection, GPU/GE inspection, bounded logging and deterministic checkpoints; no running bot or hardware result.
+
 ## Documents (canonical now)
 1. [Complete 120-pair UI review](120_pairs_widescreen_WIP.md) — all 120 IDs, visual findings, confidence and required next checks.
 1b. [Code owners for combat HUD, party portraits, Social Link portraits, TV weather and effect masks](GRAPHICS_CODE_OWNERS_WIP.md)
@@ -30,7 +38,7 @@
 
 1f. [**Broader QA code-first triage + next-build UI tranche**](STABILITY_UI_PERF_WIDE_TRIAGE_WIP.md) — verified Compendium Register active-but-uncached Persona NULL-dereference risk, reinforcement/GE discriminator, title-film framebuffer boundary, dungeon/VFX candidates, repeated battle-dial pixel-envelope difference, independent UI-A/B/C/D cohorts and Junes instrumentation. **No runtime fix or T2/T3.**
 
-1g. [**Full renderer-artifact re-audit: Junes RTT, fog lines, fusion alpha, blue field edges**](RENDER_ARTIFACTS_RTT_FOG_TRIAGE_WIP.md) — independently rechecked pinned Vanilla source, perf06 and b388; confirmed **missing parallel-camera projection** in perf06, full original FieldNoise tiled/banded feedback composition, dedicated alpha reader/writer trace, Dojima #105 blue corner regions, and guarded upstream fidelity candidates. **No run/fix.**
+1f2. [**Historical renderer-artifact re-audit (FieldNoise source attribution superseded)**: Junes RTT, fog lines, fusion alpha, blue field edges**](RENDER_ARTIFACTS_RTT_FOG_TRIAGE_WIP.md) — independently rechecked pinned Vanilla source, perf06 and b388; confirmed **missing parallel-camera projection** in perf06, documented original PS2 FieldNoise (but actual perf06 FieldNoise is a no-op as corrected below), dedicated alpha reader/writer trace, Dojima #105 blue corner regions, and guarded upstream fidelity candidates. **No run/fix.**
 
 1g. [**P0 GE display-list overflow + RTT camera clear/projection audit**](GE_LIST_OVERFLOW_AND_RTT_CLEAR_TRIAGE_WIP.md) — perf06 64Kiword ×2 unbounded GPU command lists vs b388 128Kiword guarded; wrong-target pre-update camera clear; Junes parallel camera + field-shadow Im3D chain, exact source evidence. **No crash reproduction or patch.**
 
@@ -43,6 +51,7 @@
 1k. [**Camp menu source owners: Skill/Equip/Persona, rows/scroll/footer and controls**](CAMP_MENU_UI_OWNER_TRACE_WIP.md) — pinned original `cmpSkillMenuDraw` FUN_00138BF0, `cmpEquipMenuDraw` FUN_00131A00, `cmpPersonaMenuDraw` FUN_00135DC0 and `cmpMainTaskStep` router; menus have separate X/Y source anchors and true original content; avoid global scaling. No build/test.
 
 ## Gates, in order
+- **G-1 Mandatory safety first:** verify GE display-list capacity guards and log true high-water before adding any extra stencil/RTT/draw passes. Preserve the perf06 binary, home/save and original/minimal/complex save checks. Set scene-level native Go frame-time baseline before optimizing fidelity; do not infer 30FPS from other ports.
 - **G0 Evidence:** classify every claim as USER/HARDWARE, VISUAL, STATIC-SOURCE, EMULATOR-A/B or PSP-GO-A/B. A static line match is **not** proof of visible change. Record date, exact commit, scene ID, build, save provenance and artifacts.
 - **G1 Baseline freeze:** clean branch from perf06 runtime; screenshot manifest and checksums. Never overwrite known-working perf06 or user saves. No blind `main`/b388 merge.
 - **G2 Isolated upstream visual fixes:** b386 Im3D card-back culling and b383 material-scoped Igor floor culling separately; tests for Shuffle, curtains, walls, Junes, Margaret, light effects.
