@@ -1,3 +1,5 @@
+> **ARCHIVED / SUPERSEDED 2026-11-19 — DO NOT USE FOR ACTIVE UI WORK.** This document refers to an obsolete 71-image Golden-only collection. Current authoritative input is **120 matched Golden + 120 P4P-perf06** pairs, IDs 1–120, at [QA03 active hub](qa03/README.md) and [120-pair review](qa03/120_pairs_widescreen_WIP.md). All old bounding boxes, ID references, priority recommendations and missing-media claims are historical ONLY. Kept for traceability, not implementation. No code change.
+
 # Persona4-PORTABLE v0.27 — Golden-UI-Geometrie-Audit (QA03, 19.11.2026)
 
 **Geltung:** `MeMeNT0xMoRii/persona4-portable`, Dokumentationsbranch `dev/v0.27-perf06` (Runtime-Baseline `29b0fcf`, veröffentlichter Dokumentations-HEAD vor diesem Audit `ec9e8dd`). **Keine Runtimeänderung.**
