@@ -2,6 +2,8 @@
 
 **Updated:** 2026-11-19. **Status:** User-approved publication of **provisional research and documentation only**. This is **not** approval to implement, merge, release, or declare a bug fixed. Runtime baseline stays **perf06** on `dev/v0.27-perf06`; the reference build's source code has not been changed by this documentation work.
 
+- **perf06 is now a mandatory cross-rotation CONTROL:** [**Exact perf06 runtime/source/artifact/field-test atlas**](PERF06_RUNTIME_BASELINE_FORENSICS_WIP.md) — frozen 29b0fcfd source and documented EBOOT+data SHA256, 820/821 retained game objects, built-in GE/skin/mips/frameskip defaults, original 1× PPSSPP 32-frame windows and actual Go side-by-side observations. The actual private PBP bytes were not available for direct analysis. Before researching/modifying any issue, take **the precise perf06 code path + already tested identical scene** as a control, never assume current docs branch is a new EBOOT.
+
 ## Canonical inputs and scope
 - **ONLY** the 2026-11-19 set of **120 Golden screenshots + 120 perf06 screenshots** is valid for Golden UI review: private `P4P-Golden-UI-Comparison-QA03-2026-11-19.zip`, numbered `G_1_…G_120_` and `P_1_…P_120_`, 120/120 exact pair IDs. The older Nov 18 **71-picture** Golden set and its ID mapping are **obsolete**, must never be mixed with the 120-pair index.
 - User confirms that every pair represents the **same in-game scenario or UI action**, but not necessarily the same calendar day, weather, character, rank, persona or animation frame. Compare **geometry and composition**, not the differing content.
