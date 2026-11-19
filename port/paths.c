@@ -6,16 +6,21 @@ char p4_game_dir[160];
 char p4_save_dir[176];
 char p4_sound_dir[176];
 
+static int game_device(const char *path)
+{
+    return path && (!strncmp(path, "ms0:/", 5) || !strncmp(path, "ef0:/", 5));
+}
+
 int p4_paths_init(const char *executable, const char *working_directory)
 {
     char path[P4_PATH_MAX];
     int length;
     while (executable && !strncmp(executable, "./", 2)) executable += 2;
-    if (executable && *executable && strncmp(executable, "ms0:/", 5) &&
+    if (executable && *executable && !game_device(executable) &&
         (executable[0] == '/' || strchr(executable, ':'))) return -1;
-    if (executable && !strncmp(executable, "ms0:/", 5))
+    if (game_device(executable))
         length = snprintf(path, sizeof path, "%s", executable);
-    else if (working_directory && !strncmp(working_directory, "ms0:/", 5))
+    else if (game_device(working_directory))
         length = snprintf(path, sizeof path, "%s/%s", working_directory,
                           executable && *executable ? executable : "EBOOT.PBP");
     else

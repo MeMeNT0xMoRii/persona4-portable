@@ -73,7 +73,13 @@ def library_names():
     return found
 
 
+# P4P perf06: SLUS-21782 Rush/Stop vertical anchor, two verified US loads.
+VERIFIED_GP_ADDRESSES = {"fGpffff84a0": 0x7615a0}
+
+
 def retail_address(name, names, gp):
+    if name in VERIFIED_GP_ADDRESSES:
+        return VERIFIED_GP_ADDRESSES[name]
     m = GP_NAME.match(name)
     if m:
         offset = int(m[1], 16)
