@@ -15,6 +15,7 @@
 1b. [Code owners for combat HUD, party portraits, Social Link portraits, TV weather and effect masks](GRAPHICS_CODE_OWNERS_WIP.md)
 1c. [Skill/pursuit vs All-Out cut-in kinds; historical field-HUD candidate exclusions](EYE_CUTIN_FIELD_HUD_TRACE_WIP.md) — exact battle request kinds 0/2/4. The former 'field owner unknown' conclusion is now superseded.
 1d. [**Persistent upper-right field HUD OWNER FOUND**](FIELD_HUD_CALENDAR_SOURCE_TRACE_WIP.md) — pinned `calendarDrawBackdrop` FUN_00122A40 with boot/task chain, date/day-phase/weather sprite groups, and existing `0xFF6→0xBF6` X-scale workaround. T1 source owner verified; actual on-device geometry and fix remain T0/T2/T3 pending.
+1e. [**Direct 120-pair image cross-check, render paths and performance triage**](RENDER_PATH_PERF_AUDIT_WIP.md) — visual comparisons #98/#100/#105/#106/#112/#116/#118/#119, pinned screen-sprite / atomic / 2D GE routes; existing CPU/GE profiling and framebuffer-alpha tradeoffs; **no actual benchmark or fix**.
 1a. [All-Out / cut-in pinned PS2 call chain](ALL_OUT_CUTIN_TRACE_WIP.md) — **new T1** participant-dependent resource requests, effect-tree flush and crop/UV investigation. Exact crop root cause still unknown.
 2. [Issue + evidence matrix](QA_MATRIX_WIP.md) — prioritized bugs, hypotheses, proof tiers and regression cases.
 3. [Source and dependency map](CODE_MAP_WIP.md) — verified file/line entry points and scalable decompilation inventory proposal.
