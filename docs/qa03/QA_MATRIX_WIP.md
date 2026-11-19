@@ -198,3 +198,6 @@ New uploaded private 120+120 ZIP with SHA-256 `12e73b56f2d1582102cce18669fb87429
 | Try `datPersonaResolveRecord` as memcpy source | It can populate cache yet still return NULL in same invocation | reject naïve substitution; decide safe list output policy and preserve save integrity before any fix |
 
 No actual user save bytes, PPSSPP T2, PSP Go T3 or hardware crash traceback inspected in this pass. A GE stall or different modified-save corruption still remains an alternative causal hypothesis.
+
+
+- **SEC-01 2026-11-20 00:58 CET watchdog safety gate (T1/T0):** `rwsky.c::func_003f79b0` L1499–1533 can force GE stall to stored `pipe_last_end` after 250ms; local branch does not validate list end. Potential amplifier if writer previously overflowed, **not evidence of observed overflow or STAB-02 cause**. Diagnostic compare fog/reinforcement vs F009_004 and negative F006_002; rollback on hang/draw loss/p95 regression. [Source note](SEC01_GE_LIST_WRITER_CENSUS_2026-11-20_WIP.md).
