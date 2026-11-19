@@ -113,3 +113,6 @@ Direct tri-source audit is now [`RENDER_ARTIFACTS_RTT_FOG_TRIAGE_WIP.md`](RENDER
 | **AUDIO/VIDEO P1 regression** | P4P audio.c five stereo VAG rings consume 320KiB main RAM; loader thread controls stream prefill. p4_audio_underruns stops channel; video_game.c restores previous framebuffer after playback. | User's flash/FPS source T0. Log audio errors/underflows/loader I/O + first 3 movie-return presented frames, T2 then Go T3, cold and warm cycles. Preserve CRI centering and gameplay sound. |
 
 All findings above are **static source-only T1, not measured FPS, patched code, PSP/PPSSPP tests or confirmed root causes**. Authority remains [PRIORITY_QUEUE_CODE_OWNERS_FOR_CODEX_WIP.md](PRIORITY_QUEUE_CODE_OWNERS_FOR_CODEX_WIP.md); avoid creating competing TODO lists. Keep G0/G1 and all already known-good UI/Map paths untouched.
+
+
+**PERF-BUILD-01 / 2026-11-19 23:02 / T1:** Pinned `tools/psp_link.py` `main()` L117–139 has no default `P4_FRAME_TIMING`/`P4_HW_PROFILE` defines; `port/rwsky.c` L545–546, L1667–1669 conditionally compiles/records. Current EBOOT macro state **unknown**, not a measured result. Test gate: capture compile flags and EBOOT hash, optionally check diagnostic strings, then instrument and collect multiple Junes F009_004 windows; no T2/T3 yet. See PSP_HARDWARE_LIMITS_WIP.md.
