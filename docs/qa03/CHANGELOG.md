@@ -44,3 +44,5 @@
 | 2026-11-19 | Harden historical documentation: replaced stale 71-based handoff UI section and labeled old b388 report Golden IDs historical | Prevent future Codex mixing different screenshot indexes; no runtime modifications. |
 
 | 2026-11-19 19:00 CET | All-Out effect-tree draw gate pinned: frame/startFrame and child disabled flag filter visible primitives; callbacks conditional; dispatch handler header incomplete. Avoid logging all allocated children as visible. | T1 original source only; [trace](ALL_OUT_CUTIN_TRACE_WIP.md), commit `92f72dace5c1fd69a75e053402d39e9ac0c09189`; no kind→draw implementation or T2/T3. |
+
+| 2026-11-19 QA03 successor chat | Pinned T1 **screen-space effect sprite** owner `mdlEffectUpdateScreenSprite` FUN_004B1AD0 confirmed: builds animated rect/UV, explicitly projects with PS2 640×448 divisors, then queues geometry; per-kind primitive constructor permits kind 0–32. Connection to All-Out layers/cropping remains **T0**, not tested. | [All-Out trace](ALL_OUT_CUTIN_TRACE_WIP.md), research commit `d4860ef4d1e12a3ae09419c634d4c424c2bcbf70`. Source analysis and documentation only; no runtime/build/assets/PSP Go A/B. |
