@@ -56,6 +56,10 @@
 1m. [**GameBanana manual fusion + other PS2 mods compatibility**](MODS_MANUAL_FUSION_PORT_FEASIBILITY_WIP.md) — public CLPS2C/PS2 retail hooks mapped to pinned native C fusion/Persona menu owners; GPL-3.0 licensing vs P4P MIT; flags-off native adaptation and save regression requirements; other mod classes and blockers.
 1n. [**Expanded Codex code-trace supplement**](CODEX_CODE_TRACE_PRIORITY_LEDGER_WIP.md) — cross-system source/line and hypothesis test matrix, priority aging and fresh triage links; **authoritative top-level queue remains** [PRIORITY_QUEUE_CODE_OWNERS_FOR_CODEX_WIP.md](PRIORITY_QUEUE_CODE_OWNERS_FOR_CODEX_WIP.md).
 
+
+1o. [**P0 exact GE direct-writer census + existing mesh-persist optimization trial**](GE_WRITER_CENSUS_AND_REPLAY_PERF_AB_WIP.md) — wrapper is not sole emitter, counts raw mip/GE-CALL/instance replay/bone writes, normal vs debug flag defaults, cached sublist/main-RAM lifetime and a check-before-speed A/B. Static T1 only.
+1p. [**Non-renderer rotation: Compendium cache, Weather News animation, audio/video**](SAVE_WEATHER_AUDIO_VIDEO_CROSSCHECK_WIP.md) — additional unchecked original cache sort path, a resolver that seeds cache but returns NULL, weather title three draw phases, 320KiB audio rings and movie-display restore trace. No actual T2/T3.
+
 ## Gates, in order
 - **G-1 Mandatory safety first:** verify GE display-list capacity guards and log true high-water before adding any extra stencil/RTT/draw passes. Preserve the perf06 binary, home/save and original/minimal/complex save checks. Set scene-level native Go frame-time baseline before optimizing fidelity; do not infer 30FPS from other ports.
 - **G0 Evidence:** classify every claim as USER/HARDWARE, VISUAL, STATIC-SOURCE, EMULATOR-A/B or PSP-GO-A/B. A static line match is **not** proof of visible change. Record date, exact commit, scene ID, build, save provenance and artifacts.
