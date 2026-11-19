@@ -130,6 +130,21 @@ Read [PS2_FIDELITY_PSP_GO_PERFORMANCE_PLAN_WIP.md](PS2_FIDELITY_PSP_GO_PERFORMAN
 
 **Builder/bot:** retain actual isolated tools/ppsspp_lab.ps1 screenshot marker/route/GPU dump support but don't mistake 500-ms polling for frame-accurate deterministic replay. Add source-linked failure packet/build hash manifest, first a short PPSSPP BOT-0 smoke, then scripted checkpoints, before considering any continuous playthrough. Separate bot-emulator T2 from real Go T3. Test and research audio, movies, scripts, save/HOME, I/O/streaming, 2D text, 3D animation/GE and release tooling, not only the largest renderer bug. New end-of-next-week completion remains an **aspiration**, not proof of production readiness, and docs-only research does not authorize game-code edits.
 
+
+## 2026-11-19 no-regression source discovery: raw GE writers, lazy cache and audio
+
+Read the detailed [GE_WRITER_CENSUS_AND_REPLAY_PERF_AB_WIP.md](GE_WRITER_CENSUS_AND_REPLAY_PERF_AB_WIP.md) and [SAVE_WEATHER_AUDIO_VIDEO_CROSSCHECK_WIP.md](SAVE_WEATHER_AUDIO_VIDEO_CROSSCHECK_WIP.md) before implementing P0 changes. The existing first-read [authoritative queue](PRIORITY_QUEUE_CODE_OWNERS_FOR_CODEX_WIP.md) is the only current ordered source-of-truth. This is additive to prior QA03 investigations; do not replace PS2 fidelity target or reopen closed Town Map/CRI logo.
+
+**P0 critical correction:** even after protecting the sceGuGetMemory wrapper, **the stock renderer can write main GE list words directly** via mesh command emission, native mip register loop, GE CALL, variable memcpy instance replay and direct GE bone matrices. Inspect ALL linked SDK writers as well and preserve both pipelined command buffers, end/tail reserve, list cache flush, sublist ring age, full-frame error handling and main-RAM headroom. p4_mesh_persist=0 means its memcpy replay is **off by default**, not evidence of a stock crash. Test on synthetic/PPSSPP before any real Go overflow stress; don't globally skip rendering to hide command count.
+
+**Potential CPU performance candidate only after safety:** p4_skin_call=1, p4_mesh_call=1 and p4_instance_replay=1 are already active; p4_mesh_persist=0 and p4_mesh_persist_check=0 are inactive. A reversible check-mode A/B (persist=1/check=1, then persist=1/check=0) can assess full mesh call replay in School, Shopping, Junes etc. Existing historic source comment 61% memory stalls is NOT current observed Go performance. Audit texture generation/GE ring invalidation and visible model differences. Increasing GE list memory may collide with existing 1MiB on-demand GE ring and ~6MiB mesh cache.
+
+**Compendium edit-save protection:** original yListSlotRefresh FUN_002E4090 and yListSlotSortByKey FUN_002E6C90 both have unchecked datPersonaCachedRecord pointer copies. datPersonaResolveRecord FUN_0010FDE0 can seed the cache but STILL return NULL; **do not simply substitute resolver pointer for direct cache pointer**. Isolate valid-ID/active flags, list kind and lifecycle; preserve original-save handling, save file integrity and optional manual fusion feature OFF in initial build.
+
+**Weather UI-D:** msgCalendarDraw FUN_00283490 record1 from separate calendar sprite pack is drawn three ways — intro animation, settled intro and persistent idle. Its source (165,244) dark colour maps to (123.75,148.14) matching screenshot #106 label, but actual record content still unverified. One local fix must preserve fade and all three phases, not shift six weather cells or existing persistent HUD.
+
+**Audio/movie regression:** native P4P audio.c already uses separate loader+audio threads with five stereo 32KiB×2 rings (320KiB static), catches underflow by closing stream; video_game.c drains GE, suspends/resumes audio, restores prior framebuffer. When fixing title flashes/performance check video/audio counters, elapsed first three actual displayed frames, audible music restart and SAVE/HOME. Do not remove sound or change stream buffers as presumed GPU optimization. Mark source T1 and actual reproduced cause T0 until PPSSPP and Go.
+
 ## Before final approval on Saturday
 - Incorporate the user's subsequent hardware results and newly reported QA.
 - Ensure this prompt is standalone and current, with exact pinned baseline commit; the branch HEAD will change due to **docs-only commits**, so distinguish source baseline from documentation HEAD.
