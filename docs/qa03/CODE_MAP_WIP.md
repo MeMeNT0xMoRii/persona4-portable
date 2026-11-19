@@ -25,6 +25,10 @@
 | Audio/video + movie transition | `port/audio.c`, `port/audio_game.c`, `port/video_game.c`, `port/video.c`, `port/lifecycle.c`, `tools/psp_audio_video_probe.py` | Intro/title slowdown, movie handoff, return-to-title flash, keep sources and generated assets consistent |
 | Build/translation/runtime identities | `tools/psp_census.py` ~692+ creates `build/census/src`, `tools/psp_link.py` `PORT` ~25 + relocation; `tools/psp_make_data.py` source markers / native functions; `tools/psp_data_census.py`; `tools/psp_vu0.py`; `docs/building.md` | `src/` game-source is fetched from pinned **external decompilation**; not shipped in this repo. 821 compiled game objects documented in perf06. Record SHA and toolchain, **do not upload original ISO or derived game assets** |
 
+## Deep dive: All-Out and other battle cut-ins (2026-11-19)
+
+The pinned PS2 game source has a verified **T1** routing chain for the All-Out/roundup effects: `btlActionRoundupMesUpdate` (FUN_001AE800) → `btlCutinLoad` (FUN_001F9CF0; group variant parameter count+1) → `btlCutinLoadStatus` (FUN_001F9FA0) → `btlCutinUpdate` (FUN_001FA190) → `mdlEffectFlushTreeFrame` (FUN_00485870; primitive kind dispatch). Different resource templates are used for other cut-in kinds. Investigate `mdlEffectAdvanceTrackQuad` UV/rect and `EffSpriteUpdate` geometry **only after identifying the exact All-Out primitive kind**. See [scoped evidence/addresses and procedure](ALL_OUT_CUTIN_TRACE_WIP.md). No confirmed crop fix or new runtime test.
+
 ## What the code observation proves—and does NOT
 
 **Proved by static source read:** perf06 scales normal 2D vertex positions with different X/Y factors. It has special battle-panel/circular TV hooks, weather caller rewrites, fusion indicator width patches, and separate Shuffle-Time Im3D culling. Upstream b383/b386 contain the specific scoped culling variants. These are verified source facts.
