@@ -85,3 +85,7 @@
 
 ## Efficient collaboration
 The masterprompt should refer to **this single hub**, read linked docs once, build a short execution matrix, group tool calls and focused tests, and report at phase boundaries. If information arrives before Saturday, update evidence/docs first, then the masterprompt—**no repetitive full-repository rereads and no second baseline**. The human user runs hardware checks and supplies results. GitHub is the shared change-controlled knowledge base; this chat cannot execute work continuously while the user is absent.
+
+### 2026-11-20 cross-port and handoff retention first-read
+- [**QA05 cross-port technical comparison: OoT PSP, GTA III re3-PSP, GTA LCS/VCS PSP→PC recomp and New 3DS port**](CROSSPORT_OOT_GTA_PSP_GU_BOT_2026-11-20_WIP.md) — source-verified GE list rollover test (4096 **bytes** reserve in OoT vs b388 4096 **words**), independent shadow RTT/no-depth-write hypothesis for Junes, texture-slot/stride/cache validity, offline asset conversion, LCS unattended runner with cloned save hashes + watchdog; includes critical-topic handoff audit. No P4P implementation or T2/T3. Cross-port methods are **patterns, not validated P4P speedups**.
+- [**2026-11-20 P0 GE writer census**](SEC01_GE_LIST_WRITER_CENSUS_2026-11-20_WIP.md) — pinned perf06 raw list writers and conditional cache-stall/visibility hazard, with safe instrumentation design.
