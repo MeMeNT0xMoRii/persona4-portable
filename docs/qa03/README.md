@@ -38,6 +38,8 @@
 
 1i. [**Vanilla material-level 16:9 for All-Out and eye cut-ins**](VANILLA_CUTIN_MATERIAL_WIDESCREEN_REFERENCE_WIP.md) — independent pinned Izanagi PC renderer identifies `0x795050` battle screen-model queue, named `haikei_*` panels, `koma_{a..d}` polygon portraits, `megane_kiran_*` and `SYKN_*` background strips; only a scoped **candidate** for the PSP crop fix, no tested build.
 
+1j. [**Multi-scene UI audit: TV Weather title, Shiroku/Metal Works, Social Links, config and negative controls**](UI_MULTI_SCENE_OWNER_AUDIT_WIP.md) — direct private 120-pair image reinspection and pinned code: black Weather News title candidate original (165,244)→PSP (123.75,148.14), shop `fclShopItemPanelUpdate` independent animated sprite/pivot/ring/logo owner, and config Golden/Vanilla option-count mismatch correction; no actual build/T2/T3.
+
 ## Gates, in order
 - **G0 Evidence:** classify every claim as USER/HARDWARE, VISUAL, STATIC-SOURCE, EMULATOR-A/B or PSP-GO-A/B. A static line match is **not** proof of visible change. Record date, exact commit, scene ID, build, save provenance and artifacts.
 - **G1 Baseline freeze:** clean branch from perf06 runtime; screenshot manifest and checksums. Never overwrite known-working perf06 or user saves. No blind `main`/b388 merge.
