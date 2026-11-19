@@ -64,6 +64,8 @@
 1q. [**Pinned PSPSDK direct GU emitters, frame termination and perf07 candidate**](PSPSDK_PINNED_GE_EMITTERS_PERF07_GATE_WIP.md) — exact documented PSPDEV snapshot has inline command words, no capacity guard, clear NULL dereference and two final words; any safe list fix must address SDK as well as P4P. `perf07` is only proposed.
 1r. [**PPSSPP bot route clock determinism**](PPSSPP_ROUTE_TIMEBASE_DETERMINISM_BOT_WIP.md) — absolute `sceKernelGetSystemTimeLow` vs original `p4.log` timestamps, no route-origin normalization, per-read vs per-frame injection; v2 checkpoint/route version proposal, untested.
 
+1s. [**Cross-system perf07 rotation: PS2 package loader vs PSP read cursor, main-RAM linker checks, point MIPs, long-bot clock**](PERF07_ROTATION_PAK_IO_MIPS_LINKER_BOT_WIP.md) — original `sdkPak2` two-stage archive read is not equivalent to port `func_004c9010`'s persistent cursor, missing adapter range-open needs link verification; 64-bit PSP clock exists, and exact 32-bit wrap is 71.58 min. T1 source + synthetic arithmetic only, no runtime fix.
+
 ## Gates, in order
 - **G-1 Mandatory safety first:** verify GE display-list capacity guards and log true high-water before adding any extra stencil/RTT/draw passes. Preserve the perf06 binary, home/save and original/minimal/complex save checks. Set scene-level native Go frame-time baseline before optimizing fidelity; do not infer 30FPS from other ports.
 - **G0 Evidence:** classify every claim as USER/HARDWARE, VISUAL, STATIC-SOURCE, EMULATOR-A/B or PSP-GO-A/B. A static line match is **not** proof of visible change. Record date, exact commit, scene ID, build, save provenance and artifacts.
