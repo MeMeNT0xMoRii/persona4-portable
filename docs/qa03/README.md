@@ -13,7 +13,8 @@
 ## Documents (canonical now)
 1. [Complete 120-pair UI review](120_pairs_widescreen_WIP.md) — all 120 IDs, visual findings, confidence and required next checks.
 1b. [Code owners for combat HUD, party portraits, Social Link portraits, TV weather and effect masks](GRAPHICS_CODE_OWNERS_WIP.md)
-1c. [Skill/pursuit vs All-Out cut-in kinds and persistent field-HUD exclusion](EYE_CUTIN_FIELD_HUD_TRACE_WIP.md) — exact pinned battle function markers for kinds 0/2/4 and their separate resources; upper-right field UI owner is **still unverified**. — newly verified T1 original/PSP call sites, projected geometry hypotheses, safe A/B protocol.
+1c. [Skill/pursuit vs All-Out cut-in kinds; historical field-HUD candidate exclusions](EYE_CUTIN_FIELD_HUD_TRACE_WIP.md) — exact battle request kinds 0/2/4. The former 'field owner unknown' conclusion is now superseded.
+1d. [**Persistent upper-right field HUD OWNER FOUND**](FIELD_HUD_CALENDAR_SOURCE_TRACE_WIP.md) — pinned `calendarDrawBackdrop` FUN_00122A40, boot task registration and exact date/time/weather sprite groups, plus existing `0xFF6→0xBF6` X-scale workaround. — exact pinned battle function markers for kinds 0/2/4 and their separate resources; upper-right field UI owner is **still unverified**. — newly verified T1 original/PSP call sites, projected geometry hypotheses, safe A/B protocol.
 1a. [All-Out / cut-in pinned PS2 call chain](ALL_OUT_CUTIN_TRACE_WIP.md) — **new T1** participant-dependent resource requests, effect-tree flush and crop/UV investigation. Exact crop root cause still unknown.
 2. [Issue + evidence matrix](QA_MATRIX_WIP.md) — prioritized bugs, hypotheses, proof tiers and regression cases.
 3. [Source and dependency map](CODE_MAP_WIP.md) — verified file/line entry points and scalable decompilation inventory proposal.
