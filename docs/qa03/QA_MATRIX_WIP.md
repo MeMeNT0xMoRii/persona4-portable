@@ -184,3 +184,17 @@ See [source/target comparison](CROSSPORT_OOT_GTA_PSP_GU_BOT_2026-11-20_WIP.md).
 ### 2026-11-20 image-evidence update, UI-A (I+T1; no executed fix)
 
 New uploaded private 120+120 ZIP with SHA-256 `12e73b56f2d1582102cce18669fb87429edd1df7e5f5e417754820a7eeabd662` verified CRC/decoding/IDs. Repeated yellow wheel measurement for **#77/78/80/81/82/110/113**: Golden x9–119 y148–258 (one y257), approx 111×111 circular, perf06 x6–122 y163–256, **117×94 ellipse**, center 6–7px too low vs Golden geometric reference. Confirmed pinned original `FUN_00207B00` center and radius with frozen perf06 `put_vertex` x/y factors; current projection predicts observed P4P bounds. Source mechanism strongly supported, **no actual fix**. Before any UI-specific A/B, measure text/selected bar independently, test 1–4 party, Rush #83 and field #76 negative controls; preserve PS2-US art and 20/30 FPS targets. [Protocol/limits](UI_BATTLE_WHEEL_3PAIR_PIXEL_GEOMETRY_WIP.md). Do not copy 120 image files to public repo.
+
+### 2026-11-20 STAB-01 expanded branch-specific matrix (source T1, symptom still T0)
+
+**Execution-order clarification:** the older table labels several visual issues P0, but **safety gate is SEC-01 first**, then STAB-01/02, before any wheel/shadow/stencil visual changes; use the [authoritative rolling queue](PRIORITY_QUEUE_CODE_OWNERS_FOR_CODEX_WIP.md). New [STAB-01 full source precondition audit](STAB01_REGISTER_CACHE_ID_METADATA_GATES_2026-11-20_WIP.md):
+
+| Condition in original `yListSlotRefresh` case 6 | Expected risk | Falsifier / required log |
+| --- | --- | --- |
+| Active roster **u16 ID >=256** | Metadata `[id].arcana` read **before** `datPersonaCachedRecord` range assert; unsafe 14-byte-stride indexing (metadata resource extent not measured) | pre-metadata ID and roster source; compare original/minimal/complex private cloned saves; do not dereference invalid ID |
+| ID 0..255, arcana <22, inactive cache flag | 0x30-byte `memcpy` from NULL possible | cache bit0 and source ptr per slot before copy; was register actually reached? |
+| Metadata flags 0x8/0x20 | `datPersonaInitAllRecords` *does not seed* missing entry (IDs 1..255), while Register uses only arcana threshold | prove actual ID+arcana eligible, cache absent, and init executed; excluded flag alone **does not prove crash** |
+| Missing cache on weighted/key sort | Separate unconditional `memcpy` from cache in **both** `FUN_002E68B0` and `FUN_002E6C90` | trace exact list task/sort phase, ID, count and cache; do not patch only Register |
+| Try `datPersonaResolveRecord` as memcpy source | It can populate cache yet still return NULL in same invocation | reject naïve substitution; decide safe list output policy and preserve save integrity before any fix |
+
+No actual user save bytes, PPSSPP T2, PSP Go T3 or hardware crash traceback inspected in this pass. A GE stall or different modified-save corruption still remains an alternative causal hypothesis.
