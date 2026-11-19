@@ -46,6 +46,7 @@
 
 ## Hourly research protocol (19–21 Nov 2026)
 - Saved automation **P4P Samstagsvorbereitung** scheduled **hourly from Nov 19 19:00 to Sat Nov 21 13:30 Europe/Vienna (last regular slot at 13:00)**. Autonomous tasks are periodic, NOT continuous, and may depend on account/tool availability. Existing separate upstream watch may also be running.
+- **2026-11-19 user instruction:** Source-code investigation must **never be neglected** in favor of high-level plans. Every substantive research round must inspect relevant *actual pinned original-game or current PSP port code*; record exact file/function/line and evidence level, or explain why no new code mapping was possible. See [new graphics code ownership atlas](GRAPHICS_CODE_OWNERS_WIP.md) before repeating battle/portrait source research. The saved automation prompt has been updated accordingly; Saturday 13:30 CET stopping time remains unchanged.
 - At start read this file plus CHANGELOG, then choose exactly one previously insufficiently examined subsystem. Research sources or code; document **verified evidence only**, record exact links/commit and unresolved blockers. If no new evidence, **no empty commit**; try another independent focus.
 - At end append a compact dated section to this handoff: `slot | area | newly verified | changed docs / commit | blockers | next highest-ROI`. Avoid replacing original canonical goals.
 - Explicitly tell user when a manual new Project chat would be beneficial; **cannot monitor idle chat length perfectly nor create a new conversation automatically**.
