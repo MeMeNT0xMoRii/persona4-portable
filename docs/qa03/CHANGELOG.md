@@ -25,6 +25,8 @@
 
 | 2026-11-19 · code-focused interactive | **New T1 graphics code atlas**: battle dial contour FUN_00203930/frame FUN_0020B1A0/backdrop FUN_00204A30; battle UI registry FUN_00200FD0; party portrait roster FUN_002167F0 and portrait FUN_002142B0; Social Link UI FUN_00356A10 → portrait quad FUN_0035AFF0 with start values FUN_0035BC10; weather/GS alpha mask ownership. Golden UI problems still lack exact T2/T3 root-cause tests. | [GRAPHICS_CODE_OWNERS_WIP.md](GRAPHICS_CODE_OWNERS_WIP.md) + source atlas/code map/QA matrix/masterprompt updated. No game code, builds, hardware or copyrighted assets changed. |
 
+| 2026-11-19 · scheduled research policy | User clarified that source-code investigation must remain central even when the hourly topic is hardware, bot or performance; automation updated with a **CODE-FIRST** requirement: open exact pinned PS2/P4P source, document verifiable code ownership or explain why no new mapping is possible, avoid redundant searches. Existing Saturday 13:30 CET cutoff unchanged. | GitHub evidence/Docs only; no new runtime permission. |
+
 ## How new evidence must be merged
 1. Record: date/time, reporter, affected build commit, save provenance, PSP vs PPSSPP, scene + pair ID, observed and *expected* behavior, screenshot/log (private URI, not public image), confidence.
 2. Update `QA_MATRIX_WIP.md` and `120_pairs_widescreen_WIP.md` only if the evidence materially changes a claim; update `CODE_MAP_WIP.md` if a code owner becomes proven. Add a dated row here.
