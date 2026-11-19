@@ -21,6 +21,8 @@
 
 | 2026-11-19 18:37 CET | Scheduled research adjusted to **hourly until Sat 2026-11-21 13:30 CET** (last regular slot 13:00). Handoff update policy strengthened: every new useful finding reflected in `docs/qa03/HANDOFF_LIVE.md`; no empty commits, successor chat loads live GitHub file. | Automation updated; docs-only, runtime untouched. |
 
+| 2026-11-19 (interactive \`mach weiter\`) | **New T1 All-Out cut-in resource/effect trace** pinned to game-source SHA: roundup request FUN_001AE800 → cutin resource loader FUN_001F9CF0 (count+1) → model effect draw FUN_001FA190 → child primitive dispatch FUN_00485870. Separate candidate UV/geometry routines FUN_004824A0 and FUN_004A5FC0; KOMA2/3/4 directory strings exist but resolved runtime paths are not proven. | [ALL_OUT_CUTIN_TRACE_WIP.md](ALL_OUT_CUTIN_TRACE_WIP.md); updated source map, code map, QA matrix and Saturday masterprompt. T1 static, **no build or screenshot upload**. |
+
 ## How new evidence must be merged
 1. Record: date/time, reporter, affected build commit, save provenance, PSP vs PPSSPP, scene + pair ID, observed and *expected* behavior, screenshot/log (private URI, not public image), confidence.
 2. Update `QA_MATRIX_WIP.md` and `120_pairs_widescreen_WIP.md` only if the evidence materially changes a claim; update `CODE_MAP_WIP.md` if a code owner becomes proven. Add a dated row here.
