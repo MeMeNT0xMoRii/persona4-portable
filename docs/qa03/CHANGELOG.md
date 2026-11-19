@@ -34,3 +34,5 @@
 `docs/qa03/README.md` is the current index. The older `docs/v027_golden_ui_layout_qa03.md` and its 71-based coordinates are archived as historical, not active. The older hardware comparison may mention earlier Golden IDs only as dated history. The new 120 list has no implied 71-ID correspondence.
 
 | 2026-11-19 | Harden historical documentation: replaced stale 71-based handoff UI section and labeled old b388 report Golden IDs historical | Prevent future Codex mixing different screenshot indexes; no runtime modifications. |
+
+| 2026-11-19 19:00 CET | All-Out effect-tree draw gate pinned: frame/startFrame and child disabled flag filter visible primitives; callbacks conditional; dispatch handler header incomplete. Avoid logging all allocated children as visible. | T1 original source only; [trace](ALL_OUT_CUTIN_TRACE_WIP.md), commit `92f72dace5c1fd69a75e053402d39e9ac0c09189`; no kind→draw implementation or T2/T3. |
