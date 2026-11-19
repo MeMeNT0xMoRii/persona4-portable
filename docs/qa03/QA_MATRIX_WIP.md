@@ -153,3 +153,6 @@ All findings above are **static source-only T1, not measured FPS, patched code, 
 | **UI/HW one-ground-truth rule** | Old perf06 vs b388 hardware doc contains some obsolete **Nov 18 Golden 71-pair ID references**. | Keep hardware outcomes, but **ONLY** November 19 120 paired Golden/PSP image IDs for ongoing geometry and UI acceptance. |
 
 For every rotating issue: compare pinned perf06 source and correct historical output first, then original PS2 owner + separate candidate patch, one isolated A/B/A, one known-good negative control, PPSSPP T2 and user PSP Go T3. This is **historical-source synthesis**, not a new code fix or device test.
+
+
+| **BUILD-02 census/linker profiling provenance (T1 2026-11-19 23:55)** | Frozen `tools/psp_census.py` L494–497/L755–765 builds decomp objects without profiler macros; `tools/psp_link.py` L117–139 separately compiles port objects without them; `tools/psp_hw_debug.py` L25–70 supports distinct timing/HW modes. Actual private perf06 EBOOT/manifest not inspected. | Check original triplet SHA256 and manifest/build invocation before any benchmark. Junes F009_004 matching camera/save; negative control regular boot/ef0/HOME and historical mip 486/559, no claim of new FPS. Preserve regular binaries, reject mixed modes. See [BUILD-02 note](PERF06_RUNTIME_BASELINE_FORENSICS_WIP.md). |
