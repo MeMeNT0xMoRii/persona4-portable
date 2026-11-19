@@ -1,0 +1,33 @@
+# Unified QA, bug and proposed fix matrix (WIP)
+
+**Baseline:** `dev/v0.27-perf06`, full game-source/manifest SHA required per A/B. **User approval:** documentation WIP only. **Evidence codes:** U=PSP-Go/user observation; I=120 paired images; S=static code/upstream notes; E=repeatable PPSSPP test; H=matched PSP-Go hardware A/B; ?=hypothesis. The latest 120 IDs replace all old Golden 71 IDs. Do not reinterpret unrelated screenshot indices.
+
+| Priority | Problem/goal | Current evidence | Candidate approach | Must pass / rollback condition |
+|---|---|---|---|---|
+| P0 | Combat action wheel appears horizontally stretched, not Golden-round; partly low/cropped (#77–83, #110/#113) | I+S (separate 2D scale paths) | isolate Draw/UI controller, preserve circular object ratio; translate its anchor rather than globally alter renderer | roundness in menus/skill/target select, all labels visible; no new stripes, stable FPS |
+| P0 | Battle party portraits/HP-SP badges and black TV frame (#77–83, #110–113) | I | separate geometries; right anchor and party-spacing; TV frame independent of circle | 1–4 characters, no overlap or cut text, unchanged targeting functionality |
+| P0 | Social Link list/detail portrait stretching and positions (#43–45) | I | separate UI contexts; uniform face scaling and independent x/y anchors | varied faces and ranks + normal dialog control |
+| P0 | All-Out Attack crop (#112/#118/#119) | I+U; cropping path unproven | trace vanilla 4:3 individual layers/UV/scissor; recompose for 16:9, 2/3/4 fighters | head/eyes intact, Vanilla art, same animation sequence/timing, no FPS regression; keep separate branch |
+| P0 | Weak/Crit eye cut-ins oversized/cropped (#116) | I, different characters | trace cut-in sprite + UV/scissor; uniform scale within 16:9 safe-area | pose/face remains visible and proportions correct; effects timing preserved |
+| P0 | Enemy reinforcement after fight freezes on modified test save | U in QA03 handoff; not reproduced with original save | deterministic save+encounter, log last transition, task/AI/asset/state compare; do not assume render freeze | control save; HOME vs hard crash, reproducible saved logs; fix only with root cause |
+| P0 | Compendium Register freeze with heavily modified save | U, suspect save mutation not proved | original, minimal Izanagi-75, and OP save control; validation in registry UI | no corruption, register works when permissible, original save backup and rollback |
+| P1 | Velvet Room fusion card images show backs (perf06) | U+S; b386 fix tested upstream | scoped `p4_im3d_cull` per RenderWare cull-mode 2, independent test | cards during entire fusion and Shuffle Time, no unintended Im3D culling |
+| P1 | Igor table patch/shadow wrong (perf06) | U+S; b383 upstream | material-class-only `p4_cull_back=3` equivalent, not broad mesh culling | multiple angles; NO curtain/wall holes, stable Junes and shadow passes |
+| P1 | Weather News title/layout (#106) | I; PS2 overlap behavior unknown | investigate weather calDrawWeather shim, card masks and drawing sequence, separate text title and background | correct layout for different forecast days/whether and animated cards |
+| P1 | Field date/time/weather possibly stretched (#93–105) | I | anchor separately, adjust circle aspect, bar+type independently | 480x272 safe area in home/school/Junes/dungeon/weather variants |
+| P1 | Performance regressions vs upstream b388 in town map/school/shopping, Junes low both | U photos + b388 hardware comparison; no controlled p50/p95 | 333MHz CPU/GE timeline, fixed camera A/B/A; benchmark candidate raw GE b365, strip pack b366, skin guard box b385 | measured p50/p95 gain without image loss or added startup stall; revert losing variants |
+| P1 | Junes West very slow; shopping North flicker, missing/odd objects | U history, some paired photos | scene-specific GE mesh/alpha/overdraw, camera/object transforms; isolate West (not Department Store) | exact reproduced scene, before/after screenshots and frame metrics |
+| P1 | Fusion model glow / Zio orbs, Apsaras flicker history, Margaret seat | U historic + E validated perf06 Margaret; hardware A/B pending | preserve perf04/perf06 fixes, diagnose framebuffer alpha / VU & effect layers | cold-start repeated fusion 2×, no flicker or wrong seat, other effects preserved |
+| P1 | Title-return flash / intro-title low FPS / HOME behavior | U history | separate video→GE lifecycle, framebuffer clear/teardown; frame timing | 5 repeated intro/title/return cycles, HOME in field and battle |
+| P1 | Dungeon Teddie portrait intermittent blank/green | U intermittent | compare CLUT/raster lifecycle and cache invalidation after scene transitions | cold/hot 3×, both entry routes, correct portrait |
+| P2 | Item target-select description missing (#30) | I; Golden vs Vanilla semantics unknown | original PS2-US behavior first; only add if intentionally requested | no erroneous feature parity assumption |
+| P2 | Quest/config/shop/normal dialogue layout (#24–72) | I | local UI-anchor/width/typography tweaks, correct proportion for circular motifs | long labels, choices, money boxes, glyphs, 16:9 safe area |
+| OPTIONAL | Castle white distant corridor (#74) | I; user says likely white on original PS2 | **DO NOT FIX by default**; if desired, optional Golden-inspired black/fog presentation after verified PS2 and user approval | Vanilla-style default remains intact until explicit design decision |
+| CLOSED | Town map circular frame and blue marker (#97) | U confirms correct in perf06 | **NO change** | optional screenshot anchor audit only |
+| LONG TERM | Background autonomous PPSSPP QA bot | user proposal, not implemented | deterministic input + checkpoints + watchdog + logs; Codex intervenes only on failures | no unattended edits to source/game saves; reproducible triage artifacts |
+
+## Evidence and performance conditions
+- A single overlaid FPS number is a **moment**, not a statistical result. Hardware acceptance: same PSP Go clock, same save/scene/camera, same active plugin state, 20s idle + 10s walk (where applicable), A/B/A, per-scene p50/p95 FPS/frame ms and GPU wait.
+- Avoid diagnosing altered battle behavior solely from the OP save. Never mutate original saves.
+- If a change creates new holes, missing card faces, clip errors, model jitter, startup hangs, checksum drift or significant frame-time regression, **rollback and record**.
+- Discard or re-label superseded older observations by source and build, not by deleting historic tests.
