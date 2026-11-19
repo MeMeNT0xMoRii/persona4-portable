@@ -68,6 +68,13 @@ Read [`RENDER_ARTIFACTS_RTT_FOG_TRIAGE_WIP.md`](RENDER_ARTIFACTS_RTT_FOG_TRIAGE_
 
 **RTT also has a distinct conditional correctness bug:** perf06 `func_003f7490` clears whatever camera target is currently bound, ignoring the *passed* camera's `camera+0x60` texture. b388 b333 switches target for pre-update clears then restores the old one. The Junes/Living Room 128×128 floor shadow additionally needs orthographic camera handling (`camera+0x14==2`), scoped nonindexed Im3D RTT quad, alpha/fade and CLAMP; test in separate commits with stock measured p50/p95. P4P's mesh camera cache key does not include projection mode, a conditional risk to guard when adding mode support. No unbounded Im3D enable, no broad blend/alpha toggles. Keep FieldNoise/black lines/2D UI/All-Out and title/Compendium/reinforcement separately in regression matrix. **No implementation authorized by this note.**
 
+
+### Additional RTT/resource lifetime gates (2026-11-19)
+
+- **RTT slot exhaustion**: perf06 `rtt_get` holds only four slots; a failed allocation prints `rtt raster ... no VRAM, drawn on the screen`, and the camera begin can render its intended offscreen pass **onto the visible main buffer**. Before attributing flat-blue corners, missing shadows or oversized effects to culling, correlate this precise log with scene/camera, raster format and intended offscreen target. Never globally disable RTT.
+- **Intermittent portrait texture cache**: `func_003fb830` in perf06 frees a raster without `texture_generation++`, while b388 bumps generation; current mesh bind caches raster/pixel/palette addresses + generation. Only an actual reused pointer/stale cache event in Teddie/dialog/fusion can establish root cause; trace exact loader readiness and CLUT before any invalidation patch.
+- **Existing timed list-size logging is insufficient**: `port/frame_timing.h` `hwpeak ... listB` reports the **highest wall-time frame**, not the largest list size. Use it for a smoke test only, then preflight and capture actual max words in a bounded diagnostic candidate.
+
 ## Before final approval on Saturday
 - Incorporate the user's subsequent hardware results and newly reported QA.
 - Ensure this prompt is standalone and current, with exact pinned baseline commit; the branch HEAD will change due to **docs-only commits**, so distinguish source baseline from documentation HEAD.
