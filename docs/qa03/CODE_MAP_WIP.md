@@ -1,5 +1,7 @@
 # Code ownership map and executable investigation strategy (WIP)
 
+> **New pinned upstream game-source atlas:** [exact function/line/PS2 markers](DECOMP_SOURCE_MAP_WIP.md). Hardware resource budgets [here](PSP_HARDWARE_LIMITS_WIP.md), PPSSPP debugger control [here](PPSSPP_BOT_INTERFACE_WIP.md). These documents complement the port map, not replace A/B validation.
+
 **Verified on** `MeMeNT0xMoRii/persona4-portable` branch `dev/v0.27-perf06`, 2026-11-19. These are **entry-point line ranges**, not verified pixel-level root causes. Link to source and use exact commit SHA on implementation day; line numbers can shift. No runtime changes were made.
 
 ## Architecture layers
