@@ -1,0 +1,32 @@
+# QA03 — battle command wheel: repeatable private 3-pair pixel geometry measurement
+
+**2026-11-19, private 120-pair ZIP I-level pixel verification.** Current P4P source/runtime `29b0fcfdec70222a4052099b67fb4a11e8d8aff4`, original PS2 source `Raikaru/Persona4-Decompilation@363eab8a966d60a9773b45f330f2344329ec4f0a`. Golden **960×544 → 480×272**, P4P native **480×272**. Original files remain PRIVATE and are **not** uploaded. This is **image evidence I**, plus independently T1-mapped original draw function, **not** a compiled geometry fix or original PS2-US parity assertion.
+
+## New direct measurement, not merely visual impression
+
+Method: open `Golden/G_77_.jpg`, `G_80_.jpg`, `G_110_.jpg`, matching `P4P-perf06/P_<id>_.png` from the user's **2026-11-19 120-pair ZIP**. Resize Golden with PIL Lanczos by exactly 2 in both dimensions. Pixel threshold for saturated bright-yellow disc: `R>170, G>150, B<135`, restrict **x=0..129, y=140..271**, label **4-connected** yellow components and union those with area **at least 300 pixels**. Bounding rectangle is min/max extents over the resulting mask, inclusive. Threshold sensitivity repeated with `(R>180,G>165,B<125)` and `(R>155,G>140,B<145)`; the wheel rectangles/ratios below were **identical** under all three thresholds for these pairs. Note the yellow mask is **not the underlying sprite rectangle**; masks omit black selection bar/text, and full min/max may include small neighboring yellow islands.
+
+| Same scenario pair | Golden visible yellow bbox | Golden w×h, ratio | perf06 visible yellow bbox | perf06 w×h, ratio |
+| --- | --- | --- | --- | --- |
+| **#77** | x **9–119**, y **148–258** | **111×111**, 1.000 | x **6–122**, y **163–256** | **117×94**, **1.245** |
+| **#80** | x **9–119**, y **148–257** | **111×110**, 1.009 | x **6–122**, y **163–256** | **117×94**, **1.245** |
+| **#110** | x **9–119**, y **148–258** | **111×111**, 1.000 | x **6–122**, y **163–256** | **117×94**, **1.245** |
+
+**Repeatable I conclusion:** the bright yellow disc is round in the Golden **screen-pixel reference** and markedly *horizontally extended* in perf06. The P4P x midpoint is **64 px**, Golden ~**64 px**, so horizontal translation is not the first suspect. Golden y center **~203px**, perf06 **209.5px**: P4P yellow center is **6–7 display pixels too low** versus this reference. Golden visible yellow width ~**5% narrower** (111/117≈0.949) and height ~**18% taller** (111/94≈1.181). This is the **observable target ratio**, not yet the exact RenderWare local transform or an unconditional update to original art.
+
+**Important improvement over old candidate:** prior static wheel-owner note suggested only `yscale=0.75/(272/448)=1.2353`, which would make the *current 117px-wide perf06 disc* nearly round but **~6px wider/larger than Golden and still 6–7px too low**. A *Golden-layout-fitting candidate* would transform local disc around its own pivot by roughly **X≈0.95, Y≈1.18**, and shift the group's projected y **−6.5px**; this is an **I-derived starting point**, not an approved patch. Golden/PS2 might differ in animation-phase/layout semantics, so verify Vanilla PS2 US at matching wheel state before acceptance.
+
+## Exact current/original source ownership — no global circle rewrite
+
+- Original [`src/Battle/btlEffect_inferred_00202c60.c` **`btlSelectionDrawCommands` FUN_00207B00**, L2387–2528](https://github.com/Raikaru/Persona4-Decompilation/blob/363eab8a966d60a9773b45f330f2344329ec4f0a/src/Battle/btlEffect_inferred_00202c60.c#L2387-L2528) sets local `offsetX=-10,offsetY=28`; wheel center **(96−10,318+28)=(86,346)** original units, draws **outer dark radius 81**, **filled yellow radius 78**, outline 79 through [`shdDrawRadialFan FUN_00365F00`](https://github.com/Raikaru/Persona4-Decompilation/blob/363eab8a966d60a9773b45f330f2344329ec4f0a/src/shdMisc.c#L622-L685) each with `xscale=1,yscale=1`. Baseline screen projection `(x×480/640,y×272/448)` yields **(64.5,210.1)** matching perf06's observed mask midpoint **(64,209.5)**. This **supports correct ownership of the wheel** and likely anisotropic projection, not a misplaced random texture.
+- **Critical regression trap** from the same original source [L2510–2557](https://github.com/Raikaru/Persona4-Decompilation/blob/363eab8a966d60a9773b45f330f2344329ec4f0a/src/Battle/btlEffect_inferred_00202c60.c#L2510-L2557): eight command row sprites are placed at `rowY=259+15*row` with their own x/y; selected bar via **`btlPanelDrawStrip`** uses index and offset; selected glyph has another original y formula `258+15*selectedCommand`. If only the circles are widened/raised, **text and selection bar will no longer align** with the disc. Move/space them in a coordinated **battle command selection group**, after separately proving their post-PSP rects. Do not change general `shdDrawRadialFan` globally, full-screen TV backdrop, battle central panel `FUN_00203930`, or party portrait class.
+- The measured screen bbox is **yellow only**; outer dark ring, selected black stripe, gray text and action hint require their own masks/GE trace. The same screenshot ID may show differing chosen command/enemy; geometry stability across 77/80/110 supports this disc measurement, **not matching game state and original PS2 look**.
+
+## Proposed isolated UI acceptance
+
+1. Reproduce in regular **perf06**, exact same state and animation phase, then capture original PS2-US and proposed **perf07-uiwheel-only** diagnostic. Use exact P4P/Golden 120 screenshot scenario, no copyrighted images in GitHub.
+2. Instrument **draw-stage** vertex bboxes for the three radial fan layers and **each command row + selected bar**, report pixel x/y and scissor; compare against private image mask. Negative controls: game selection intro/outro, wheel disabled, 1–4 party members, skill submenu, target select, Rush and button-hint bar.
+3. Candidate local group correction: first geometry of all three radial fans and group y; then *separate* row spacing/text/selection alignment. Avoid changing global `sdkSpriteDrawQueued` or alpha/stencil. Minimum safety: screen clipping/present, unchanged GE list headroom/p95 CPU/GE on PSP Go, no hidden labels or overlaps.
+4. **Rollback immediately** if black panel, prompt, visual aspect, selected strip or cut-in classes regress. No code or hardware run yet.
+
+**Status:** Newly verified, threshold-robust I-level numeric yellow-disc mismatch in 3 paired screenshots, T1 original draw function and related row owner; **no actual runtime modification, PPSSPP T2 or PSP Go T3**.
