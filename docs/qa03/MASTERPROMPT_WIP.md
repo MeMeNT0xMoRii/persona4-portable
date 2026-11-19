@@ -182,6 +182,21 @@ Read [`PERF07_ROTATION_PAK_IO_MIPS_LINKER_BOT_WIP.md`](PERF07_ROTATION_PAK_IO_MI
 
 **Priority remains:** P0 display-list writers/protection → early IO-01 execution/symbol validation and Compendium/reinforcement → Junes/corridor/street base profile → isolated shadow/UI/alpha/texturing candidates → audio/movie/QA bot and optional mod integration. Preserve Vanilla PS2 quality and clean known-good states.
 
+
+## Saturday new cross-port diagnostic and measured UI wheel gate (2026-11-19)
+
+Read [`PERF06_RTT_DEPTH_GE_PROFILER_SHOP_UI_CROSSPORT_WIP.md`](PERF06_RTT_DEPTH_GE_PROFILER_SHOP_UI_CROSSPORT_WIP.md) and [`UI_BATTLE_WHEEL_3PAIR_PIXEL_GEOMETRY_WIP.md`](UI_BATTLE_WHEEL_3PAIR_PIXEL_GEOMETRY_WIP.md) **after the authoritative priority queue**. Use pinned perf06 runtime SHA, normal/timing/GE-dump variant distinction and user-private 120 image IDs.
+
+**RTT depth:** perf06 `port/rwsky.c` already binds separate **color** targets for 4 RTT slots but **shares depth** with main display; a camera render/clear interleaved with main 3D can overwrite **top-left screen-space depth**. This is *not* yet a confirmed source of any user's Junes/dungeon anomaly. Trace camera target/clear/end and depth tests together with existing wrong-target pre-clear / parallel camera / Im3D shadow / alpha hypotheses; no global RTT off or unbudgeted eDRAM, no new extra passes before P0 list bound protection.
+
+**GPU profiling:** existing `port/ge_dump.h` serial `P4_GE_DUMP` writes private `.ppdmp v6` with L+R+SQUARE; serial mode forces `p4_pipeline=0`, so use for **per-draw/texture/RTT capture only**, never for regular FPS. OpenUG2 PSP's `psp-viewer/probe.c/probe.h` demonstrates per-pass CPU/GE signal/cmd-parser and `gudraw.c` cached-list late-write audit. Prefer **offline** decode of existing P4P dump with bounded CALL/RET parsing and private texture redaction before constructing new debug features. Go p50/p95 of actual presented frames from a pipeline-preserving build; build a command-word high-water counter separately, not from `hwpeak listB` of slowest wall frame. Optional per-draw GE stall batching/PGO+LTO are external *method references*, not P4P FPS claims.
+
+**Battle wheel candidate improved by direct evidence:** three matching private pairs #77/#80/#110 at 480×272, threshold sensitivity tested: Golden bright yellow bbox 111×110–111, perf06 117×94, P4P radius visually **too wide/short and center 6–7 px low**. Static source owner `FUN_00207B00 btlSelectionDrawCommands` center source (86,346)→(64.5,210.1) matches P4P. Local target ratios X≈0.95, Y≈1.18, y −6.5 PSP px **only starting estimates**; prior Y×1.235 alone insufficient to match Golden's smaller width/center. Outer black wheel, 8 command rows `rowY=259+15*row`, selection strip and labels are **independent draws**, so no fixing disc alone; preserve original PS2-US art and compare steady animation phases. Test in isolated UI branch after safety, no global `shdDrawRadialFan` or `sdkSpriteDrawQueued` changes.
+
+**Shop panels:** private #54 Metal Works/#70 Shiroku logo/ring sizes differ, but Golden art differs; source `FUN_002E0100 fclShopItemPanelUpdate` uses local panel pivot, anchor, tween and scale. Identify actual matching sprite record before changing, preserve invisible-panel tween state (shop UI may depend on it). **Dev bot:** OpenUG2's host0:/ PSPLink low-priority polling thread and graceful rescue avoid card I/O per game frame; plan an optional developer-only host side channel for PPSSPP/Go, do not introduce a new `p4io` stall into audio or retail gameplay.
+
+No automatic integration of these candidates; record T0/I/T1 vs PPSSPP T2 vs PSP Go T3 and exact A/B/A acceptance for perf07, plus independent rollback.
+
 ## Before final approval on Saturday
 - Incorporate the user's subsequent hardware results and newly reported QA.
 - Ensure this prompt is standalone and current, with exact pinned baseline commit; the branch HEAD will change due to **docs-only commits**, so distinguish source baseline from documentation HEAD.
