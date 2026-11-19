@@ -28,6 +28,8 @@
 10. [Hardware comparison perf06 ↔ b388](../v027_qa03_b388_vs_perf06_hardware_2026-11-19.md) — b383/b386 findings, isolated upstream candidates. Earlier Golden numeric references in this document are **historical only**, not valid canonical 120 IDs.
 11. [perf06](../v027_perf06.md), [perf04](../v027_perf04.md), [issues](../v027_issues.md), [replay saves](../replay_saves.md), [building](../building.md).
 
+1f. [**Broader QA code-first triage + next-build UI tranche**](STABILITY_UI_PERF_WIDE_TRIAGE_WIP.md) — verified Compendium Register active-but-uncached Persona NULL-dereference risk, reinforcement/GE discriminator, title-film framebuffer boundary, dungeon/VFX candidates, repeated battle-dial pixel-envelope difference, independent UI-A/B/C/D cohorts and Junes instrumentation. **No runtime fix or T2/T3.**
+
 ## Gates, in order
 - **G0 Evidence:** classify every claim as USER/HARDWARE, VISUAL, STATIC-SOURCE, EMULATOR-A/B or PSP-GO-A/B. A static line match is **not** proof of visible change. Record date, exact commit, scene ID, build, save provenance and artifacts.
 - **G1 Baseline freeze:** clean branch from perf06 runtime; screenshot manifest and checksums. Never overwrite known-working perf06 or user saves. No blind `main`/b388 merge.
