@@ -60,6 +60,10 @@
 1o. [**P0 exact GE direct-writer census + existing mesh-persist optimization trial**](GE_WRITER_CENSUS_AND_REPLAY_PERF_AB_WIP.md) — wrapper is not sole emitter, counts raw mip/GE-CALL/instance replay/bone writes, normal vs debug flag defaults, cached sublist/main-RAM lifetime and a check-before-speed A/B. Static T1 only.
 1p. [**Non-renderer rotation: Compendium cache, Weather News animation, audio/video**](SAVE_WEATHER_AUDIO_VIDEO_CROSSCHECK_WIP.md) — additional unchecked original cache sort path, a resolver that seeds cache but returns NULL, weather title three draw phases, 320KiB audio rings and movie-display restore trace. No actual T2/T3.
 
+
+1q. [**Pinned PSPSDK direct GU emitters, frame termination and perf07 candidate**](PSPSDK_PINNED_GE_EMITTERS_PERF07_GATE_WIP.md) — exact documented PSPDEV snapshot has inline command words, no capacity guard, clear NULL dereference and two final words; any safe list fix must address SDK as well as P4P. `perf07` is only proposed.
+1r. [**PPSSPP bot route clock determinism**](PPSSPP_ROUTE_TIMEBASE_DETERMINISM_BOT_WIP.md) — absolute `sceKernelGetSystemTimeLow` vs original `p4.log` timestamps, no route-origin normalization, per-read vs per-frame injection; v2 checkpoint/route version proposal, untested.
+
 ## Gates, in order
 - **G-1 Mandatory safety first:** verify GE display-list capacity guards and log true high-water before adding any extra stencil/RTT/draw passes. Preserve the perf06 binary, home/save and original/minimal/complex save checks. Set scene-level native Go frame-time baseline before optimizing fidelity; do not infer 30FPS from other ports.
 - **G0 Evidence:** classify every claim as USER/HARDWARE, VISUAL, STATIC-SOURCE, EMULATOR-A/B or PSP-GO-A/B. A static line match is **not** proof of visible change. Record date, exact commit, scene ID, build, save provenance and artifacts.
