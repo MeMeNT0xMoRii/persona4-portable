@@ -68,6 +68,10 @@
 
 1s. [**Cross-system perf07 rotation: PS2 package loader vs PSP read cursor, main-RAM linker checks, point MIPs, long-bot clock**](PERF07_ROTATION_PAK_IO_MIPS_LINKER_BOT_WIP.md) — original `sdkPak2` two-stage archive read is not equivalent to port `func_004c9010`'s persistent cursor, missing adapter range-open needs link verification; 64-bit PSP clock exists, and exact 32-bit wrap is 71.58 min. T1 source + synthetic arithmetic only, no runtime fix.
 
+
+1t. [**Perf06 RTT shared depth, external GE per-pass profiler, cached-GE late-write audit, shop UI**](PERF06_RTT_DEPTH_GE_PROFILER_SHOP_UI_CROSSPORT_WIP.md) — T1 source-level top-left shared RTT/main depth hazard, existing P4P .ppdmp v6 and OpenUG2 GPU pass parsing/PSPLink host rescue methods; private #54/#70 shop geometry; no runtime correction or benchmark.
+1u. [**Three-pair quantitative battle wheel ellipse and vertical offset**](UI_BATTLE_WHEEL_3PAIR_PIXEL_GEOMETRY_WIP.md) — direct private #77/#80/#110 Golden↔perf06 480×272 bright-yellow mask, threshold-robust: Golden ~111×111px circle vs perf06 117×94px ellipse, center 6–7px low. Distinguish fan circle, selected stripe and separate command row owners; T1+I evidence, T2/T3 open.
+
 ## Gates, in order
 - **G-1 Mandatory safety first:** verify GE display-list capacity guards and log true high-water before adding any extra stencil/RTT/draw passes. Preserve the perf06 binary, home/save and original/minimal/complex save checks. Set scene-level native Go frame-time baseline before optimizing fidelity; do not infer 30FPS from other ports.
 - **G0 Evidence:** classify every claim as USER/HARDWARE, VISUAL, STATIC-SOURCE, EMULATOR-A/B or PSP-GO-A/B. A static line match is **not** proof of visible change. Record date, exact commit, scene ID, build, save provenance and artifacts.
