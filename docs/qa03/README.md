@@ -32,6 +32,8 @@
 
 1g. [**Full renderer-artifact re-audit: Junes RTT, fog lines, fusion alpha, blue field edges**](RENDER_ARTIFACTS_RTT_FOG_TRIAGE_WIP.md) — independently rechecked pinned Vanilla source, perf06 and b388; confirmed **missing parallel-camera projection** in perf06, full original FieldNoise tiled/banded feedback composition, dedicated alpha reader/writer trace, Dojima #105 blue corner regions, and guarded upstream fidelity candidates. **No run/fix.**
 
+1g. [**P0 GE display-list overflow + RTT camera clear/projection audit**](GE_LIST_OVERFLOW_AND_RTT_CLEAR_TRIAGE_WIP.md) — perf06 64Kiword ×2 unbounded GPU command lists vs b388 128Kiword guarded; wrong-target pre-update camera clear; Junes parallel camera + field-shadow Im3D chain, exact source evidence. **No crash reproduction or patch.**
+
 ## Gates, in order
 - **G0 Evidence:** classify every claim as USER/HARDWARE, VISUAL, STATIC-SOURCE, EMULATOR-A/B or PSP-GO-A/B. A static line match is **not** proof of visible change. Record date, exact commit, scene ID, build, save provenance and artifacts.
 - **G1 Baseline freeze:** clean branch from perf06 runtime; screenshot manifest and checksums. Never overwrite known-working perf06 or user saves. No blind `main`/b388 merge.
