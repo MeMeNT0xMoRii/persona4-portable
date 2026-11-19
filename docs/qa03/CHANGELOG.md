@@ -22,3 +22,5 @@
 
 ## Source of truth decision
 `docs/qa03/README.md` is the current index. The older `docs/v027_golden_ui_layout_qa03.md` and its 71-based coordinates are archived as historical, not active. The older hardware comparison may mention earlier Golden IDs only as dated history. The new 120 list has no implied 71-ID correspondence.
+
+| 2026-11-19 | Harden historical documentation: replaced stale 71-based handoff UI section and labeled old b388 report Golden IDs historical | Prevent future Codex mixing different screenshot indexes; no runtime modifications. |
