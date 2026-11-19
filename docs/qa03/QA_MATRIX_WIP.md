@@ -116,3 +116,11 @@ All findings above are **static source-only T1, not measured FPS, patched code, 
 
 
 **PERF-BUILD-01 / 2026-11-19 23:02 / T1:** Pinned `tools/psp_link.py` `main()` L117–139 has no default `P4_FRAME_TIMING`/`P4_HW_PROFILE` defines; `port/rwsky.c` L545–546, L1667–1669 conditionally compiles/records. Current EBOOT macro state **unknown**, not a measured result. Test gate: capture compile flags and EBOOT hash, optionally check diagnostic strings, then instrument and collect multiple Junes F009_004 windows; no T2/T3 yet. See PSP_HARDWARE_LIMITS_WIP.md.
+
+## 2026-11-19 ~23:00 P0 SDK raw sendCommandi writes + BOT-0 clock alignment
+
+**P0 SDK/GE T1:** P4P docs/building.md identifies **PSPSDK source snapshot 09f02b88b9f3** (source tested by audit; shipped EBOOT link hash unknown). The exact PSPSDK `guInternal.h` L604–606 inline `sendCommandi` appends raw GE words with **no bound**. `sceGuDrawArray`, `sceGuTexImage`, `sceGuBoneMatrix`, and `sceGuClear` append commands via internal inlines, so only protecting P4P's `sceGuGetMemory` wrapper or exported `sceGuSendCommandi` cannot secure the list. `sceGuFinishId` needs two trailing words for FINISH/END; `sceGuClear` dereferences the GetMemory pointer, so naive NULL on failure is unsafe. [Exact code audit](PSPSDK_PINNED_GE_EMITTERS_PERF07_GATE_WIP.md), link and actual T2/T3 capacity/guard still OPEN.
+
+**BOT-0 T1:** P4P `port/pad.c` route engine executes events against **absolute PSP uptime**; `tools/psp_route.py` outputs captured absolute log times without subtracting first event origin; PPSSPP lab syntax parser cannot detect uptime mismatch/nonmonotonic sequence. The same route may start minutes late in new boot. Proposed backwards-compatible v2 relative/checkpoint-anchored route and pressed/released input assertion. `p4_pad_reads` decremented per pad-read, not per frame. [Full audit](PPSSPP_ROUTE_TIMEBASE_DETERMINISM_BOT_WIP.md), no actual emulator run.
+
+**Target naming:** suggested successor **Persona4-PORTABLE-v0.27-dev-perf07**; no EBOOT created, no new runtime source, no hardware FPS, no confirmed fix. Need separate safe debug build and baseline/golden UI/Go acceptance first.
