@@ -34,6 +34,8 @@
 
 1g. [**P0 GE display-list overflow + RTT camera clear/projection audit**](GE_LIST_OVERFLOW_AND_RTT_CLEAR_TRIAGE_WIP.md) — perf06 64Kiword ×2 unbounded GPU command lists vs b388 128Kiword guarded; wrong-target pre-update camera clear; Junes parallel camera + field-shadow Im3D chain, exact source evidence. **No crash reproduction or patch.**
 
+1h. [**Corrected FieldNoise attribution and 2D alpha-mask capability**](FIELD_NOISE_ALPHA_MASK_FIDELITY_WIP.md) — original TV-world noise/vignette is **explicitly stubbed out in perf06**, so its PS2 tile seams cannot directly explain current black lines; perf06 narrow `p4_effect_mask` vs b388 generic `p4_2d_alpha_masks`; extra GE-list/fill cost. **No fix or device test**.
+
 ## Gates, in order
 - **G0 Evidence:** classify every claim as USER/HARDWARE, VISUAL, STATIC-SOURCE, EMULATOR-A/B or PSP-GO-A/B. A static line match is **not** proof of visible change. Record date, exact commit, scene ID, build, save provenance and artifacts.
 - **G1 Baseline freeze:** clean branch from perf06 runtime; screenshot manifest and checksums. Never overwrite known-working perf06 or user saves. No blind `main`/b388 merge.
