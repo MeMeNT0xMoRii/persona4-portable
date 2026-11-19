@@ -13,6 +13,12 @@
 | 2026-11-19 | Planning docs publishing permission granted. Build execution, merging, release **not** independently approved by publication. | Baseline `dev/v0.27-perf06`; branch retains same runtime sources. |
 | 2026-11-19 | Add QA03 hub, 120-pair review, source map, bug matrix, bot design and Saturday masterprompt DRAFT | WIP initial version. More user tests may change priorities and instructions. |
 
+| 2026-11-19 18:24 CET | Existing Samstagsvorbereitung automation changed to **hourly** through Sat 21 Nov 23:00 CET, bounded runs, WIP docs only; no autonomous new chat possible | Scheduled task confirmed enabled; `HANDOFF_LIVE.md` for manual chat transfer. |
+| 2026-11-19 18:30 CET | Read exact pinned `Raikaru/Persona4-Decompilation@363eab8a...` and linked Battle/Weather/Bones FUN address entries | `DECOMP_SOURCE_MAP_WIP.md` T1 static; no compilation or runtime proof. |
+| 2026-11-19 18:30 CET | Compared PSP Go/3000 CPU/RAM/GE specs to perf06 framebuffer layout | `PSP_HARDWARE_LIMITS_WIP.md` hardware/VRAM formula; no performance diagnosis yet. |
+| 2026-11-19 18:30 CET | Confirmed PPSSPP's public WebSocket debugger input, savestate, GPU capture, replay control catalog | `PPSSPP_BOT_INTERFACE_WIP.md` T1 API evidence; not yet connected or implemented. |
+| 2026-11-19 18:30 CET | Created public `HANDOFF_LIVE.md` and linked it from draft masterprompt | Documentation-only continuity; new Project chat must be opened manually by user. |
+
 ## How new evidence must be merged
 1. Record: date/time, reporter, affected build commit, save provenance, PSP vs PPSSPP, scene + pair ID, observed and *expected* behavior, screenshot/log (private URI, not public image), confidence.
 2. Update `QA_MATRIX_WIP.md` and `120_pairs_widescreen_WIP.md` only if the evidence materially changes a claim; update `CODE_MAP_WIP.md` if a code owner becomes proven. Add a dated row here.
