@@ -1,5 +1,7 @@
 # Persona4 PORTABLE
 
+> **Current development QA / public WIP:** [Persona4-PORTABLE QA03 — 120 Golden/perf06 comparison pairs, bug matrix, code map, hardware b388 comparison, autoplay bot concept, and Saturday Codex/Work masterprompt draft](docs/qa03/README.md). The older 71-Golden-screenshot audit is **obsolete**. This documentation does not authorize or imply a new gameplay runtime build.
+
 This playtest branch builds on [dreikk91/persona4-psp](https://github.com/dreikk91/persona4-psp).
 The b249 integration builds on [b176-xmb-home8](docs/build_b176_xmb_home8.md).
 The fork includes save recovery, the [custom XMB presentation](docs/xmb.md),
