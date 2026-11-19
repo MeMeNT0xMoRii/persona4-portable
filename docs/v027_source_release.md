@@ -13,7 +13,7 @@ Der reguläre perf06-Build befindet sich noch in der Hardwareabnahme auf echter 
 
 Für zukünftige Entwicklungszyklen wird Persona 4 Golden (PS Vita) als ergänzende visuelle Referenz verwendet.
 
-Eine private Sammlung von 71 Screenshots in nativer Auflösung (960 × 544) dokumentiert verschiedene Menüs, Charakterporträts, Social Links, Kampf-HUD, Fusion, Dialoge und weitere Benutzeroberflächen.
+**Update 19.11.2026:** Die ältere Sammlung mit 71 Bildern ist verworfen. Verbindlich ist ausschließlich das private Vergleichsarchiv mit **120 Golden-Bildern (960×544) und 120 P4P-perf06-Bildern (480×272)**, jeweils unter denselben Nummern 1–120 und demselben Spielszenario. Die öffentliche [QA03-Planungsübersicht](qa03/README.md) und der [120-Bildpaar-Audit](qa03/120_pairs_widescreen_WIP.md) sind ausdrücklich vorläufig; Spielgrafiken bleiben privat. Der ursprüngliche Vanilla-P4-Look soll erhalten bleiben, Golden ist jedoch eine präzise Referenz für moderne 16:9-Proportionen, Rundungen, Anker und Kompositionen.
 
 Ziele der geplanten Analyse:
 
