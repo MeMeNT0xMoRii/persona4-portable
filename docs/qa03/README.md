@@ -19,6 +19,7 @@
 4. [**PPSSPP playthrough bot V2: official WebSocket API and failure evidence**](PLAYTHROUGH_BOT_REAL_INTERFACE_V2_WIP.md) — verified current upstream game.state.save/load/verify, input injection, GPU/GE inspection, bounded logging and deterministic checkpoints; no running bot or hardware result.
 
 ## Documents (canonical now)
+0. [**Authoritative rolling priority queue and code owners for Codex**](PRIORITY_QUEUE_CODE_OWNERS_FOR_CODEX_WIP.md) — first-read ID queue; rotated research across all systems, P0 command-list safety. Avoid parallel competing source-of-truth queues.
 1. [Complete 120-pair UI review](120_pairs_widescreen_WIP.md) — all 120 IDs, visual findings, confidence and required next checks.
 1b. [Code owners for combat HUD, party portraits, Social Link portraits, TV weather and effect masks](GRAPHICS_CODE_OWNERS_WIP.md)
 1c. [Skill/pursuit vs All-Out cut-in kinds; historical field-HUD candidate exclusions](EYE_CUTIN_FIELD_HUD_TRACE_WIP.md) — exact battle request kinds 0/2/4. The former 'field owner unknown' conclusion is now superseded.
@@ -50,10 +51,16 @@
 
 1k. [**Camp menu source owners: Skill/Equip/Persona, rows/scroll/footer and controls**](CAMP_MENU_UI_OWNER_TRACE_WIP.md) — pinned original `cmpSkillMenuDraw` FUN_00138BF0, `cmpEquipMenuDraw` FUN_00131A00, `cmpPersonaMenuDraw` FUN_00135DC0 and `cmpMainTaskStep` router; menus have separate X/Y source anchors and true original content; avoid global scaling. No build/test.
 
+
+1l. [**Native PSP optimization study: fidelity-first 20→30FPS**](PS2_FIDELITY_PSP_GO_PERFORMANCE_PLAN_WIP.md) — OpenUG2 PSP PVS/section culling and offline T8 mips, SHAR-PSP offline texture palette savings as external references; verified existing P4P swizzle/mip/mesh/guard/skin toggles; targeted Junes/School/Shopping plan. Not a performance benchmark.
+1m. [**GameBanana manual fusion + other PS2 mods compatibility**](MODS_MANUAL_FUSION_PORT_FEASIBILITY_WIP.md) — public CLPS2C/PS2 retail hooks mapped to pinned native C fusion/Persona menu owners; GPL-3.0 licensing vs P4P MIT; flags-off native adaptation and save regression requirements; other mod classes and blockers.
+1n. [**Expanded Codex code-trace supplement**](CODEX_CODE_TRACE_PRIORITY_LEDGER_WIP.md) — cross-system source/line and hypothesis test matrix, priority aging and fresh triage links; **authoritative top-level queue remains** [PRIORITY_QUEUE_CODE_OWNERS_FOR_CODEX_WIP.md](PRIORITY_QUEUE_CODE_OWNERS_FOR_CODEX_WIP.md).
+
 ## Gates, in order
 - **G-1 Mandatory safety first:** verify GE display-list capacity guards and log true high-water before adding any extra stencil/RTT/draw passes. Preserve the perf06 binary, home/save and original/minimal/complex save checks. Set scene-level native Go frame-time baseline before optimizing fidelity; do not infer 30FPS from other ports.
 - **G0 Evidence:** classify every claim as USER/HARDWARE, VISUAL, STATIC-SOURCE, EMULATOR-A/B or PSP-GO-A/B. A static line match is **not** proof of visible change. Record date, exact commit, scene ID, build, save provenance and artifacts.
 - **G1 Baseline freeze:** clean branch from perf06 runtime; screenshot manifest and checksums. Never overwrite known-working perf06 or user saves. No blind `main`/b388 merge.
+- **G1b P0 render-list safety first:** verify command-list capacity/high-water, all GE writers, RAM headroom before adding visual draw passes or enabling more alpha work.
 - **G2 Isolated upstream visual fixes:** b386 Im3D card-back culling and b383 material-scoped Igor floor culling separately; tests for Shuffle, curtains, walls, Junes, Margaret, light effects.
 - **G3 UI classes:** prove coordinate path and fix circle / portrait / HUD independently; compare Golden target positions in **480×272**, and preserve Vanilla story/art. Separate All-Out layer composition (2/3/4 participants). No global `target_sx = target_sy` hack.
 - **G4 Performance:** measure CPU/GE waits and p50/p95 under matched real PSP Go scenarios; test b365 raw GE, b366 offline strip packs, b385 skin guard box **one at a time** only if relevant. `p4strips.bin` is not `p4str.bin`. Avoid speculative broad merges.
