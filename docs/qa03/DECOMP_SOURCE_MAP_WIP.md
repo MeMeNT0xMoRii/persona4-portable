@@ -13,6 +13,10 @@
 
 - [**ALL_OUT_CUTIN_TRACE_WIP.md**](ALL_OUT_CUTIN_TRACE_WIP.md) maps the pinned original `btlActionRoundupMesUpdate` **FUN_001AE800** (kind=0 + party IDs + count) → `btlCutinLoad` **FUN_001F9CF0** (`count+1` resource templates, async paths) → `btlCutinLoadStatus` **FUN_001F9FA0** → `btlCutinUpdate` **FUN_001FA190** → `mdlEffectFlushTreeFrame` **FUN_00485870**, per-primitive dispatch table `D_00713480 + (kind << 6) + 0x0C`. Includes related track-frame bbox/UV and sprite-geometry candidates. The precise screen crop point is **not** proven. Reference Golden/P4P pairs **#112, #118, #119**, eyes **#116** separately.
 
+## NEW 2026-11-19 — independently verified battle + Social Link graphics entrypoints
+
+See [`GRAPHICS_CODE_OWNERS_WIP.md`](GRAPHICS_CODE_OWNERS_WIP.md) for exact original function lines and PSP code links: battle curved selection **FUN_00203930** + frame **FUN_0020B1A0**; independent backdrop **FUN_00204A30**, UI registry **FUN_00200FD0**; right portraits **FUN_002167F0** + **FUN_002142B0**; Social Link UI `datCommunityListDraw` **FUN_00356A10** → portrait `datCommunityPortraitDraw` **FUN_0035AFF0**, including their explicit coordinate/quad geometry; TV forecast weather caller and PSP alpha exception. **These are T1 owner mappings, not experimentally validated graphical fixes.**
+
 ## Confirmed source entrypoints (T1 static location only)
 
 | System & pair IDs | Verified original source (exact pinned commit) | Function / line / retail marker | P4P adaptation | Current claim / action |
