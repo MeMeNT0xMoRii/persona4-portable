@@ -17,6 +17,11 @@
 
 See [`GRAPHICS_CODE_OWNERS_WIP.md`](GRAPHICS_CODE_OWNERS_WIP.md) for exact original function lines and PSP code links: battle curved selection **FUN_00203930** + frame **FUN_0020B1A0**; independent backdrop **FUN_00204A30**, UI registry **FUN_00200FD0**; right portraits **FUN_002167F0** + **FUN_002142B0**; Social Link UI `datCommunityListDraw` **FUN_00356A10** → portrait `datCommunityPortraitDraw` **FUN_0035AFF0**, including their explicit coordinate/quad geometry; TV forecast weather caller and PSP alpha exception. **These are T1 owner mappings, not experimentally validated graphical fixes.**
 
+## NEW 2026-11-19 — original **persistent upper-right calendar HUD owner CONFIRMED**
+
+- [`FIELD_HUD_CALENDAR_SOURCE_TRACE_WIP.md`](FIELD_HUD_CALENDAR_SOURCE_TRACE_WIP.md): original `src/Main/init.c` **initBootChainStep FUN_00111990** calls `calendarStartTasks` **FUN_00123730**, creating `calendarStateTask` **FUN_001228C0** and draw queue `calendarQueueResult` **FUN_001236E0**; the queue callback is `calendarDrawBackdrop` **FUN_00122A40** in pinned `src/datCalendar_inferred_001228c0.c`. T1 code shows distinct background, month/day+weekday, day-phase and weather icon (resource index `field_08+0x20`) at upper-right source coords. Source data uses game day/phase table and five animation records. `src/Kernel/sdkSpr.c` **sdkSpriteDraw FUN_0046B380** emits 4-vertex textured sprite quads. **This is the actual steady field HUD owner**, not TV `msgCalendarDraw` or transient `cldTimeChangeDraw`.
+- Current P4P `tools/psp_census.py` L188–190 has a direct `signedScaleX=0xFF6 → 0xBF6` replacement for the **day-phase** sprite in this original source: already a 25.1% X-scale reduction **for that sprite only**. Future Golden-driven changes must verify current output before applying any second compensation. Exact physical deformation/desired fix remains T0; no PPSSPP or PSP Go A/B.
+
 ## Confirmed source entrypoints (T1 static location only)
 
 | System & pair IDs | Verified original source (exact pinned commit) | Function / line / retail marker | P4P adaptation | Current claim / action |
