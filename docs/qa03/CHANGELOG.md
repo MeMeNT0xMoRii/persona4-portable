@@ -27,6 +27,8 @@
 
 | 2026-11-19 · scheduled research policy | User clarified that source-code investigation must remain central even when the hourly topic is hardware, bot or performance; automation updated with a **CODE-FIRST** requirement: open exact pinned PS2/P4P source, document verifiable code ownership or explain why no new mapping is possible, avoid redundant searches. Existing Saturday 13:30 CET cutoff unchanged. | GitHub evidence/Docs only; no new runtime permission. |
 
+| 2026-11-19 interactive continuation | **Pinned T1 cut-in type separation**: All-Out `kind=0` from `btlActionRoundupMesUpdate` (FUN_001AE800), pursuit `kind=2` from `btlActionPursuitMesUpdate` (FUN_001A3F90), conditional normal skill-action `kind=4` from `btlActionSkillUpdate` (FUN_001A7720); each has distinct cut-in resource templates. Exact screenshot #116 kind and UV crop still T0. Investigated time-change `cldTimeChangeDraw` FUN_00266CC0, standalone calendar and TV forecast: none proves permanent top-right field HUD ownership. | [EYE_CUTIN_FIELD_HUD_TRACE_WIP.md](EYE_CUTIN_FIELD_HUD_TRACE_WIP.md), new source note/QA matrix/masterprompt updated. Static code inspection only; no game code edit or T2/T3. |
+
 ## How new evidence must be merged
 1. Record: date/time, reporter, affected build commit, save provenance, PSP vs PPSSPP, scene + pair ID, observed and *expected* behavior, screenshot/log (private URI, not public image), confidence.
 2. Update `QA_MATRIX_WIP.md` and `120_pairs_widescreen_WIP.md` only if the evidence materially changes a claim; update `CODE_MAP_WIP.md` if a code owner becomes proven. Add a dated row here.
