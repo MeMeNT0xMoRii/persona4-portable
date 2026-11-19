@@ -44,6 +44,10 @@ You are the lead engineer and regression investigator for **Persona4-PORTABLE v0
 - Do not parallelize source edits against the same `rwsky.c` / generated `psp_census.py` without explicit worktrees/merge discipline.
 - Validate artifact provenance and licensing; upstream collaboration should use focused reproductions and patches rather than giant unsorted cherry-picks.
 
+## New source-verified guardrail: visual/render/performance research (2026-11-19)
+
+Read [`RENDER_PATH_PERF_AUDIT_WIP.md`](RENDER_PATH_PERF_AUDIT_WIP.md) before planning affected All-Out, Weather News, Junes or VFX fixes. It reflects direct private **120-pair** reinspection, explicit 2D/atomic/GE code paths and existing profiler/alpha/RTT behavior. **Do not assume** the original PS2 `FUN_004B1AD0` screen-sprite projection is the specific All-Out layer without a primitive-kind→callback trace; differentiate original Vanilla cut-in composition from Golden artwork. The `#106` forecast **title** must be traced independently of already mapped six cards. For perf, default `p4_pipeline=1`/frameskip and serial-only `p4_exp_ge_time` must not be mixed into stock A/B FPS claims; validate sampled CPU/GE times and counts. `p4_dst_alpha_passes=0` may hide some small effect passes but global re-enabling is a **high-risk untested hypothesis**. No runtime work permitted merely by adding this note.
+
 ## Before final approval on Saturday
 - Incorporate the user's subsequent hardware results and newly reported QA.
 - Ensure this prompt is standalone and current, with exact pinned baseline commit; the branch HEAD will change due to **docs-only commits**, so distinguish source baseline from documentation HEAD.
