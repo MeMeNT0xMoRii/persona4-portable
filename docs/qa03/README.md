@@ -14,11 +14,14 @@
 1. [Complete 120-pair UI review](120_pairs_widescreen_WIP.md) — all 120 IDs, visual findings, confidence and required next checks.
 2. [Issue + evidence matrix](QA_MATRIX_WIP.md) — prioritized bugs, hypotheses, proof tiers and regression cases.
 3. [Source and dependency map](CODE_MAP_WIP.md) — verified file/line entry points and scalable decompilation inventory proposal.
-4. [Autonomous playthrough/bot design](AUTOPLAY_BOT_WIP.md) — PPSSPP smoke/regression runner, failure artifact contract.
-5. [Codex/Work masterprompt — DRAFT](MASTERPROMPT_WIP.md) — standalone orchestrator prompt; user will approve/finalize by Saturday Nov 21.
-6. [Change log / decision ledger](CHANGELOG.md) — append-only human-readable changes and explicit status.
-7. [Hardware comparison perf06 ↔ b388](../v027_qa03_b388_vs_perf06_hardware_2026-11-19.md) — b383/b386 findings, isolated upstream candidates. Earlier Golden numeric references in this document are **historical only**, not valid canonical 120 IDs.
-8. [perf06](../v027_perf06.md), [perf04](../v027_perf04.md), [issues](../v027_issues.md), [replay saves](../replay_saves.md), [building](../building.md).
+4. [Pinned game decomp source atlas](DECOMP_SOURCE_MAP_WIP.md) — exact 2026-11-19 read-only original function names, US FUN addresses and port fix locations.
+5. [PSP Go/3000 hardware limits and framebuffer budget](PSP_HARDWARE_LIMITS_WIP.md) — sourced 64 MB, 333 MHz, 2 MiB GE eDRAM, formulas and profiling gates.
+6. [PPSSPP verified remote debugger / bot interface](PPSSPP_BOT_INTERFACE_WIP.md) — actual WebSocket protocol, savestate, input, screenshot, GPU stats, replay.
+7. [Autonomous playthrough/bot design](AUTOPLAY_BOT_WIP.md) — PPSSPP smoke/regression runner, failure artifact contract.
+8. [Codex/Work masterprompt — DRAFT](MASTERPROMPT_WIP.md) — standalone orchestrator prompt; user will approve/finalize by Saturday Nov 21.
+9. [Change log / decision ledger](CHANGELOG.md) — append-only human-readable changes and explicit status.
+10. [Hardware comparison perf06 ↔ b388](../v027_qa03_b388_vs_perf06_hardware_2026-11-19.md) — b383/b386 findings, isolated upstream candidates. Earlier Golden numeric references in this document are **historical only**, not valid canonical 120 IDs.
+11. [perf06](../v027_perf06.md), [perf04](../v027_perf04.md), [issues](../v027_issues.md), [replay saves](../replay_saves.md), [building](../building.md).
 
 ## Gates, in order
 - **G0 Evidence:** classify every claim as USER/HARDWARE, VISUAL, STATIC-SOURCE, EMULATOR-A/B or PSP-GO-A/B. A static line match is **not** proof of visible change. Record date, exact commit, scene ID, build, save provenance and artifacts.
