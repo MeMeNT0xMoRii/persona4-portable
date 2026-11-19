@@ -9,6 +9,10 @@
 - The decomp README explicitly says incomplete functions still contain retail assembly. **Readable C ≠ every game function recovered or semantically proven.** Source matches PS2 retail code; our PSP version uses mechanical shims and MIPS/PSP replacements.
 - Do not republish original game files, binary excerpts, media, or complete third-party decomp dumps. Link directly to exact pinned public file/line. Check third-party licensing before downstream redistribution.
 
+## NEW 2026-11-19 — All-Out resource / effect draw chain
+
+- [**ALL_OUT_CUTIN_TRACE_WIP.md**](ALL_OUT_CUTIN_TRACE_WIP.md) maps the pinned original `btlActionRoundupMesUpdate` **FUN_001AE800** (kind=0 + party IDs + count) → `btlCutinLoad` **FUN_001F9CF0** (`count+1` resource templates, async paths) → `btlCutinLoadStatus` **FUN_001F9FA0** → `btlCutinUpdate` **FUN_001FA190** → `mdlEffectFlushTreeFrame` **FUN_00485870**, per-primitive dispatch table `D_00713480 + (kind << 6) + 0x0C`. Includes related track-frame bbox/UV and sprite-geometry candidates. The precise screen crop point is **not** proven. Reference Golden/P4P pairs **#112, #118, #119**, eyes **#116** separately.
+
 ## Confirmed source entrypoints (T1 static location only)
 
 | System & pair IDs | Verified original source (exact pinned commit) | Function / line / retail marker | P4P adaptation | Current claim / action |
