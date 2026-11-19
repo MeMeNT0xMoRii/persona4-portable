@@ -67,6 +67,10 @@ If a **136×136 source-space rect** goes through only the current basic screen f
 4. **Regression**: controlled PPSSPP A/B identical save, background and frame; PSP Go A/B with plugin configuration documented, battle 1–4 party, normal/social dialogs, weather/forecast, fusion, All-Out. Measure p50/p95; no missing texture or clipping.
 5. **Documentation**: Log actual modified files, function/line, before/after projected bounds, exact commit and T2/T3 outcomes. If unverified, preserve as *candidate* only.
 
+## Additional verified cut-in routing (2026-11-19)
+
+The [dedicated eye-cut-in and field-HUD trace](EYE_CUTIN_FIELD_HUD_TRACE_WIP.md) confirms three original-source request types, including a **conditional normal-action `kind=4`** route and separate **pursuit `kind=2`**, neither to be confused with **All-Out `kind=0`**. This narrows #116 triage without claiming exact screenshot-to-resource identity. It also excludes transient `cldTimeChangeDraw`, standalone calendar and TV forecast as *unproven* owners of the persistent field upper-right HUD. A bounded 2D source-owner trace remains required.
+
 ## Next source investigations
 
 1. **Field HUD top-right actual owner** — date/day/weather bar; do not assume TV `msgCalendarDraw`.
