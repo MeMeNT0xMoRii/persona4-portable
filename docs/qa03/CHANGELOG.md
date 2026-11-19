@@ -23,6 +23,8 @@
 
 | 2026-11-19 (interactive \`mach weiter\`) | **New T1 All-Out cut-in resource/effect trace** pinned to game-source SHA: roundup request FUN_001AE800 → cutin resource loader FUN_001F9CF0 (count+1) → model effect draw FUN_001FA190 → child primitive dispatch FUN_00485870. Separate candidate UV/geometry routines FUN_004824A0 and FUN_004A5FC0; KOMA2/3/4 directory strings exist but resolved runtime paths are not proven. | [ALL_OUT_CUTIN_TRACE_WIP.md](ALL_OUT_CUTIN_TRACE_WIP.md); updated source map, code map, QA matrix and Saturday masterprompt. T1 static, **no build or screenshot upload**. |
 
+| 2026-11-19 · code-focused interactive | **New T1 graphics code atlas**: battle dial contour FUN_00203930/frame FUN_0020B1A0/backdrop FUN_00204A30; battle UI registry FUN_00200FD0; party portrait roster FUN_002167F0 and portrait FUN_002142B0; Social Link UI FUN_00356A10 → portrait quad FUN_0035AFF0 with start values FUN_0035BC10; weather/GS alpha mask ownership. Golden UI problems still lack exact T2/T3 root-cause tests. | [GRAPHICS_CODE_OWNERS_WIP.md](GRAPHICS_CODE_OWNERS_WIP.md) + source atlas/code map/QA matrix/masterprompt updated. No game code, builds, hardware or copyrighted assets changed. |
+
 ## How new evidence must be merged
 1. Record: date/time, reporter, affected build commit, save provenance, PSP vs PPSSPP, scene + pair ID, observed and *expected* behavior, screenshot/log (private URI, not public image), confidence.
 2. Update `QA_MATRIX_WIP.md` and `120_pairs_widescreen_WIP.md` only if the evidence materially changes a claim; update `CODE_MAP_WIP.md` if a code owner becomes proven. Add a dated row here.
