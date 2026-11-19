@@ -36,6 +36,8 @@
 
 1h. [**Corrected FieldNoise attribution and 2D alpha-mask capability**](FIELD_NOISE_ALPHA_MASK_FIDELITY_WIP.md) — original TV-world noise/vignette is **explicitly stubbed out in perf06**, so its PS2 tile seams cannot directly explain current black lines; perf06 narrow `p4_effect_mask` vs b388 generic `p4_2d_alpha_masks`; extra GE-list/fill cost. **No fix or device test**.
 
+1i. [**Vanilla material-level 16:9 for All-Out and eye cut-ins**](VANILLA_CUTIN_MATERIAL_WIDESCREEN_REFERENCE_WIP.md) — independent pinned Izanagi PC renderer identifies `0x795050` battle screen-model queue, named `haikei_*` panels, `koma_{a..d}` polygon portraits, `megane_kiran_*` and `SYKN_*` background strips; only a scoped **candidate** for the PSP crop fix, no tested build.
+
 ## Gates, in order
 - **G0 Evidence:** classify every claim as USER/HARDWARE, VISUAL, STATIC-SOURCE, EMULATOR-A/B or PSP-GO-A/B. A static line match is **not** proof of visible change. Record date, exact commit, scene ID, build, save provenance and artifacts.
 - **G1 Baseline freeze:** clean branch from perf06 runtime; screenshot manifest and checksums. Never overwrite known-working perf06 or user saves. No blind `main`/b388 merge.
