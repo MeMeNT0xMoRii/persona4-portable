@@ -30,6 +30,8 @@
 
 1f. [**Broader QA code-first triage + next-build UI tranche**](STABILITY_UI_PERF_WIDE_TRIAGE_WIP.md) — verified Compendium Register active-but-uncached Persona NULL-dereference risk, reinforcement/GE discriminator, title-film framebuffer boundary, dungeon/VFX candidates, repeated battle-dial pixel-envelope difference, independent UI-A/B/C/D cohorts and Junes instrumentation. **No runtime fix or T2/T3.**
 
+1g. [**Full renderer-artifact re-audit: Junes RTT, fog lines, fusion alpha, blue field edges**](RENDER_ARTIFACTS_RTT_FOG_TRIAGE_WIP.md) — independently rechecked pinned Vanilla source, perf06 and b388; confirmed **missing parallel-camera projection** in perf06, full original FieldNoise tiled/banded feedback composition, dedicated alpha reader/writer trace, Dojima #105 blue corner regions, and guarded upstream fidelity candidates. **No run/fix.**
+
 ## Gates, in order
 - **G0 Evidence:** classify every claim as USER/HARDWARE, VISUAL, STATIC-SOURCE, EMULATOR-A/B or PSP-GO-A/B. A static line match is **not** proof of visible change. Record date, exact commit, scene ID, build, save provenance and artifacts.
 - **G1 Baseline freeze:** clean branch from perf06 runtime; screenshot manifest and checksums. Never overwrite known-working perf06 or user saves. No blind `main`/b388 merge.
