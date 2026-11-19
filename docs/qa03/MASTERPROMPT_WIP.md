@@ -91,6 +91,15 @@ Read [`RENDER_ARTIFACTS_RTT_FOG_TRIAGE_WIP.md`](RENDER_ARTIFACTS_RTT_FOG_TRIAGE_
 
 Izanagi's other layout evidence supports queue-scope distinction (fullscreen effect/colour grid, right-anchored field HUD and party portraits, separated title cover/movie). But **P4P's command wheel source remains FUN_00207B00**, and no generic Izanagi callback-range should override that. Treat this evidence as input to the isolated UI and All-Out tracks, never proof that any fix was already built or validated.
 
+
+## UI-G Shiroku/Metal Works and Weather News positional proof gate (2026-11-19)
+
+New pinned source/image multi-scene audit: [`UI_MULTI_SCENE_OWNER_AUDIT_WIP.md`](UI_MULTI_SCENE_OWNER_AUDIT_WIP.md). In private P4P #106 the near-black `Weather News` lettering appears around **(124,148)px**; original `msgCalendarDraw` FUN_00283490 settled and idle **record1** call is `sdkSpriteDrawNowUnscaled(165,244,0,0,0xCC,1,...)`, mapping to PSP **(123.75,148.14)**. Strong positional and color match, **not an actual record texture dump**. First isolate that one record; then title-only layout/contrast A/B if intended Golden-like UX, while six weather cells and persistent date HUD stay intact. Do not substitute an unverified 'fix' to `p4_forecast_weather` or blanket weather sprite translation.
+
+**NEW UI-G scope:** #70 Shiroku ring/logo and #54 Metal Works background/chain use **independent shop sprite panel draw tasks**: `fclShopStateUpdate` FUN_002BE530, `fclShopItemPanelUpdate` FUN_002E0100, `fclShopLayoutPanels` FUN_002DD230. Each `sdkSpriteDrawQueued` has **anchor, resource sprite index, pivot, rotation tween and separate X/Y scales**, including repeating 360-degree decorative layers. Trace exact visible record before any ring/logo geometry patch. **Do not reuse UI-A battle command fan `yscale` adjustment** and do not move all shops' UI by a screen-global coefficient. Audit GE words and 2D fill due to repeated shop layers.
+
+**Correct two overconfident assumptions:** Social Link #43–45 use different portrait contents/poses, with opposite width trends for Yu vs Yosuke and a closer Yukiko; no one-size community portrait upscale/shift is justified by those reference images. Config #48 Golden shows **5 options + top Confirm** vs P4P **6 + bottom Confirm**: cross-version menu content/flow, *not* a stable x-shift target. Original `cmpConfigDraw` FUN_0035D0A0 and `cmpConfigDrawOnOff` FUN_0035DFB0 still own Vanilla, but UI-F is **hold for semantic matched Vanilla PS2 test**. Golden screenshot text, levels, option availability and menu graphics often differ. Negative controls: status #38 (similar portrait anchor), Town Map #97, CRI centered. Keep per-class regression gates and fidelity priorities. These are T1 source/I visual **research findings, not implemented fixes**.
+
 ## Before final approval on Saturday
 - Incorporate the user's subsequent hardware results and newly reported QA.
 - Ensure this prompt is standalone and current, with exact pinned baseline commit; the branch HEAD will change due to **docs-only commits**, so distinguish source baseline from documentation HEAD.
