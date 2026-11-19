@@ -19,6 +19,8 @@
 | 2026-11-19 18:30 CET | Confirmed PPSSPP's public WebSocket debugger input, savestate, GPU capture, replay control catalog | `PPSSPP_BOT_INTERFACE_WIP.md` T1 API evidence; not yet connected or implemented. |
 | 2026-11-19 18:30 CET | Created public `HANDOFF_LIVE.md` and linked it from draft masterprompt | Documentation-only continuity; new Project chat must be opened manually by user. |
 
+| 2026-11-19 18:37 CET | Scheduled research adjusted to **hourly until Sat 2026-11-21 13:30 CET** (last regular slot 13:00). Handoff update policy strengthened: every new useful finding reflected in `docs/qa03/HANDOFF_LIVE.md`; no empty commits, successor chat loads live GitHub file. | Automation updated; docs-only, runtime untouched. |
+
 ## How new evidence must be merged
 1. Record: date/time, reporter, affected build commit, save provenance, PSP vs PPSSPP, scene + pair ID, observed and *expected* behavior, screenshot/log (private URI, not public image), confidence.
 2. Update `QA_MATRIX_WIP.md` and `120_pairs_widescreen_WIP.md` only if the evidence materially changes a claim; update `CODE_MAP_WIP.md` if a code owner becomes proven. Add a dated row here.
