@@ -32,3 +32,20 @@ A locally running, user-controlled test harness plays **Persona 4 PS2-US port bu
 - A new build must **not** auto-start from zero for every cosmetic UI fix; smoke subset first, deeper sweep on integration milestones.
 - Profiler builds can alter timing. Keep normal and instrumented builds distinct; log hardware plugin state.
 - Claim no full-game coverage until the bot has reached credits on the **exact build** with verified route checkpoints.
+
+
+## Source-verified 2026-11-19 practical tester harness and triage schema
+
+**Existing executable wrapper, not a bot:** [tools/ppsspp_lab.ps1 L1–132](https://github.com/MeMeNT0xMoRii/persona4-portable/blob/dev/v0.27-perf06/tools/ppsspp_lab.ps1) currently supports isolated PPSSPP OpenGL/Software backend selection, per-build folder variants including P4-perf06, route file with PADS/STICK records, up to 1024 route entries/16383 characters, scene log marker screenshots, ordered ExtraScreenshotMarkers, and GPU dump/archive. It hashes EBOOT.PBP + p4data.bin + p4str.bin in runtime-sha256.csv. **Its 500ms log polling and 277ms multi-capture interval are NOT frame-accurate or deterministic action timestamps.** Do not assume it can automatically beat dungeons or respond to decisions. The Windows helper requires an existing local PPSSPP installation and legal privately supplied game data; none was launched in this research.
+
+**Video-game port best practice** from [OpenUG2-PSP 0.4.0 tester guide](https://github.com/jussimir-labs/OpenUG2-PSP/blob/main/docs/TESTING.md): each report includes device/firmware, source, game mode/location, action, expected/actual, debug log and build ID; an in-game hotkey can write a local technical bug file. For P4P, plan an **opt-in L+R+SELECT log capture** only after checking input conflict and save/HOME state; collect sanitized logs + IDs, no ISO, copyrighted screenshots publicly or automatic user data uploads. This is a design candidate, not code.
+
+**BOT failure packet v0 (planned, all file paths local/private):**
+- manifest: run_id, UTC time, baseline SHA/branch, EBOOT/p4data/p4str SHA256, compiler/toolchain flags, PPSSPP exact version/backend, deterministic route revision, user data source edition;
+- state: room/map scene ID, save/savestate checksum and profile, frame index where debugger supports it, last game flags/transition, preceding bounded input events (button down/up and control-frame time);
+- watchdog: distinguish process exit/GE stall/task hang vs intentional dialogue wait, low FPS vs no frame advancement, screen blank vs script loading, with distinct confidence and timestamps;
+- evidence: last 30–120s bounded logs, 2–3 pre/post failure framebuffer screenshots **kept private**, memory usage, GE list peak + RTT count + alpha writer/reader tags if instrumented;
+- replay: minimal checkpoint, expected next state, three reruns on original untouched save and any separately edited save, A/B/A across last passing build, one-sentence Codex bug hypothesis + source-owner row ID;
+- privacy: user explicitly chooses whether to submit a sanitized report; no automatic cloud uploads/third-party game asset publication, no overwriting saves or replacing a passing build.
+
+**Execution staircase:** after source mapping, BOT-0 debug socket version handshake + title/load/5-button replay; BOT-1 five short UI/scene transitions and controlled synthetic timeout; BOT-2 combat/Velvet/save checkpoint, one hotkey report; BOT-3 extended story quest routing. Record separate artifacts per failed route and stop after bounded retrials. An unattended complete title-to-credits run remains *not built or tested*. Ensure PSP Go T3 for all frame-time goals (PPSSPP is not a physical FPS oracle).
