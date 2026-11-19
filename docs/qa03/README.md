@@ -12,6 +12,7 @@
 
 ## Documents (canonical now)
 1. [Complete 120-pair UI review](120_pairs_widescreen_WIP.md) — all 120 IDs, visual findings, confidence and required next checks.
+1a. [All-Out / cut-in pinned PS2 call chain](ALL_OUT_CUTIN_TRACE_WIP.md) — **new T1** participant-dependent resource requests, effect-tree flush and crop/UV investigation. Exact crop root cause still unknown.
 2. [Issue + evidence matrix](QA_MATRIX_WIP.md) — prioritized bugs, hypotheses, proof tiers and regression cases.
 3. [Source and dependency map](CODE_MAP_WIP.md) — verified file/line entry points and scalable decompilation inventory proposal.
 4. [Pinned game decomp source atlas](DECOMP_SOURCE_MAP_WIP.md) — exact 2026-11-19 read-only original function names, US FUN addresses and port fix locations.
