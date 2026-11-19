@@ -36,6 +36,21 @@
 
 [Exact screenshot observations, source paths and diagnostic gates](RENDER_PATH_PERF_AUDIT_WIP.md). No runtime change, PPSSPP or PSP Go execution from this update.
 
+
+## 2026-11-19 expanded cross-subsystem source audit (new T1; not T2/T3)
+
+**A. Specific Register invalid-input dereference risk (P0 stability):** original `yListSlotRefresh` **FUN_002E4090** case 6 accesses `metadata[current.id]` and copies **0x30 bytes** from `datPersonaCachedRecord(current.id)` with no local NULL check. Original `datPersonaCachedRecord` **FUN_0010FCB0** returns NULL for an inactive cache entry and asserts id<256. Thus an *active roster item + inactive cache record* (or invalid ID) is a definite code-path hazard to test on the failing modified five-persona save; **not proven** present there. Compare original/minimal/complex save byte fields privately before any guard/registration fallback. See [broad triage §A](STABILITY_UI_PERF_WIDE_TRIAGE_WIP.md).
+
+**B. Enemy wave freeze (P0):** retain distinct original genus-1 reinforcement ctor callsite retail **0x001AC008** (documented pinned upstream probe), deferred formation resource state `FUN_001D3D50/001D3E00` as possible checkpoints; PSP `rwsky.c` already has **250-ms and 1-second GE pipeline watchdog logs**. Use `TRACE pipeline watchdog` vs actor/load-state checkpoints to separate GE wait from battle logic; HOME responsiveness alone does neither. No reproduced fault in this pass.
+
+**C. Title flashes, HOME and saves (P1):** `p4_video_renderer_end` resumes in non-visible frame bank, resets renderer cache/frameskip, but has no explicit **two-bank clear**; a stale displayed frame is a *conditional* hypothesis, not a diagnosed flash. Preserve title RGB mask. PSP `lifecycle.c` serializes card I/O through semaphore; `memcard.c` stages `.tmp/.bak` and syncs. Test first three movie→title presented frames, cold/warm title, HOME/save with hashes.
+
+**D. UI first tranche (P0/P1):** eight combat-wheel image pairs inspected; color-mask component #78/#80/#110 Gold x32–119/y148–235 vs P4P x31–122/y163–236, **not a primitive BBox**, consistent with vertical aspect/anchor mismatch. Source-owner-based UI-A **battle wheel**; UI-B **Social Link portrait**; UI-C **persistent four-group date/phase/weather** (existing X correction), separately proposed for next build. UI-D TV title after testing original `msgCalendarDraw` sprite record 1 at (165,244), dark/alpha 0xCC; semantic identity still T0. UI-E All-Out and eyes held for primitive→UV verification. Never force `target_sx==target_sy` globally, merge only tested cohorts.
+
+**E. Renderer/perf/nightmare/dungeon/VFX (P1):** 16-bit depth vs PS2 24-bit overlay Z-fighting and default `p4_decal_bias=0` make dungeon-floor lines a scene-specific *candidate*. Original `ThunderBoltUpdateStrip`/ `FunnelWindUpdateStrip` are real effect owners, no specific Zio/Fusion attribution. The port's `p4_dst_alpha_passes=0`, `p4_alpha_pixel=0` skip some small overlays; cannot re-enable globally. Stock `p4_ge_skin=1`, `p4_guard_boxes=1`, `p4_uv_memo=1`, `p4_mipmaps=1`, `p4_mesh_persist=0`; measure Junes West F009_004, Riverbed, school etc in unchanged pipeline before choosing raw GE/strips/skin. **No new FPS results.**
+
+Every scoped observation, code link, measurement caveat, reproduction protocol and next-build ordering: [**STABILITY_UI_PERF_WIDE_TRIAGE_WIP.md**](STABILITY_UI_PERF_WIDE_TRIAGE_WIP.md).
+
 ## Evidence and performance conditions
 - A single overlaid FPS number is a **moment**, not a statistical result. Hardware acceptance: same PSP Go clock, same save/scene/camera, same active plugin state, 20s idle + 10s walk (where applicable), A/B/A, per-scene p50/p95 FPS/frame ms and GPU wait.
 - Avoid diagnosing altered battle behavior solely from the OP save. Never mutate original saves.
