@@ -1,3 +1,7 @@
+# HISTORICAL ARCHIVE — NOT THE SATURDAY CODEX EXECUTION PROMPT (updated QA06, 2026-11-20)
+
+**Do not paste this 84 KB historical document into Codex or treat its old perf07 and source-state paragraphs as live execution instructions.** Start with [CODEX_START_HERE_RESONANCE01_2026-11-21.md](CODEX_START_HERE_RESONANCE01_2026-11-21.md), then [the current 21 Nov RESONANCE01 execution masterprompt](RESONANCE01_CODEX_MASTERPROMPT_2026-11-21_READY_DRAFT.md). This document preserves old technical evidence, contradictions and superseded decisions; consult a narrow anchored section only if the active task requires it. Publishing this correction is documentation-only, not runtime authorization.
+
 # CURRENT FIRST-READ — 2026-11-20 QA07 Saturday RESONANCE01 integration
 
 **Authoritative COMPLETE, actionable Codex prompt to submit/approve tomorrow 2026-11-21 ~13:30 CET:** [RESONANCE01_CODEX_MASTERPROMPT_2026-11-21_READY_DRAFT.md](RESONANCE01_CODEX_MASTERPROMPT_2026-11-21_READY_DRAFT.md). Unlike the chronologically appended historical notes below, this standalone prompt defines mandatory safety/diagnostic/fusion/UI/build gates and stop/rollback rules. **Source-backed new Fusion implementation review:** [FUSION_RESONANCE01_MANUAL_INHERITANCE_IMPLEMENTATION_REAUDIT_2026-11-20_WIP.md](FUSION_RESONANCE01_MANUAL_INHERITANCE_IMPLEMENTATION_REAUDIT_2026-11-20_WIP.md), **PSP Go 20-scenario test card:** [RESONANCE01_PSPGO_TEST_CARD_2026-11-21_DRAFT.md](RESONANCE01_PSPGO_TEST_CARD_2026-11-21_DRAFT.md). New clean-room Fusion C11 host source has now **actually passed 18/18 GCC+Clang/ASan+UBSan tests**; [test report](FUSION_SESSION_C11_18_TESTS_2026-11-20_QA07.md). Old perf07 nomenclature below is historical; new build proposed RESONANCE01. Frozen game perf06 @29b0fcf, docs only changed now, no new EBOOT/PPSSPP/PSP Go. User must explicitly launch final prompt before game edits/build.
@@ -10,7 +14,7 @@
 
 ---
 
-## Copyable standalone masterprompt (provisional)
+## HISTORICAL copyable 19 Nov masterprompt (provisional — superseded, DO NOT USE FOR 21 NOV EXECUTION)
 
 ### 2026-11-19 cross-subsystem engineering priority and source ownership rule (mandatory for Saturday)
 
