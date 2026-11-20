@@ -135,3 +135,9 @@
 
 
 - 2026-11-20 02:01 CET — SEC-01c source-first: pinned perf06 `port/rwsky.c:clear_striped` L1374–1393 uses unchecked `sceGuGetMemory` result, default `func_003f7490` L1395–1418 calls it; capacity fail-NULL guard must be transactional. T1 source, T0 occurrence; no builds/tests/game edits. SEC01 census, priority queue, QA matrix and HANDOFF updated, latter last.
+
+### 2026-11-20 QA05 — user-requested perf07 enhanced diagnostic suite specification (research/docs only)
+
+- Read pinned perf06 `port/frame_timing.h`, `port/rwsky.c` precise P4_HW_PROFILE and GE callbacks, `port/main.c` 64KiB/100ms log writer, `port/ge_dump.h`, `port/files.c`, `port/pad.c`, `port/paths.c`, `tools/psp_hw_debug.py` and `tools/psp_link.py`, plus live updated HANDOFF/masterprompt/queue/QA. **New [PERF07_DIAGNOSTIC_FLIGHT_RECORDER_SPEC_2026-11-20_WIP.md](PERF07_DIAGNOSTIC_FLIGHT_RECORDER_SPEC_2026-11-20_WIP.md)** commit `d721c129f3d04ccbd988f31d0adf7a013fa8731d`.
+- Plan distinct immutable perf06/control and perf07 regular/LITE/DEEP (GE dump separate serial), cheap 512×64B preallocated incident breadcrumbs + ≤16KiB summaries, existing 100ms logger, true presented vs render vs skipped ticks, post-overlay final GE hi-water per bank, SDK enqueue/retirement counters, RTT/2D/3D/camera, task/animation, I/O waiting/cursor, heap/cache/churn, memory-safe Compendium/reinforcement staging, evidence-confidence-aware report. Proposed incident pre/post 128 records; 3-of-5 >50ms / 1>100ms and safety event initial triggers (untuned).
+- **Host model only:** five bank/flip classification cases plus u32 wrap clock calculation (440µs) passed; no binary logger/parser coded, no PSPLink profiling run, PPSSPP, physical PSP Go measurement, fix or FPS gain. User requested inclusion in next build; Saturday execution approval still separate. Fixed perf06 source commit and private reference archives untouched. Live handoff updated LAST.
