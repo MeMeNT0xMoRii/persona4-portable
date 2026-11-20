@@ -386,3 +386,9 @@ Full existing SEC-01/Compendium/Fusion/UI P0 work remains unchanged; this adds a
 | QA-01 scope / FUSION-EXP | Master mandatory original-code review vs optional isolated skill selector implementation; 38 negative scenarios vs 20 manual Go test cases are inventories, not already executed tests. | First smoke (boot/control school/battle/save/exit) if environment permits; classify 17 issues/38 scenario IDs and **run applicable cases only**, mark other NOT RUN/DEFERRED; native fusion experimental until original YES/rare/skill legality tested. |
 
 All current source evidence **T1**, no build/PPSSPP T2/Go T3 performed in this prelaunch audit.
+
+### QA07 B0 offline build guard — exact synthetic H0 8/8 PASS, real manifest still NOT TESTED
+
+| Owner | Direct source/actual run | Required next test |
+|---|---|---|
+| B0 manifest / profile / control provenance | [QA07 source-backed report](RESONANCE01_ARTIFACT_PBP_PROFILE_PROVENANCE_GATE_2026-11-20_QA07.md) and [Python stdlib no-write checker](host_tests/resonance01_artifact_guard_qa07.py), **actually 8/8 synthetic host tests pass**. Frozen `psp_hw_debug.py` records five artifact hashes, port source + selected original object hashes but not full decomp/PSPSDK/toolchain/compiler/link-script provenance; `psp_xmb.py` actually puts PRX into PBP DATA.PSP. | After real RESONANCE01 build in **isolated workspace**, extend builder manifest true `profile` and provenance, require `--expected-profile regular|diag-lite --strict-provenance` and verify exact embedded PRX, expected `objects.rsp`, no stale objects, five outputs. Then independently verify actual ELF linked symbol/ABI, runtime ID, PPSSPP T2, Go T3. **H0 is not T2/T3 or GE safety**. |
