@@ -144,14 +144,14 @@ int main(void) {
         CHECK(mask==0 && memcmp(&r,&base,sizeof r)==0);
     });
     TEST("six parents can fill exactly 48-unique pool",{
-        Skills many[6]={{0}};
+        Skills many[6]={0};
         for(unsigned p=0;p<6;p++)for(unsigned i=0;i<8;i++)
             many[p].skill[i]=(uint16_t)(p*8+i+1);
         Skills empty={{0}};
         CHECK(prepare(&s,&empty,many,6,50,8));CHECK(s.count==48);
     });
     TEST("seven parents rejected before scanning",{
-        Skills many[7]={{0}};
+        Skills many[7]={0};
         CHECK(!prepare(&s,&base,many,7,12,1));
     });
     TEST("one parent rejected",{
@@ -160,7 +160,7 @@ int main(void) {
     TEST("triangle and six-way share validated bounds",{
         Skills triangle[3]={parents[0],parents[1],{{200,201,0,0,0,0,0,0}}};
         CHECK(prepare(&s,&base,triangle,3,9,5));CHECK(s.mode==3 && s.needed<=5);
-        Skills many[6]={{0}};
+        Skills many[6]={0};
         CHECK(prepare(&s,&base,many,6,9,5));CHECK(s.mode==6);
     });
     TEST("maximum inherited bitmask fits 8 slots",{
