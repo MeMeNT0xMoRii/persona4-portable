@@ -123,6 +123,11 @@ def inspect(name, expected, elf, obj, map_content=None):
     if Path(map_owner).name != Path(expected).name:
         add('BLOCKED', f'final linked owner {map_owner} differs from expected {expected}')
         return results
+    # A copied/stale object may share the basename with a current object.
+    # The map and psp-nm -A must describe the EXACT SAME staged object path.
+    if map_owner != expected_matches[0].owner:
+        add('INCONCLUSIVE', f'same object basename but full map/nm owner path differs: {map_owner} vs {expected_matches[0].owner}')
+        return results
     add('PASS', f'link-map range selects {map_owner}, not proof of machine-code delta')
     add('INCONCLUSIVE', 'final ELF function instruction diff / generated-object provenance NOT independently attested')
     return results
@@ -132,7 +137,8 @@ def self_test():
     passed = 0
     def check(label, condition):
         nonlocal passed
-        assert condition, label
+        if not condition:
+            raise AssertionError(label)  # MUST run with python -O too
         passed += 1
         print(f'PASS {passed:02d}: {label}')
     elf = parse_elf('04001000 T func_good\n04001200 T func_other\n')
@@ -156,6 +162,10 @@ def self_test():
     check('duplicate basename rejected', any(x[0] == 'BLOCKED' for x in inspect('func_good','rwsky.o',elf,obj3,mapper)))
     check('Windows drive path parsed as owner not C prefix', obj['func_good'][0].owner.startswith('C:/exp/'))
     check('map section extent excludes later symbol', not any(lo<=0x4001200<hi for lo,hi,o in parse_map(mapper)[0]))
+    same_basename_stale = '.text 0x04000f00 0x200 C:/stale/rwsky.o\n 0x04001000 func_good\n'
+    collision = inspect('func_good', 'rwsky.o', elf, obj, same_basename_stale)
+    check('same basename from different full path cannot candidate-PASS', any('full map/nm owner path differs' in x[1] and x[0] == 'INCONCLUSIVE' for x in collision))
+    check('exact candidate path remains supported', any('link-map range selects' in x[1] for x in good))
     print(f'{passed}/{passed} synthetic ELF/map owner fixtures PASS; no real PSP ELF examined')
 
 
