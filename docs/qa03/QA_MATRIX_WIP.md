@@ -354,3 +354,11 @@ No PSP runtime changes/T2/T3 or confirmed game hang root from these new observat
 
 ### SEC-01q — 2026-11-20 20:00 (T1 only)
 Frozen `port/rwsky.c` L1491–1534, L1587–1614: 1s watchdog escape does not certify GE/flip retirement before producer bank switch/pool counter reset. T0 hypothesis: bank reuse while still in flight. Falsifier: event timeline showing GE retirement precedes every bank reuse even after timeout. Tests: title nonpipeline negative, Junes F009_004, battle fog/reinforcement, PPSSPP T2 then Go T3; rollback on present/HOME/save regressions. [Exact note](SEC01Q_WATCHDOG_TIMEOUT_BANK_RETIREMENT_2026-11-20_WIP.md). No T2/T3 or fix.
+
+### QA06 2026-11-20 ~20h — STAB-02h diagnostic packet-list bounds, not gameplay fix
+
+| ID | Source T1 and independently run host H0 | Required Saturday discriminator |
+|---|---|---|
+| STAB-02h / D1 observer | [Frozen P4P `rwsky.c` L1800–1828](https://github.com/MeMeNT0xMoRii/persona4-portable/blob/29b0fcfdec70222a4052099b67fb4a11e8d8aff4/port/rwsky.c#L1800-L1828) traverses 4 battle packet `next` lists twice every 256th non-skipped present, with no cycle cap and only `PROBE_OK` start pointer check; original [PS2 `BtlPacket`](https://github.com/Raikaru/Persona4-Decompilation/blob/363eab8a966d60a9773b45f330f2344329ec4f0a/src/Battle/btlPacket.c#L35-L62) `next` offset+0x7C. [New 12/12 GCC14.2 + 12/12 Clang17 ASan/UBSan H0 source](host_tests/battle_packet_probe_bounded_qa06.c), SHA256 `2cf17fa3fdf731343c7e3d760d0cd09744471b0f8fa89115ac1ff65749044a04`. | Do not attribute an intermittent battle freeze to GE/child spawn before checking the 256-frame native TRACE observer. Bound full member-range and count/cycles without touching game packet graph, avoid per-node logging. Actual cycles/Go fault **T0**; negative short null chain and clean save control; [T1 detailed report](STAB02H_BATTLE_PACKET_PROBE_UNBOUNDED_2026-11-20_QA06_WIP.md). |
+
+Full existing SEC-01/Compendium/Fusion/UI P0 work remains unchanged; this adds a forensic observer-safety check to existing STAB-02 scenario S2.
