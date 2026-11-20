@@ -33,6 +33,8 @@
 | G18 | Longer varied play session | Scene transitions, dialogue, voice, music, inventory, quests and repeated fights; note reproducible first failure and last 128 diagnostic events, not just a single FPS number |
 | G19 | Compare regular RESONANCE01 vs diag-lite ON | Same exact scene/saves and regular objects, separate manifests, check profiler overhead and report whether p95 changes; compare against same perf06 regular control |
 
+**Rare-fusion negative case for G10–G12 (only with safe, disposable test saves and a compiled fusion-exp path):** distinguish non-accident, near-level alternative `0x36/0x4F`, and alternate-by-level `0x37/0x50` falling back to `0x36/0x4F`; observe candidate count once per state transition, ensure no infinite search, zero-count modulo, duplicate RNG roll, wrong substitute, unwanted skill transfer or lost confirmation state. Pinned source may never allow <=5 eligible candidates in ordinary play; mark NOT RUN rather than fabricate this condition or damage original saves. [QA06 source audit](FUSION_ACCIDENT_NEARLEVEL_NONTERMINATION_2026-11-20_QA06_WIP.md).
+
 ## If a failure occurs
 
 Record device/firmware/storage (ef0:/ or ms0:/), build name/profile/manifest SHA256, exact scene ID and save **hash only**, game date/time, menu action sequence, first visible symptom, repeatability (x of y), log timestamp, last accepted displayed frame, GE list bank highwater/watchdog reason, any RTT/IO/fusion event and p4.log + Flight Recorder binary incident if created. Copy logs privately only after exiting safely; no publicly shared save contents/ISO, and don't fabricate stack traces. On a severe hang or suspected save corruption, restore immutable perf06 and backup save, mark failed feature OFF and do not keep writing into the same save.
