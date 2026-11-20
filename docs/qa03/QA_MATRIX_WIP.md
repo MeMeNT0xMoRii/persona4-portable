@@ -373,3 +373,14 @@ Full existing SEC-01/Compendium/Fusion/UI P0 work remains unchanged; this adds a
 | QA-01 beta tester | [BOT-V3 standalone PPSSPP state-machine plan](BOT_QA03_BETA_TESTER_ARCHITECTURE_V3_2026-11-20_WIP.md), official WS debugger deferred tickets, isolated emulated Memory Stick and savestates. | BOT-0: exact PPSSPP version/PID handshake and 3×5-button replay with separate emulated/wall clocks; later checkpoint and nightly coverage. **Not running or part of Saturday build.** |
 
 **No T2/T3 PSP game execution, native EBOOT, confirmed P4P bug fix, same-save Golden correction, hardware performance data or bot autonomous playthrough from this rotation.**
+
+### QA07 2026-11-20 B0/B2 build-profile and Codex-scope correction (T1 only)
+
+| Existing owner | Actual source-validated trap | Safe Saturday gate |
+|---|---|---|
+| BASE-01 / B0 | [audit](RESONANCE01_END_TO_END_MASTERPROMPT_PREFLIGHT_2026-11-20_QA07.md); `psp_census` leaves stale experimental `build/obj` unless cleaned; `psp_link` in-place object weakening + `build/psp_dist`; `psp_release --no-build --out` STILL replaces default DIST files. | Isolated complete worktree and own writable build/stage **before any command**, preserve perf06 source/EBOOT/data/str/asset/save control. One initial clean census; on port-only changes verify untouched original objects and compile native again. |
+| D1 Diag-Lite build | Frozen `psp_hw_debug.py` **has no `--diag-lite` CLI**; frame-timing and ge-dump are distinct costly diagnostic modes; manifest reads regex first literal build ID, which may not match conditional `#if` runtime profile. | Implement deliberate regular/diag-lite native profile with real embedded ID, manifest, log/incident output path, object and artifact SHA; compare separate verified binaries for overhead. No fake D1 file or claim. |
+| B0/QA-02 delivery | Existing `psp_release` UPDATE reuses private `p4files.idx`, game containers, VIDEO/SOUND; not a full install from only 3 output files. | User's owned complete asset set + verified triplet/manifest; separate safe PSP Go test install and clones, never overwrite perf06. |
+| QA-01 scope / FUSION-EXP | Master mandatory original-code review vs optional isolated skill selector implementation; 38 negative scenarios vs 20 manual Go test cases are inventories, not already executed tests. | First smoke (boot/control school/battle/save/exit) if environment permits; classify 17 issues/38 scenario IDs and **run applicable cases only**, mark other NOT RUN/DEFERRED; native fusion experimental until original YES/rare/skill legality tested. |
+
+All current source evidence **T1**, no build/PPSSPP T2/Go T3 performed in this prelaunch audit.
