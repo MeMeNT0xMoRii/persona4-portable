@@ -351,3 +351,6 @@ Frozen `port/rwsky.c` L1380–1435: `clear_striped` unchecked vertex-pointer wri
 | SEC-01p | [19:00 scheduled T1 audit](SEC01P_FREEZE_PROBE_BANK_IDENTITY_2026-11-20_WIP.md): pipelined `FREEZE...list` is next-selected after bank toggle. | Record submitted/list/GE sequence, selected-next, finished, and accepted display separately; do not attribute GE stall from pointer alone. |
 
 No PSP runtime changes/T2/T3 or confirmed game hang root from these new observations.
+
+### SEC-01q — 2026-11-20 20:00 (T1 only)
+Frozen `port/rwsky.c` L1491–1534, L1587–1614: 1s watchdog escape does not certify GE/flip retirement before producer bank switch/pool counter reset. T0 hypothesis: bank reuse while still in flight. Falsifier: event timeline showing GE retirement precedes every bank reuse even after timeout. Tests: title nonpipeline negative, Junes F009_004, battle fog/reinforcement, PPSSPP T2 then Go T3; rollback on present/HOME/save regressions. [Exact note](SEC01Q_WATCHDOG_TIMEOUT_BANK_RETIREMENT_2026-11-20_WIP.md). No T2/T3 or fix.
