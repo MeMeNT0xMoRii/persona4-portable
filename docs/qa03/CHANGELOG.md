@@ -120,3 +120,9 @@
 
 
 - **2026-11-20 00:58 CET SEC-01 T1 source-only:** frozen perf06 `rwsky.c::func_003f79b0` watchdog after 250ms forces GE stall to `pipe_last_end`, after 1s exits wait; conditional out-of-range cached-list writeback concern remains T0 runtime. Added falsifier/negative-control and rollback gates in SEC01 census, queue, matrix. No runtime edits, build or PPSSPP/Go test.
+
+### 2026-11-20 — QA05 SEC-01b P0 conditional watchdog bank reuse / unchecked GU submission (T1, docs only)
+
+- After reading the latest live handoff and existing SEC-01 00:58 watchdog note, independently followed frozen perf06 GE frame lifecycle `rwsky.c` L517–667, L1459–1533, L1585–1616, L2822–2838, and PSPSDK@09f02b88b9f3 `sceGuStart.c`/`sceGuFinishId.c`.
+- Created [**SEC01_PIPELINE_WATCHDOG_BANK_REUSE_2026-11-20_WIP.md**](SEC01_PIPELINE_WATCHDOG_BANK_REUSE_2026-11-20_WIP.md), commit `27ec11d3fb59cf13e02bfae2aff375dc05e7e0aa`: if the >1s watchdog breaks with an **unfinished** GE frame, the code can alternate and begin writing an already-live bank; no 65,536-word overflow required. If GE finished and only display lags, that conditional failure does **not** follow. `sceGuStart` negative enqueue errors and `sceGuFinish` result are unchecked. Start with bounded host state-machine and bank/sequence/QID diagnostics; no blind fix or permanent serial mode.
+- **No actual timeout/reinforcement trace, new runtime edit/build, PPSSPP T2, Go T3, verified hang root cause or FPS benefit.** Existing SEC-01 bounded-list gate and stable perf06 baseline retained; HANDOFF updated LAST.
