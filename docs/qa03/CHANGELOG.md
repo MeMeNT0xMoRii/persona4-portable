@@ -144,3 +144,5 @@
 
 
 - 2026-11-20 03:00 CET SEC-01d docs-only: pinned perf06 `clear_striped` 480px/128px full-transaction GE capacity arithmetic, SDK draw-word upper bound, mask-zero state caveat, host boundary/rollback gate. T1 only, no gameplay change, build or PSP measurement.
+
+- **2026-11-20 04:03 CET SEC-01e:** Frozen perf06 `port/rwsky.c:submit_tv_fan` L3108–3158 has two additional unchecked `sceGuGetMemory` allocations followed by `memcpy` for TV fan inside and clipped paths. T1 static, no observed crash or runtime tests. See SEC01 census; QA matrix and queue updated; handoff last.
