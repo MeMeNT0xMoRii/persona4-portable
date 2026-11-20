@@ -20,7 +20,7 @@ The first four alone are **477,144 B**, mostly older state repeated elsewhere. R
 
 ## Link checks actually performed
 
-All **74 then-existing root-level QA03 markdown files** were fetched at the live branch; regex scanned Markdown `]([relative_path])` syntax. **796 relative-link-shaped matches** inspected; **no confirmed broken local QA03 document path**. Two suspicious strings `0xA70,0x40000` in technical prose were false-positive detections, NOT missing files. This check did **not** validate external HTTP(S) URLs, GitHub line anchors, linked internal `host_tests/` contents, non-Markdown references or all semantic cross-document claims; recheck with a real Markdown parser if link integrity is a release gate. A `TESTING.md` plain-text mention in the P4P priority queue is for the **external OpenUG2-PSP reference**, not a nonexistent P4P file reference.
+All **74 then-existing root-level QA03 markdown files** were fetched at the live branch; regex scanned link targets in ordinary Markdown link syntax (with a simple regex, not a full Markdown parser). **796 relative-link-shaped matches** inspected; **no confirmed broken local QA03 document path**. Two suspicious strings `0xA70,0x40000` in technical prose were false-positive detections, NOT missing files. This check did **not** validate external HTTP(S) URLs, GitHub line anchors, linked internal `host_tests/` contents, non-Markdown references or all semantic cross-document claims; recheck with a real Markdown parser if link integrity is a release gate. A `TESTING.md` plain-text mention in the P4P priority queue is for the **external OpenUG2-PSP reference**, not a nonexistent P4P file reference.
 
 ## Proven documentation/navigation defects or potential misreadings
 
