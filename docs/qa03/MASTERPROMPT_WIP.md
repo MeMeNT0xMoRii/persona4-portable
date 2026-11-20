@@ -1,3 +1,9 @@
+# CURRENT FIRST-READ — 2026-11-20 QA07 Saturday RESONANCE01 integration
+
+**Authoritative COMPLETE, actionable Codex prompt to submit/approve tomorrow 2026-11-21 ~13:30 CET:** [RESONANCE01_CODEX_MASTERPROMPT_2026-11-21_READY_DRAFT.md](RESONANCE01_CODEX_MASTERPROMPT_2026-11-21_READY_DRAFT.md). Unlike the chronologically appended historical notes below, this standalone prompt defines mandatory safety/diagnostic/fusion/UI/build gates and stop/rollback rules. **Source-backed new Fusion implementation review:** [FUSION_RESONANCE01_MANUAL_INHERITANCE_IMPLEMENTATION_REAUDIT_2026-11-20_WIP.md](FUSION_RESONANCE01_MANUAL_INHERITANCE_IMPLEMENTATION_REAUDIT_2026-11-20_WIP.md), **PSP Go 20-scenario test card:** [RESONANCE01_PSPGO_TEST_CARD_2026-11-21_DRAFT.md](RESONANCE01_PSPGO_TEST_CARD_2026-11-21_DRAFT.md). New clean-room fusion C host test source exists but **has not been compiler-executed yet**. Old perf07 nomenclature below is historical; new build proposed RESONANCE01. Frozen game perf06 @29b0fcf, docs only changed now, no new EBOOT/PPSSPP/PSP Go. User must explicitly launch final prompt before game edits/build.
+
+---
+
 # Persona4-PORTABLE — Codex / Work master assignment, DRAFT
 
 **Prepared 2026-11-19 for user review and additional testing; intended execution on Saturday 2026-11-21.** This document is **not** an implementation authorization until the user explicitly pastes/approves the final prompt. It will be revised as new evidence arrives.
