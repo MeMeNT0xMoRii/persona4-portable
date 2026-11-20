@@ -341,3 +341,13 @@ Frozen `port/rwsky.c` L1380–1435: `clear_striped` unchecked vertex-pointer wri
 
 ### SEC-01p — 2026-11-20 19:00 (T1 only)
 `port/rwsky.c::func_003f79b0` frozen L1590–1641: after submitting frame, pipelined path toggles `pipe_set` and sets `list=list_store[pipe_set]` **before** debug-freeze prints `list`. Freeze log therefore identifies next bank, not verified last shown bank. Diag-lite must separately record submitted bank/start/end/GE ID/seq, next selected bank, actual GE completion and accepted present; title/menu nonpipeline negative control plus Junes F009_004 pipeline stress. [SEC-01p](SEC01P_FREEZE_PROBE_BANK_IDENTITY_2026-11-20_WIP.md). No overflow or wrong-frame capture reproduced, no build/T2/T3.
+
+### QA06 ~19:40 D1/SEC-01p: correct immediate-hang and bank-identity evidence
+
+| ID | Source + host status | Required Saturday control |
+|---|---|---|
+| D1 partial POST | [Historical C23 model](host_tests/p4diag_host_v1.c) waits exactly 128 POST events; `ring_validate` rejects partial. [New standalone C H0](host_tests/p4diag_partial_seal_qa06.c) actually 10/10 GCC14.2 + 10/10 Clang17 ASan/UBSan, no PSP. | Independently scheduled worker can seal 0..127 after no game/GE/display heartbeat, typed empty-start record; *suspected* freeze only, CRC/seq; no blocking in callbacks, avoid false scene-load classification. |
+| D1 HOME/power | [Direct frozen source proof](DIAG_D1_PARTIAL_STALL_HOME_CRASH_DURABILITY_2026-11-20_QA06_WIP.md): HOME callback locks card only then `sceKernelExitGame`; text logging worker sleeps 100ms. | Real PSP temp-write/close/sync/readback/rename/verify before ACK; RAM-only SEALED state disappears on exit/power; truthful `NO_INCIDENT_AVAILABLE` when nothing was committed. |
+| SEC-01p | [19:00 scheduled T1 audit](SEC01P_FREEZE_PROBE_BANK_IDENTITY_2026-11-20_WIP.md): pipelined `FREEZE...list` is next-selected after bank toggle. | Record submitted/list/GE sequence, selected-next, finished, and accepted display separately; do not attribute GE stall from pointer alone. |
+
+No PSP runtime changes/T2/T3 or confirmed game hang root from these new observations.
