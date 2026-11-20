@@ -20,6 +20,10 @@ Exact source witnesses: [normal `0x2D` input and `0x2F/0x30` confirmation L2041â
 - Multi `0x5C` is different: specific Persona flags can be set before `0x5E` -> `0x0D/0xC5`. Do not assume it shares the normal/triangle rare-chance dispatch or the same final hook.
 - Opening manual selection *immediately* on YES (the 0x30/0x49/0x5A affirmative branch) prevents NO-dialog false positives but still precedes rare outcome determination. Merely moving the hook from `0x2D` to `0x30` does not solve the accident semantic issue.
 
+## Third source risk uncovered in QA06: accident candidate search under low eligibility
+
+The original `yListSlotFillNearLevel` has an expanded `do...while (count<=5)` scan with no attempt cap. If the total eligible Persona IDs under all level ranges and exclusion/flag gates remains <=5, normal accident state `0x36` or triangle state `0x4F` can fail to terminate after a valid YES. Both follow a rare branch; `0x37/0x50` can fall back to this same search when their alternate level-list is empty. The helper normally widens into the entire [1,99] level range using saturating clamp functions, but has no zero/low-universe escape. A naive cap that returns an empty list would leave `% count` at `0x36/0x4F` unguarded. **T1 conditional source only; original gameplay reachability, compiled PSP equivalence and user freezes T0.** Read the [new detailed QA06 note](FUSION_ACCIDENT_NEARLEVEL_NONTERMINATION_2026-11-20_QA06_WIP.md) before touching accident handling. Preserve normal RNG order/Vanilla behavior, add bounded candidate-count diagnostics on experimental path; do not let an unfinished manual modal corrupt a rare substitute.
+
 ## Candidate Codex design gate (NOT a preapproved patch)
 
 1. Trace PSP mirrored **compiled** fusion function and actual field/state storage. Preserve the vanilla preview RNG, the button mapping and the normal `nmMesWindowSlotStatus`/release/destroy sequence. Capture a single validated affirmative decision at `0x30/0x49/0x5A` only when the dialogue is finished and returns 0. No session/modal on false/No, level rejected or already-owned route.
