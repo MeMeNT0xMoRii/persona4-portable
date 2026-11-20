@@ -317,3 +317,9 @@ Case2 Compendium enumeration guards NULL cache before `memcpy`; case6 Register c
 
 
 SEC-01n T1 addendum (2026-11-20): [allocator boundary audit](SEC01N_INLINE_GE_ALLOCATOR_BOUNDARY_2026-11-20_WIP.md) proves the gated/cached `__wrap_sceGuGetMemory` reservation is rounded payload **plus two 32-bit GE jump words** with no local bounds check. The normal branch calls `__real_sceGuGetMemory`; a wrapper-only fix is incomplete. Required negative control: unchanged title/menu on matching regular perf06 triplet; stress fog/battle/RTT in diag-only build, verify bank retirement and p50/p95/p99 separately. No T2/T3.
+
+### QA06 2026-11-20 17h — additional Fusion Accident control-flow gate (T1 conditional)
+
+| ID / priority | Exact evidence | PSP Codex / negative tests | Closure |
+|---|---|---|---|
+| FUSION-ACCIDENT / P1 EXP | Original `yListSlotFillNearLevel` L1358–1625 expands until **count >5** with no bound; saturating 1..99 levels, eligible universe can conditionally remain <=5. Normal `0x36` and triangle `0x4F` consume candidate count as `RpRandom()%count`; `0x37/0x50` fallback shares branch. [QA06 full proof](FUSION_ACCIDENT_NEARLEVEL_NONTERMINATION_2026-11-20_QA06_WIP.md). | Verify linked native code; instrument once per rare entry and candidate count, check regular clean and disposable edited save, no double RNG or injected manual modal on rare substitute. If fail-safe cap, handle zero count before modulo and preserve original successful RNG path. | No tested exposure, source T1 only, native PPSSPP T2/PSP-Go T3 NOT RUN; do not ship unverified in regular. |
