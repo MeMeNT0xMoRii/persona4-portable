@@ -60,6 +60,11 @@ def check(folder):
     return issues
 
 
+def require(condition, message):
+    if not condition:
+        raise RuntimeError('SELF-TEST FAIL: ' + message)
+
+
 def self_test():
     def fixture(root):
         out = root / 'release'
@@ -76,20 +81,20 @@ def self_test():
     with tempfile.TemporaryDirectory(prefix='p4p-qa11-') as tmp:
         root = Path(tmp)
         out, base, manifest = fixture(root)
-        assert check(out) == [], 'clean case'
+        require(check(out) == [], 'clean case')
         (base / 'VIDEO').mkdir()
         (base / 'VIDEO/RETIRED.p4v').write_bytes(b'old')
-        assert any(x.startswith('UNDECLARED:') for x in check(out)), 'stale movie must fail'
+        require(any(x.startswith('UNDECLARED:') for x in check(out)), 'stale movie must fail')
         (base / 'VIDEO/RETIRED.p4v').unlink()
         (base / 'EBOOT.PBP').write_bytes(b'mutated')
-        assert 'HASH_MISMATCH:EBOOT.PBP' in check(out), 'changed binary must fail'
+        require('HASH_MISMATCH:EBOOT.PBP' in check(out), 'changed binary must fail')
         (base / 'EBOOT.PBP').write_bytes(b'code')
         (base / 'p4str.bin').unlink()
-        assert 'MISSING_OR_LINK:p4str.bin' in check(out), 'absent file must fail'
+        require('MISSING_OR_LINK:p4str.bin' in check(out), 'absent file must fail')
         (base / 'p4str.bin').write_bytes(b'str')
         manifest['files']['../unsafe.bin'] = hashlib.sha256(b'x').hexdigest()
         (out / 'release.json').write_text(json.dumps(manifest), encoding='utf-8')
-        assert any(x.startswith('UNSAFE_FILE_KEY:') for x in check(out)), 'traversal must fail'
+        require(any(x.startswith('UNSAFE_FILE_KEY:') for x in check(out)), 'traversal must fail')
         print('QA11 5/5 synthetic closed-world checks PASS (normal)')
 
 
