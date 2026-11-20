@@ -1,0 +1,45 @@
+# RESONANCE01 — Saturday Nov 21 13:30 CET Codex/Work model-routing and credit-efficiency plan (QA06 WIP)
+
+**2026-11-20 user request:** choose among GPT-6.1/6.2 Sol/Astra and Medium/High/Max for Saturday implementation; maximize useful *tested* port progress under credit limits. Proposed new build label **`Persona4-PORTABLE-v0.27-dev-RESONANCE01`** (internal lineage `perf07`; **not built, not finally authorized; perf06 game source immutable** `29b0fcfdec70222a4052099b67fb4a11e8d8aff4`). Keep `dev/v0.27-perf06` docs branch independent of actual new code branch.
+
+**External price/product evidence verified on 20 Nov 2026** (availability may differ by account): [official ChatGPT Work/Codex model selector and access](https://help.openai.com/en/articles/20001275-chatgpt-work-and-codex); [official model-selection guidance](https://developers.openai.com/api/docs/guides/model-selection); [official credit rate card for Business/Enterprise/Edu](https://help.openai.com/en/articles/11481834-chatgpt-rate-card-business-enterpriseedu-credit-based-pricing); [personal credits/allowance FAQ](https://help.openai.com/en/articles/12642688-using-credits-for-flexible-usage-in-chatgpt-personal-plans); [Work/Codex allowance estimates](https://help.openai.com/en/articles/20001516-managing-usage-with-gpt-6-astra-in-work-and-codex). These rates are **not a guarantee of the user's personal rate, current available balance or model entitlement**; check **Settings → Usage**.
+
+## Recommended model selection for this precise project
+
+**Default: GPT-6.2 Sol, Medium, STANDARD speed** in Codex if available. It is the best candidate for substantial implementation work once **the pinned docs and precise acceptance tests** tell it exactly which owner/file/change to make, instead of broad open-ended exploration. For known but tricky branch-specific GE memory race design and PSP SDK contract, assign **GPT-6.2 Astra Medium** for a *short, constrained* audit and escalate to High/Extra High only if it actually fails an explicit falsifier. Do NOT leave Astra/Max on for the entire project, and do NOT repeatedly spend Astra on document boilerplate. For a failure of Sol Medium, first provide the missing real source/test/log; a higher thought level cannot invent absent PSP Go data.
+
+Fallback if 6.2 not in account picker: **GPT-6.1 Sol Medium** as essentially same rate in relevant official credit table. If under tighter budget, Luna can handle one-file mechanical docs/manifest updates or bounded test fixture edits **after** a stronger model defines exact invariants. For safety-critical C code, **do not select Luna solely because it is cheap**; use Sol/Astra with compiler/runtime verification.
+
+| Selectable model (Work/Codex where visible) | Standard local Codex task rough average from published Business/Enterprise rate card | Relative expected role |
+| --- | ---: | --- |
+| GPT-6 Luna | ~1 credit/message | repetitive doc/schema/manifest diffs after review |
+| GPT-6.1 Sol | ~4 credits/message | fallback default |
+| **GPT-6.2 Sol** | **~4 credits/message** | **primary owner-aware implementation, test iterations, system integration** |
+| **GPT-6.2 Astra** | **~9 credits/message** | difficult 2-bank GE asynchronous ownership, allocator/PSP clock races, final risky patch review |
+
+The published token tariff in that same **Business/Enterprise** rate card lists **6.2 Sol 50 input / 2.5 cached / 250 output credits per 1M tokens**, and **6.2 Astra 200 input / 10 cached / 1,000 output** (4× standard token rate). The “~4 vs ~9” **average-per-local-message heuristic is not an exact token price or fixed per-call charge**; don't extrapolate without the actual token mix. On Plus/Pro the **included allowance may be debited differently**, and purchased credit status varies; the user must inspect Settings→Usage to know what is left. A typical 6.2 Sol Codex task is quoted at ~2–15 credits depending on size. **Fast mode** when charged in credits = **2× standard** for supported models; avoid unless blocked by time. Ultrafast is additionally more expensive and restricted; not needed for a Saturday 13:30 QA-first build. Don't treat chat “Medium/High/Extra High” as identical to Work model selector; choose the actual Codex model and its supported effort.
+
+## Batch work by invariants, not free-form “optimize everything”
+
+**Stage 0 / Sol Medium:** read [live handoff](HANDOFF_LIVE.md), [priority queue](PRIORITY_QUEUE_CODE_OWNERS_FOR_CODEX_WIP.md), [draft masterprompt](MASTERPROMPT_WIP.md), [source-pinned 16:9 UI matrix](UI_RESONANCE01_ANCHOR_TRANSFORM_MATRIX_2026-11-20_WIP.md), [23 host-C diag tests](PERF07_DIAG_HOST_C_23_TESTS_2026-11-20_WIP.md). Verify exact frozen **perf06** source commit `29b0fcfd`, private regular EBOOT/p4data/p4str hashes, PSP SDK pinned version, source branch. Create isolated proposed **`dev/v0.27-RESONANCE01`** only after user approves execution. Do NOT ingest massive 162K handoff plus all docs verbatim in every Codex turn; use short explicit first-read index + targeted file paths and stable sha, less context repeated.
+
+**Stage 1 / Sol Medium→Astra Medium only on unproved bank safety:** SEC-01 hard prewrite bounds for SDK and raw GE emitters, reserve FINISH/END; two-bank ownership after >1s watchdog and negative `sceGuStart`, `sceGuFinish` return, allocator fail behavior. Host boundary tests and PSP PPSSPP T2 first; **Astra review on the race/lifetime design**. Memory safety overrides FPS and cosmetics. No intentional invalid GE command stress on physical Go.
+
+**Stage 2 / Sol Medium:** integrate a small subset of proven 23-host-C Flight Recorder into PSP diag-lite separately: accepted display-submit count vs shown-gate, GE queue/finish callback and bank, highest list word, game tick/drawn/skips, 512×64B ring, async bounded writer using existing background logger THREAD and separate binary buffer, build manifest/hashes. No GUI logging per polygon; do not reintroduce PSP print overhead. Keep regular RESONANCE01 build **without** heavy deep profiler or serial GE dump.
+
+**Stage 3 / Sol Medium:** STAB-01 invalid Compendium cache/ID and STAB-02 first-child 52-allocation-burst, IO-01 package cursor differential: logs and controlled private clone saves, not blind patches. Test ret/abort and bounded dangerous conditions with host or PPSSPP before Go. Compare source- and target-specific fallback behavior. Use Astra High only if the smallest reproduced failing test remains unresolved after relevant code and logs are supplied.
+
+**Stage 4 / Sol Medium; Astra for cross-cutting render rules only:** UI-A local command-wheel geometry input/after-vertex (the one high-confidence 111px-round numeric target), roster/day-phase/TV title / cutin material owner logging from [UI source map](UI_RESONANCE01_ANCHOR_TRANSFORM_MATRIX_2026-11-20_WIP.md) without global sprite scale; ensure title/movie, compass/map, weather, cards/menus, GE list, UI NaN drop and UI-state cache unaffected. User accepts or rejects the visual change after T2/T3 evidence, not by faith in Golden art.
+
+**Stage 5 / Sol Medium final QA with independent Astra Medium audit of risky diffs:** deterministic matched validation: regular perf06, regular RESONANCE01, separate diag-lite on PPSSPP T2 then on actual PSP Go T3 at Junes West F009_004, School F006_002 negative control, Shopping North/South, battle + reinforcement, modified-save Compendium private triple cohorts, fusion Apsaras, HOME/movie/title and UI states. One error per iteration, reproduce, retain EBOOT/asset hashes, rollback when GE list headroom, accepted display p95 or game state regresses. Only credit spent producing *reproducible code changes and logs* counts as progress.
+
+## Low-credit prompt structure, repeat only this contract
+
+1. **Scope 1 bug or UI class / exact pinned source owner**, target code path and test; e.g. `btlSelectionDrawCommands FUN_00207B00`, not “fix entire UI”.
+2. **Write the smallest reversible patch with feature flag**, add a host test and a PPSSPP reproduction, report **actual** passed/failed tests, timestamps, command-line logs and SHA256.
+3. **Stop on unproven assumption** (missing game assets, invalid offset, data-dependent sprite ID, unverified thread race): do not silently invent values or cover it with a broad catch-all.
+4. **One consolidated result per bounded task**: changed files/lines, verified vs hypothesized cause, memory/FPS impact **only if measured**, rollback conditions and best next step. Update GitHub docs queue/matrix; handoff LAST.
+
+**Budget discipline:** provisional allocation of **~80% Sol Medium tasks, ~20% Astra Medium/high tasks** is a workflow suggestion, *not* a guaranteed 80/20 credit split: expensive Astra inputs could consume much more than 20% actual credits. Re-evaluate after the first two controlled tasks using Settings→Usage. Never change user billing or auto-reload settings without user intent. Never claim assistant can control Codex model remotely without the user selecting it.
+
+**No game source/EBOOT changes from this documentation.**
