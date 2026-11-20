@@ -190,3 +190,5 @@ Add [**PERF07_DIAGNOSTIC_FLIGHT_RECORDER_SPEC_2026-11-20_WIP.md**](PERF07_DIAGNO
 
 
 - **SEC-01d 03:00 CET T1 clear preflight budget:** frozen `rwsky.c::clear_striped` 480-wide 30 vertices, 92 list words allocation including jump + up to 8 GU words = **100 words**, 128 RTT **34 words**, plus mandatory finish-tail and other GU state. Budget is conservative, not measured; full-transaction preflight required. See SEC01 census; no fix/T2/T3.
+
+- **2026-11-20 SEC-01e T1:** Frozen `rwsky.c:submit_tv_fan` L3108–3158 contains **two additional** `sceGuGetMemory→memcpy` unchecked paths (inside fan and clipped triangles), caller L3207–3216. TV clip can expand vertex count; preserve stencil/pixel mask in any whole-operation preflight. See [SEC01 census](SEC01_GE_LIST_WRITER_CENSUS_2026-11-20_WIP.md). No T2/T3, no proof of actual overflow. Next inspect draw_2d and Im3D allocations, then rotate STAB-02.
