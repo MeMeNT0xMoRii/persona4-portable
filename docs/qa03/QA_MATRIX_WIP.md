@@ -49,6 +49,10 @@
 
 ### QA10 2026-11-20 — executed GE/ELF host negative gates and source-precise Golden owner controls
 
+**QA10 AV-01 P1 source-only addendum:** [`port/video.c` L291–301](https://github.com/MeMeNT0xMoRii/persona4-portable/blob/29b0fcfdec70222a4052099b67fb4a11e8d8aff4/port/video.c#L291-L301) increments `shown`/`video_shown` regardless of movie `sceDisplaySetFrameBuf` return, so count is **not accepted movie present proof**; do not change loop scheduling/counting without a separate contract and actual T2/T3 movie test. [Source report](RESONANCE01_QA10_GE_INTERLEAVING_ELF_OWNER_GOLDEN_UI_RESEARCH_2026-11-20.md). T1 only; no failed video display observed and not covered by 14/14 GE normal flip model.
+
+
+
 | Issue | Actual result / source | Future hard acceptance |
 |---|---|---|
 | **SEC-01r interleaving: failed flip vs shown_seq** | [QA10 GE model](host_tests/qa10_ge_schedule_model.py) **14/14 H0 PASS**, BFS baseline 188 states/11 depth, a negative `sceDisplaySetFrameBuf` may be falsely ACKed; under watchdog the independently published seq/fb pair may tear and old GE bank may be reused. Source T1 `rwsky.c` L650–665,1498–1525,1587–1606, actual interleaving T0 | Coherent snapshot, actual accepted display result, GE-bank retirement/generation fence and timeout recovery; new actual PSP Go safety NOT PROVEN |
