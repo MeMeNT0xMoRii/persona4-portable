@@ -148,3 +148,6 @@
 - **2026-11-20 04:03 CET SEC-01e:** Frozen perf06 `port/rwsky.c:submit_tv_fan` L3108–3158 has two additional unchecked `sceGuGetMemory` allocations followed by `memcpy` for TV fan inside and clipped paths. T1 static, no observed crash or runtime tests. See SEC01 census; QA matrix and queue updated; handoff last.
 
 - 2026-11-20 05:00 CET SEC-01f T1: frozen perf06 `port/rwsky.c::im3d_draw` L11195–11224 has two unchecked sequential GE memory allocations and writes; second allocation can fail after first/state commands. Central wrapper L1904–1917 emits unbounded BASE/JUMP. Added whole-Im3D preflight/rollback and indexed/nonindexed test gates to SEC01 census, queue, matrix. No runtime change, T2/T3 or verified incident attribution.
+
+### 2026-11-20 06:04 CET — STAB-02 formation record static bounds audit (T1, docs only)
+Original pinned `btlFormationCopyRecord FUN_001D3EA0` L1143–1180 loops `entryCount` without local 31-entry block capacity check; clone-reference block selector similarly unchecked locally; destroy path trusts counts. Frozen perf06 GE watchdog L1499–1533 independently reread. No proof of malformed retail data, reinforcement reachability, runtime overflow, freeze cause or T2/T3. [New targeted WIP](STAB02_FORMATION_RESOURCE_ENTRY_BOUNDS_2026-11-20_WIP.md) commit `0ded01d`; priority queue/matrix updated. No runtime edits/builds/assets.
