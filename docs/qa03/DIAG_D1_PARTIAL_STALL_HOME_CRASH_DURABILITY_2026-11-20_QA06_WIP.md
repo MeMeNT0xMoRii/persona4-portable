@@ -47,3 +47,18 @@ New scheduled source proof [`SEC01P_FREEZE_PROBE_BANK_IDENTITY_2026-11-20_WIP.md
 5. On safe PPSSPP test build, classify last **submitted** vs **selected next** bank in title/menu control vs Junes pipeline, and verify regular vs diag-lite stable presented frame cadence. Only then actual PSP Go under **normal gameplay**, not deliberate invalid GE writes.
 
 **Priority:** P0 D1 diagnostics reliability and evidence integrity alongside SEC-01 complete writer/bank safety; refine contracts in the current [masterprompt](RESONANCE01_CODEX_MASTERPROMPT_2026-11-21_READY_DRAFT.md) and short [Codex starter](CODEX_START_HERE_RESONANCE01_2026-11-21.md). Never promise survival of hard power loss or 100% freeze root cause capture. This is a documentation/host-test planning change, not a game code patch.
+
+## 6. Actual QA06 host-only check results (separate from historical 23/23)
+
+New standalone, **synthetic** [`host_tests/p4diag_partial_seal_qa06.c`](host_tests/p4diag_partial_seal_qa06.c), Git blob **`3a475534fe54b74f7a7e7c88b3fc1513baafb577`**, SHA256 **`1bca854fb679970f53f3f677205f145bd4ec8216e37b63c017729a42ddce50f6`**, 5,625 bytes. Source created locally, compiled/run with **GCC 14.2.0 C11 -O2 -Wall -Wextra -Werror -pedantic: 10/10 PASS**, and **Clang 17 C11 -O1 -g -fsanitize=address,undefined: 10/10 PASS**, no sanitizer reports. Verified exact committed GitHub blob against local `git hash-object`. This fixture *models* existing `128 POST` rule and a **proposed** worker-driven partial-seal state and storage ACK preconditions; it does not include real frozen `p4diag_host_v1.c`, perform disk writes or validate PSP ABI/threads/clock. The **historical 23/23 source** remains unchanged and was **not rerun** in this QA06 rotation.
+
+Ten tests: (1) legacy 0-POST CAPTURING blind spot, (2) worker zero-POST seal, (3) seven-POST capture and sequence, (4) full128 exact, (5) zero-prior typed event, (6) 512 physical wrap, (7) short u32 microclock wrap, (8) progress false-seal negative, (9) trigger reason coalescing/partial length, (10) SEALED backpressure and ACK only after model-exported-and-verified flags. **Critical gap:** model `verified` is a Boolean, NOT actual `sceIoWrite/sceIoClose/sceIoSync/rename/CRC` verification; do not call it persistence or a real crash recovery test.
+
+Reproduce on a PC from the QA03 host-tests directory:
+```sh
+gcc -std=c11 -O2 -Wall -Wextra -Werror -pedantic p4diag_partial_seal_qa06.c -o p4diag_partial_gcc && ./p4diag_partial_gcc
+clang -std=c11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Wall -Wextra -Werror -pedantic p4diag_partial_seal_qa06.c -o p4diag_partial_san && ./p4diag_partial_san
+```
+
+No PSP/EBOOT code modified and no executable title runtime tested.
+
