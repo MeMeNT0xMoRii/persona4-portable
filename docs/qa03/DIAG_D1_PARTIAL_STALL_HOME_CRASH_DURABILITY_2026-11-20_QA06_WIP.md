@@ -62,3 +62,7 @@ clang -std=c11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Wall
 
 No PSP/EBOOT code modified and no executable title runtime tested.
 
+## 7. Early-boot observability is a separate dependency (T1 source)
+
+Frozen [`port/main.c` L440–505](https://github.com/MeMeNT0xMoRii/persona4-portable/blob/29b0fcfdec70222a4052099b67fb4a11e8d8aff4/port/main.c#L440-L505) initializes paths, the HOME callback and then calls `load_boot_data` L497–501 **before** `log_start()` L502. If p4data/p4str fail the runtime hash, game does not reach the background logger. A future Diag-Lite incident worker attached only to `log_start` cannot observe failures from earlier path resolution, PSP extra-memory detection, runtime mismatch or initial boot data load. Source direct but **not** proof of actual early boot crash. For Saturday: keep simple **synchronous, bounded, explicit boot error** reporting separate from per-frame recorder; the standalone boot failure must be classified `BOOT_INPUT_OR_ENVIRONMENT`, not a missing D1 crash event. Do not start a large ring/thread ahead of successful path/memory initialization just to satisfy a misleading “always records crashes” promise; prove enough RAM and error handling first.
+
