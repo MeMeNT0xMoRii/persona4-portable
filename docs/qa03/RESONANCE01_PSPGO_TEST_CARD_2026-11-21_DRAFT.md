@@ -14,7 +14,7 @@
 | ID | Scenario | Core expected behavior / diagnostic question |
 | --- | --- | --- |
 | G00 | Cold boot from XMB / title | Boots repeatedly without black screen, audio starts, controller works; note first load seconds and exact build/profile; no missing required file dialog |
-| G01 | Intro movie then skip/start gameplay | Movie plays, subtitle/audio if present, skip via Start/Circle, no stale double buffer, hang or broken subsequent rendering |
+| G01 | Intro movie then skip/start gameplay | Movie plays, subtitle/audio if present, skip via Start/Circle, no stale double buffer, hang or broken subsequent rendering; record **movie-frame display API acceptance** separately from `video_shown` attempts and first three **accepted game-frame** submissions after movie; test missing/failed movie file as separate safe case |
 | G02 | Load a backup normal save; school hallway F006_002 | Negative performance control: room/geometry/text/characters/footsteps, 20s idle+10s walking; record p50/p95 and no new stutter |
 | G03 | Junes West F009_004 | Major GPU/RTT/camera/parallel/shadow test: same camera and time of day, 20s idle+10s walking; watch shadows/depth, false lines, accepted-present p50/p95, RTT actual slot/full/half + feedback mode |
 | G04 | Shopping North F008_001 / South | Wall signs/facade, posters, foliage, lighting, transparency, camera; no CLUT/mip shimmer regression, paired CPU vs GE bottleneck |
