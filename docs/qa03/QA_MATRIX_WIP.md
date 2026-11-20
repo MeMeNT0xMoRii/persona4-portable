@@ -305,3 +305,9 @@ QA accept/falsify: fresh executable and identical save/camera for every RTT sett
 | P1 UI-A quantitative acceptance | Current exact private ZIP matches canonical SHA256, 7 steady battle-wheel masks Golden111x111 P4P117x94, P4P midpoint ~6.5px too low | **I direct current upload + H0 OpenCV**, [ZIP report](UI_RESONANCE01_QA06_PRIVATE_ZIP_REVALIDATION_2026-11-20.md); no image publicly stored | T2 screen masks with matched phase/commands 0/3/7, selected strip/glyph, modes/hints, GE 906-word fan payload and remaining headroom, then T3 Go | Missing command/HP/RUSH, worse p95, clipping, state cache errors, stencil/GE regression => revert wheel class |
 
 Evidence ordering unchanged: source T1 / image I and host H0 DO NOT prove T2 PPSSPP or T3 physical hardware. No RESONANCE01 runtime artifact yet.
+
+### QA06 2026-11-20 STAB-01l evidence correction
+
+| ID | Evidence correction | Control / remaining question | Priority impact |
+| --- | --- | --- | --- |
+| STAB-01k/l | **T1 original-source direct** [`datPersonaRosterCapacity` L970–985](https://github.com/Raikaru/Persona4-Decompilation/blob/363eab8a966d60a9773b45f330f2344329ec4f0a/src/Main/Battle/Data/datPersona.c#L970-L985) yields only 6/8/10/12 no matter integer flag value, so `s16 slotIndex` loop in case1/5/6 cannot reach signed overflow 32768 through this function. [Correction](STAB01L_CAPACITY_PRODUCER_BOUND_2026-11-20_QA06.md). | Check exact linked PSP function / actual telemetry if contradictory. Independently test edited Persona ID metadata extent and `datPersonaCachedRecord(current.id)` NULL before memcpy; clean save negative control. | Downgrade count-overflow speculation; **do not downgrade** Compendium Register invalid-ID/cache risks. Source T1, no observed hardware test. |
