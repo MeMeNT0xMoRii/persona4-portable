@@ -314,3 +314,6 @@ Evidence ordering unchanged: source T1 / image I and host H0 DO NOT prove T2 PPS
 
 ### QA03 2026-11-20 16:00 — STAB-01m (T1, no reproduction)
 Case2 Compendium enumeration guards NULL cache before `memcpy`; case6 Register comparison omits NULL guard and indexes Persona metadata by `current.id` (`yListSlotRefresh`, pinned original L664–746). Test original/minimal-edited/heavily-edited save clones, record ID/metadata extent/cache pointer and case2 negative control; do not patch or write original. [Evidence](STAB01M_REGISTER_CACHE_GUARD_CONTRAST_2026-11-20_WIP.md). Roster capacity producer 6/8/10/12; signed-overflow suspicion superseded. T2/T3 pending.
+
+
+SEC-01n T1 addendum (2026-11-20): [allocator boundary audit](SEC01N_INLINE_GE_ALLOCATOR_BOUNDARY_2026-11-20_WIP.md) proves the gated/cached `__wrap_sceGuGetMemory` reservation is rounded payload **plus two 32-bit GE jump words** with no local bounds check. The normal branch calls `__real_sceGuGetMemory`; a wrapper-only fix is incomplete. Required negative control: unchanged title/menu on matching regular perf06 triplet; stress fog/battle/RTT in diag-only build, verify bank retirement and p50/p95/p99 separately. No T2/T3.
