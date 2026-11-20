@@ -39,17 +39,24 @@ def safe_key(key):
         part and part not in ('.', '..') for part in key.split('/')) and not key.startswith('/')
 
 
+def verify_reference(path, expected_digest, release):
+    """Require a pre-frozen independent SHA and a location outside release tree."""
+    path, release = Path(path), Path(release)
+    if path.resolve().is_relative_to(release.resolve()):
+        return ['TRUST_REFERENCE_INSIDE_RELEASE_TREE']
+    if not isinstance(expected_digest, str) or len(expected_digest) != 64 or set(expected_digest) - SHA:
+        return ['BAD_TRUST_DIGEST']
+    if not path.is_file() or sha256(path) != expected_digest:
+        return ['TRUST_REFERENCE_SHA_MISMATCH']
+    return []
+
+
 def inspect(release, trusted_manifest, manifest_digest, expected_build, movie_stems):
     """Return a list of failure reasons; empty list only after all independent gates."""
     issues = []
     release = Path(release)
     trusted_manifest = Path(trusted_manifest)
-    if trusted_manifest.resolve().is_relative_to(release.resolve()):
-        issues.append('TRUST_REFERENCE_INSIDE_RELEASE_TREE')
-    if not (len(manifest_digest) == 64 and set(manifest_digest) <= SHA):
-        issues.append('BAD_TRUST_DIGEST')
-    elif not trusted_manifest.is_file() or sha256(trusted_manifest) != manifest_digest:
-        issues.append('TRUST_MANIFEST_SHA_MISMATCH')
+    issues.extend(verify_reference(trusted_manifest, manifest_digest, release))
     if issues:
         return issues
     try:
@@ -123,8 +130,13 @@ def main(argv=None):
     p.add_argument('--trusted-manifest-sha256', required=True, help='Previously frozen independent SHA-256')
     p.add_argument('--expected-build', type=int, required=True)
     p.add_argument('--original-movie-stems', type=Path, required=True, help='Source-verified JSON list of 23 filename stems')
+    p.add_argument('--original-movie-stems-sha256', required=True, help='Previously frozen independent catalogue SHA-256')
     args = p.parse_args(argv)
     try:
+        problems = verify_reference(args.original_movie_stems, args.original_movie_stems_sha256, args.release_folder)
+        if problems:
+            for issue in problems: print('NO-GO:', issue)
+            return 2
         stems = load_json(args.original_movie_stems)
         if not isinstance(stems, list) or not all(isinstance(x, str) and x == x.upper() for x in stems):
             raise ValueError('movie stems must be uppercase JSON strings')
