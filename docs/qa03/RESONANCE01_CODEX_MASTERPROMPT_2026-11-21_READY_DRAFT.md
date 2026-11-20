@@ -43,7 +43,7 @@ Frozen port/rwsky.c uses **two 65,536-word GE command list banks**, two vertex/i
 
 **Independent P0:** flip/pipeline watchdog >250ms forced stall and >1s escape can reuse a bank whose GE work is still alive; track bank-associated queued/finished/fence, reject overwrite until positive retirement, distinguish GE-completed-but-display-late. No infinite spin/deadlock or silently permanent pipeline=0 performance regression. Host test four timeline cases (normal, stalled GE, completed late display, failed GU queue), plus SEC01 known overflow pressure controls before hardware. Inspect RAM cost before doubling list banks; +512KiB RAM for two enlarged banks, not free.
 
-If cannot implement a verified fail-closed full writer+bank repair in this pass: do not add unsafe GPU drawing. Preserve a buildable diag-lite baseline and document exact unresolved blocker, not a fake safe patch. Physical PSP Go must not be used as a destructive overflow stress target.
+If a verified fail-closed full writer+bank repair **cannot be established**: do not add unsafe GPU drawing; **DO NOT label a new regular/diag-lite artifact SAFE or recommend it for PSP Go hardware**. Keep the immutable perf06 artifact as CONTROL (not retrospectively certified memory-safe), isolate any incomplete diagnostics to host/PPSSPP-only experiments, report exact blocker and an unambiguous NO-GO for hardware promotion. A compileable executable is NOT proof of a retired GE bank. Physical PSP Go must never be used as destructive overflow stress target.
 
 ### Stage 2 — MUST-HAVE diagnostic Flight Recorder: measured cause, not merely FPS number
 
