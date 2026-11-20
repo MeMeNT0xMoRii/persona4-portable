@@ -7,6 +7,8 @@
 - Every new finding must append: ID; source file/function/**exact line range or original retail address**; source commit; actual current P4P adapter/draw path; why linked to an observed symptom; T0 (hypothesis) / T1 (static source) / T2 (repeatable PPSSPP) / T3 (real Go); instrumented scene/save and rollback/test result. "No evidence" stays open. Cite any third-party public URL; never upload game assets, saves or screenshots.
 - **QA/Research only until explicit execution approval:** no modifying game source, building a release, PS2/PSP port merge or copying third-party assets. Documentation commits allowed on existing QA branch. Codex runtime passes should use isolated feature branches, one change per A/B, stable commit and fail-fast guards. Handoff is the LAST write of successful research runs.
 
+**QA11 new independent packaging signoff (T1 + executed H0 only):** [closed-world UPDATE source audit + separate serial GE wait and D1 storage contracts](RESONANCE01_QA11_RELEASE_CLOSED_WORLD_AND_GE_B1_GATES_2026-11-20.md). Frozen `psp_release.py` L84–117 keeps *undeclared old* files under UPDATE; local modeled copy loop leaves two stale VIDEO/SOUND artifacts (planned 27 B vs actual 45 B). [Read-only gate](host_tests/qa11_release_update_guard.py) 5/5 synthetic normal/-O checks PASS, exact git blob verified. Run gate only after real isolated release; no real package, PPSSPP, PSP Go or new game build checked. B1 also verify unchecked serial `sceGuSync` return before same-bank reuse; do not demote P0 GE safety.
+
 ## Global ordered queue — maintained after every useful run
 
 | Order | ID and subsystem | Severity / progress now | Next falsifiable step | Why not merged yet |
