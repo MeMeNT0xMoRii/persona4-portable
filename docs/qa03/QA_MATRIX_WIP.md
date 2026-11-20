@@ -226,3 +226,7 @@ SEC-01c (2026-11-20 02:01 CET, T1 only): frozen `port/rwsky.c:clear_striped` L13
 
 ### 2026-11-20 06:04 — STAB-02 original formation count/reference bounds
 T1 original pinned `btlFormationCopyRecord FUN_001D3EA0` L1143–1180: 0x314 block / +0x1c / 0x18 stride yields 31 complete entries, but loop trusts `entryCount`; `0xff` clone reference block selector unchecked locally; destroy loop similarly trusts count. **T0** modified-save reinforcement causality/reachability; compare frozen perf06 `rwsky.c::func_003f79b0` L1499–1533 GE watchdog as distinct cause. Proposed host 31/32 entry and packed-ref boundaries; clean/edited save and non-reinforcement encounter negative controls, Junes F009_004 vs school F006_002 for GE. No T2/T3, no build. [Trace](STAB02_FORMATION_RESOURCE_ENTRY_BOUNDS_2026-11-20_WIP.md).
+
+
+### 2026-11-20 06:56 CET — STAB-02b formation effect trigger gate
+T1 pinned original `btlFormationCopyDefault` L1220–1233 (`flags&8`, second reference) reached from `btlEffectPrepareFormationStep` L63–73. T0 reinforcement→effect-step edge; archived constructor JAL 0x001AC008 is secondary research text only. Frozen perf06 `port/rwsky.c` L1499–1533 GE watchdog independent. Future T2 clean/edited-save reinforcement vs initial battle, log prepare/counter/flags and GE status; T3 Go pending. No source edit/build/observed freeze. [STAB02 WIP](STAB02_FORMATION_RESOURCE_ENTRY_BOUNDS_2026-11-20_WIP.md).
