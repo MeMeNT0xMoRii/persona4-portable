@@ -17,6 +17,8 @@
 
 Before compiling, freeze every baseline fingerprint; isolate code branch e.g. `dev/v0.27-RESONANCE01` only after user launches job. The current executable build source still sets `BUILD=249` and `P4_BUILD_ID=...perf06`; any final build must have consistent new RESONANCE01/profiles. Avoid accidental mixing of PBP/p4data/p4str and no original save mutation. Real saves and assets are **per EBOOT directory** (`port/paths.c`). For A/B use the **same SHA-verified cloned private save cohort**, complete assets, cold-launch/effective RTT reset and matched camera/scene.
 
+**Early boot scope:** `port/main.c` runs `load_boot_data` and hash/path/memory checks before `log_start`. If the matching private source triplet or extra RAM fails, expect a direct boot error and **no binary Flight Recorder**; do not mislabel it a lost crash. See [D1 source audit](DIAG_D1_PARTIAL_STALL_HOME_CRASH_DURABILITY_2026-11-20_QA06_WIP.md).
+
 **Compile trap:** `tools/psp_link.py` mutates/weakens previously compiled game object symbols; `tools/psp_hw_debug.py --release` does NOT recompile changed original mirrored C. Following each `psp_census.py` FIXES/shim edit, regenerate original C + objects, verify `failed_compile.txt` empty and inspect **actual linked ELF owner/function/callers**, no silent multiple-definition selection or stale `.o`.
 
 ## The work dispatcher — smallest safe deliverable first
