@@ -154,3 +154,9 @@ Original pinned `btlFormationCopyRecord FUN_001D3EA0` L1143–1180 loops `entryC
 
 
 - 2026-11-20 06:56 CET **STAB-02b (T1/T0):** original pinned `btlFormationCopyDefault FUN_001D40D0` L1220–1233 calls unchecked `btlFormationCopyRecord` only when flag8 and counter reaches 2; `btlEffectPrepareFormationStep FUN_001D6300` L63–73 is confirmed caller. Reinforcement constructor→effect scheduling not established, archived JAL claim remains secondary. Frozen perf06 GE watchdog cross-checked separately. Added conditional test/falsifier, negative control and rollback in STAB02 WIP; no runtime edits/builds/T2/T3.
+
+### 2026-11-20 ~07:04 — QA05 diagnostic recorder host-protocol checks + flip accounting correction (docs only)
+
+- New [**PERF07_DIAG_CAPTURE_PROTOCOL_HOST_TESTS_2026-11-20_WIP.md**](PERF07_DIAG_CAPTURE_PROTOCOL_HOST_TESTS_2026-11-20_WIP.md), commit `234ed7e6c073174f869f41421d48eab49a0bb294`; direct frozen `rwsky.c::flip_main` and `fps_presented` verified `shown_seq` advances after **failed** display attempts but overlay FPS only advances after **successful** display and only when enabled. Perf07 telemetry must use independent success/error counters; source semantic discovery T1, real failure T0.
+- Frozen `port/main.c` existing 100ms worker handles formatted **ASCII p4_log_ring** only; proposed packed incident exporter must share the worker thread but use a separate binary buffer/file, avoid 160-byte `p4_log` flooding or render-thread fallback. **Actual H0 synthetic 15/15 passed**: 9 ring+wrap+pre/post+backpressure+trigger+timer+flip cases, six LE64 record+32 header CRC32/partial-write/malformed-file cases. One 256×64B snapshot+header = **16,416B**. 128 history = **records** not guaranteed frames.
+- No C recorder/parser compiled, no runtime source edit, generated EBOOT, hardware PSP Go/PPSSPP run, accepted-display error observed, save/GE bug fixed, or speedup claimed. SEC-01 first build safety gate remains; Handoff written LAST.
