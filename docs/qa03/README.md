@@ -4,6 +4,8 @@
 
 - **perf06 is now a mandatory cross-rotation CONTROL:** [**Exact perf06 runtime/source/artifact/field-test atlas**](PERF06_RUNTIME_BASELINE_FORENSICS_WIP.md) — frozen 29b0fcfd source and documented EBOOT+data SHA256, 820/821 retained game objects, built-in GE/skin/mips/frameskip defaults, original 1× PPSSPP 32-frame windows and actual Go side-by-side observations. The actual private PBP bytes were not available for direct analysis. Before researching/modifying any issue, take **the precise perf06 code path + already tested identical scene** as a control, never assume current docs branch is a new EBOOT.
 
+**Current 21 Nov RESONANCE01 Codex entry:** [**START HERE — compact, source-pinned, credit-aware dispatcher**](CODEX_START_HERE_RESONANCE01_2026-11-21.md) → [**active Saturday Codex masterprompt**](RESONANCE01_CODEX_MASTERPROMPT_2026-11-21_READY_DRAFT.md) → latest two [live handoff](HANDOFF_LIVE.md) entries + top 17-row [priority queue](PRIORITY_QUEUE_CODE_OWNERS_FOR_CODEX_WIP.md); open detailed notes only for the active issue. Historical QA documents remain authoritative *source evidence* where their facts are not superseded, but are not mandatory full first-read material. [**Documentation navigation/credit audit**](RESONANCE01_DOCUMENTATION_AND_CODEX_EFFICIENCY_AUDIT_2026-11-20.md) measures archive size, relative links and stale instructions. No game edits/build are authorized by any documentation update.
+
 ## Canonical inputs and scope
 - **ONLY** the 2026-11-19 set of **120 Golden screenshots + 120 perf06 screenshots** is valid for Golden UI review: private `P4P-Golden-UI-Comparison-QA03-2026-11-19.zip`, numbered `G_1_…G_120_` and `P_1_…P_120_`, 120/120 exact pair IDs. The older Nov 18 **71-picture** Golden set and its ID mapping are **obsolete**, must never be mixed with the 120-pair index.
 - User confirms that every pair represents the **same in-game scenario or UI action**, but not necessarily the same calendar day, weather, character, rank, persona or animation frame. Compare **geometry and composition**, not the differing content.
@@ -13,9 +15,9 @@
 - Real **PSP Go** is the acceptance hardware; PPSSPP is diagnostics/replay, not a definitive hardware FPS proof.
 
 
-### New high-priority first reads (2026-11-19)
+### Historical 2026-11-19 first-read index (archive; use current START HERE above for Saturday)
 
-1. [**Rolling priority queue and exact original→PSP source-line owner registry for Codex**](PRIORITY_QUEUE_CODE_OWNERS_FOR_CODEX_WIP.md) — P0 GE-list/memory/gameplay safety → 20/30 FPS → scene-based visual/UI work → all engine subsystems, QA bot, builder, optional mods; exact files/functions/line anchors, 15 priority IDs and A/B gates. Maintain this across each `mach weiter` and hourly run.
+1. [**Rolling priority queue and exact original→PSP source-line owner registry for Codex**](PRIORITY_QUEUE_CODE_OWNERS_FOR_CODEX_WIP.md) — P0 GE-list/memory/gameplay safety → 20/30 FPS → scene-based visual/UI work → all engine subsystems, QA bot, builder, optional mods; exact files/functions/line anchors, 17 currently tracked top-level queue rows and A/B gates (older wording said 15). Maintain this across each `mach weiter` and hourly run.
 2. [**PS2 visual fidelity with 20 FPS floor and 30 FPS objective**](PS2_VISUAL_FIDELITY_20FPS_30FPS_PLAN_WIP.md) — Junes West, school corridor, Shopping District North/South, Riverbed, dungeons, battle/Velvet/title; CPU/GE/present/VRAM pipeline, targeted conservatively faithful optimizations and cited OpenUG2-PSP/SHAR/PPSSPP GE techniques. No new P4P hardware FPS.
 3. [**GameBanana PS2 mod compatibility + native Manual Fusion Skill Inheritance mapping**](MODS_GAMEBANANA_COMPATIBILITY_WIP.md) — verified public P4 PS2 CLPS2C source with pinned original fclFuseRollPersona/fclCombineMenuFusion/shdPersonaDrawPanels owners, license risk and optional implementation/testing gates; other mods ranked by format, fidelity and memory.
 4. [**PPSSPP playthrough bot V2: official WebSocket API and failure evidence**](PLAYTHROUGH_BOT_REAL_INTERFACE_V2_WIP.md) — verified current upstream game.state.save/load/verify, input injection, GPU/GE inspection, bounded logging and deterministic checkpoints; no running bot or hardware result.
@@ -34,7 +36,7 @@
 5. [PSP Go/3000 hardware limits and framebuffer budget](PSP_HARDWARE_LIMITS_WIP.md) — sourced 64 MB, 333 MHz, 2 MiB GE eDRAM, formulas and profiling gates.
 6. [PPSSPP verified remote debugger / bot interface](PPSSPP_BOT_INTERFACE_WIP.md) — actual WebSocket protocol, savestate, input, screenshot, GPU stats, replay.
 7. [Autonomous playthrough/bot design](AUTOPLAY_BOT_WIP.md) — PPSSPP smoke/regression runner, failure artifact contract.
-8. [Codex/Work masterprompt — DRAFT](MASTERPROMPT_WIP.md) — standalone orchestrator prompt; user will approve/finalize by Saturday Nov 21.
+8. [**HISTORICAL Codex/Work masterprompt (do NOT launch)**](MASTERPROMPT_WIP.md) — chronological superseded notes; the actual 21 Nov execution contract is [RESONANCE01_CODEX_MASTERPROMPT_2026-11-21_READY_DRAFT.md](RESONANCE01_CODEX_MASTERPROMPT_2026-11-21_READY_DRAFT.md) via [START HERE](CODEX_START_HERE_RESONANCE01_2026-11-21.md).
 9. [Change log / decision ledger](CHANGELOG.md) — append-only human-readable changes and explicit status.
 10. [Hardware comparison perf06 ↔ b388](../v027_qa03_b388_vs_perf06_hardware_2026-11-19.md) — b383/b386 findings, isolated upstream candidates. Earlier Golden numeric references in this document are **historical only**, not valid canonical 120 IDs.
 11. [perf06](../v027_perf06.md), [perf04](../v027_perf04.md), [issues](../v027_issues.md), [replay saves](../replay_saves.md), [building](../building.md).
