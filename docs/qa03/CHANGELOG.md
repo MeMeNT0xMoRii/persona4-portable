@@ -173,3 +173,5 @@ Original pinned `btlFormationCopyRecord FUN_001D3EA0` L1143–1180 loops `entryC
 - **Game runtime/source frozen, no PSP SDK/EBOOT, no PPSSPP T2, no Go T3, no modified saves/Golden asset upload**, no 48KiB/≤1% CPU budget measured. Host source is intentionally docs-only and not part of linker port objects. Handoff updated LAST.
 
 - 2026-11-20 QA03 STAB-02e: pinned original AI child-spawn entry FUN_001EA2D0 (`btlEffect.c` L628–641) identified as independent reinforcement candidate; original formation packet connection still unproven; perf06 watchdog cross-checked. Docs only, no T2/T3. See `STAB02_AI_CHILD_SPAWN_TRACE_2026-11-20_WIP.md`.
+
+- 2026-11-20 11:03 CET: STAB-02f T1 original AI child lazy-allocation path traced to `btlUnitInitChild` / FUN_0019EF30; no local NULL guard before record init; runtime relevance unverified. Frozen perf06 GE watchdog cross-check, no game-code/build/T2/T3 changes. See `STAB02_CHILD_LAZY_INIT_BOUNDARY_2026-11-20_WIP.md`.
