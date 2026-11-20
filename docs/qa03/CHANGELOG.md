@@ -244,3 +244,5 @@ Report created commit e2cdc59373f4269fcaec6a8428a6acf8d9b8fcda and Node-executio
 ### 2026-11-20 QA06 follow-on — negative source proof for STAB-01k
 
 - Direct pinned original C `src/Main/Battle/Data/datPersona.c` L970–985 returns a fixed 6/8/10/12 from `datPersonaRosterCapacity` regardless of saved/unexpected flag bits; `yListSlotRefresh` signed slot counter overflow hypothesized by STAB-01k is therefore unreachable via original capacity producer. [New STAB-01l source note](STAB01L_CAPACITY_PRODUCER_BOUND_2026-11-20_QA06.md), STAB-01k corrected, priority and QA matrix corrected. PSP native symbol and actual Compendium crash unverified, metadata ID/cache hazards still open. No game edits, build, PPSSPP, Go, private data publication.
+
+- 2026-11-20 16:00 CET QA03 STAB-01m: T1 original `yListSlotRefresh` case2 guarded cached-record pointer versus case6 unguarded 0x30 register copy; bounded roster capacity reconfirmed. Private save negative-control protocol and independent frozen perf06 GE watchdog documented. No game edits/builds/T2/T3. See `STAB01M_REGISTER_CACHE_GUARD_CONTRAST_2026-11-20_WIP.md`.
