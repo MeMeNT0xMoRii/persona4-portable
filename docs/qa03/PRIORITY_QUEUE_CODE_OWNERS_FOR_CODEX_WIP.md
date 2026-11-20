@@ -282,3 +282,7 @@ Pinned original [`datPersonaRosterCapacity FUN_0010B5B0` L970–985](https://git
 
 ### QA03 2026-11-20 16:00 — STAB-01m cache enumeration versus Register
 T1 pinned original `yListSlotRefresh` FUN_002E4090 L664–746: case2 guards `datPersonaCachedRecord(slotIndex) != 0` before 0x30 copy; case6 checks metadata arcana but does NOT guard `datPersonaCachedRecord(current.id)` before 0x30 copy. Roster count is bounded 6/8/10/12 (STAB-01l correction), so focus on edited Persona ID/cache validity rather than signed count overflow. [Targeted evidence and negative control](STAB01M_REGISTER_CACHE_GUARD_CONTRAST_2026-11-20_WIP.md). Frozen perf06 `port/rwsky.c` L1499–1533 watchdog remains separate. No runtime test; next SEC-01.
+
+
+### 2026-11-20 SEC-01n precise allocator reservation (T1)
+[SEC-01n](SEC01N_INLINE_GE_ALLOCATOR_BOUNDARY_2026-11-20_WIP.md): frozen `port/rwsky.c:1901–1920` gated/cached `__wrap_sceGuGetMemory` writes **8 bytes GE jump header plus rounded payload**, advancing unchecked; regular path delegates to `__real_sceGuGetMemory` and direct command writers remain unbounded until independently censused. Instrument both branches and every writer, include header in preflight, never return unchecked NULL; no measured perf06 overflow. Next SEC-01 writer census then PERF-01.
