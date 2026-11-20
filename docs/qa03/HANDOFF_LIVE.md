@@ -1,5 +1,8 @@
 # Persona4-PORTABLE — LIVE HANDOFF / CONTINUITY (WIP)
 
+- **2026-11-20 13:00 CET scheduled QA03 STAB-02i:** [Source note](STAB02I_CHILD_REUSE_RECORD_ACCESS_2026-11-20_WIP.md), created commit `bd87f986e1abad89fa7fb919f3571232eed3b58c`. Pinned original `btlUnitInitChild` allocates genus-2 child only when NULL; later spawn reuses same child pointer and reinitializes record fields. Later `btlUnitGetRecordPtr` independently accesses genus-2 record by `charId*0x58+2`; table extent and child packet/model reset unknown. **T1 source only; freeze linkage T0**. Perf06 `port/rwsky.c:1499–1533` independent GE watchdog consulted; forensic baseline reviewed, no new T2/T3 or regular EBOOT byte verification. Queue `c850ab18`, matrix `08cc69d9`, changelog `aa9eb068`. **Next research rotation STAB-01 Compendium**, not repetitive child-chain work. Runtime frozen `29b0fcf`, no game code/build/private assets touched. This HANDOFF update is last write of this pass.
+
+
 **Created:** 2026-11-19, Europe/Vienna. **Living index:** [QA03 README](README.md). This file is intended to be the **single entrypoint for a replacement Project chat** and a stable handoff target for hourly scheduled research. The user must manually create a new chat; an automation cannot create one or move this conversation. A scheduled research run may not have all prior conversational detail—prioritize this file and linked documentation, verify GitHub.
 
 ## CURRENT FIRST-READ / most recent verified change
