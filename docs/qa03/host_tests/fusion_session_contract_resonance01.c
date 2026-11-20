@@ -85,7 +85,7 @@ static bool commit(FusionSession *s,Skills *result,unsigned actual_generation,
     return true;
 }
 static void cancel(FusionSession *s){if(s)s->active=false;}
-#define TEST(name,code) do {code;cases++;printf("PASS %02d %s\n",cases,name);}while(0)
+#define TEST(name,...) do {__VA_ARGS__;cases++;printf("PASS %02d %s\n",cases,name);}while(0)
 
 int main(void) {
     const Skills base={{100,0,0,0,0,0,0,0}};
