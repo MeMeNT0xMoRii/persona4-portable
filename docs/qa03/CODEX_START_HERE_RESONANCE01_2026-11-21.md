@@ -27,6 +27,8 @@ Before compiling, freeze every baseline fingerprint; isolate **the entire projec
 
 ## The work dispatcher — smallest safe deliverable first
 
+**New QA09 Golden completeness cue (on-demand, NOT a new first-read prerequisite):** [QA09 verified C0/C1/C2 120-pair/UI-fix completeness register](RESONANCE01_GOLDEN_120_PAIR_COVERAGE_VS_UI_FIX_READINESS_2026-11-20_QA09.md). **All 120 screenshot pairs have visual C0 classification, but not all elements have mapped original sprite records or a measured candidate (C1 PARTIAL; C2 NOT BUILT).** 31 groups cover IDs 001–120 once; only the seven-state battle wheel has repeatable numeric yellow-mask target. Additional source T1 candidate owners pinned for Battle Result #084 and Vanilla Shuffle #114/115, but no verified game-frame patch. Source-pending save #003–007, status rings #040, minimaps #075/#092, calendar #096, follow-up #111 and Evening #120; preserve confirmed no-fix #097 town map and Golden-exclusive UI. Do not absorb 31 UI groups as mandatory Saturday implementation backlog.
+
 | Work unit | Read only these focused documents | Implementation/test gate, stop if |
 |---|---|---|
 | **B0 provenance/boot** | [perf06 baseline](PERF06_RUNTIME_BASELINE_FORENSICS_WIP.md); [new B0 contracts](BASE_LOG_SAVE_BUILD_NEGATIVE_CONTRACTS_2026-11-20_QA06_WIP.md); [**QA07 executable artifact guard**](RESONANCE01_ARTIFACT_PBP_PROFILE_PROVENANCE_GATE_2026-11-20_QA07.md) / [8/8 pure-host Python source](host_tests/resonance01_artifact_guard_qa07.py); `docs/building.md` | Correct OS, inputs, toolchain, source/generated object provenance, matched control assets. STOP if unavailable; return exact commands/blocker and no fabricated binaries. |
