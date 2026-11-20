@@ -43,6 +43,10 @@
 | LONG TERM | Background autonomous PPSSPP QA bot | user proposal, not implemented | deterministic input + checkpoints + watchdog + logs; Codex intervenes only on failures | no unattended edits to source/game saves; reproducible triage artifacts |
 
 
+### QA09 2026-11-20 — Golden 120/120 C0 complete versus remaining UI fix gaps
+
+[QA09 verified C0/C1/C2 120-pair/UI-fix completeness register](RESONANCE01_GOLDEN_120_PAIR_COVERAGE_VS_UI_FIX_READINESS_2026-11-20_QA09.md): original actual 120-pair ZIP CRC/hash rechecked, 4 overviews for IDs 001–120, 31 groups disjoint and complete. **15 high, 38 geometry checks, 52 comparable, 15 constrained/negative controls.** Exact source anchor/asset identity is **PARTIAL**, actual UI modifications/target validation **NOT RUN**. Numerically measured seven stable wheel masks only; actual visible non-wheel candidates (Weather News #106 title, roster/TV #77–83, Battle List #81/82, Social Link #43–45, All-Out #112/118/119, eye #116) require scoped asset/phase and SEC-01 gate. Remaining owner IDs #003–007 save, #040 status circles, #075/#092 minimap, #084 result (now initial T1 btlResultSimpleDraw), #096 calendar transition, #111 follow-up, #120 Evening. Shuffle #114/115 original btlShuffleDraw family pinned T1 but changed Golden mechanics are NOT a bug; do not add 7th weather card (#106), do not change town map (#097) or Castle whiteness (#074) without Vanilla proof. **H0 screenshot math != a T2/T3 UI fix.**
+
 ## 2026-11-19 successor image/perf audit — bounded evidence update
 
 - The actual 120-pair ZIP was reopened (private, not published). Normalized pixel-mask comparison of steady yellow field HUD #98/#100/#105 suggests a modest left/up and width difference, but **not an isolated sprite bbox**. This does **not** overturn the T1 four-group `calendarDrawBackdrop` attribution or validate changing `0xBF6`.
