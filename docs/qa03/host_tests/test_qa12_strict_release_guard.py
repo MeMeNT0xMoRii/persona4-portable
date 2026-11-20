@@ -33,6 +33,9 @@ class QA12Test(unittest.TestCase):
         self.trusted=Path(self.tmp.name)/'outside/manifest.json'
         self.trusted.parent.mkdir()
         self.orig={'build':self.b,'release':True,'artifact_sha256':{k:dig(self.files[k]) for k in g.TRIPLET}}
+        self.movies = Path(self.tmp.name)/'outside/movies.json'
+        self.movies.write_text(json.dumps(self.stems))
+        self.movie_sha = g.sha256(self.movies)
         self.update()
     def update(self):
         (self.r/'release.json').write_text(json.dumps(self.m))
@@ -63,7 +66,7 @@ class QA12Test(unittest.TestCase):
     def test_08_stale_extra_file(self):
         (self.base/'VIDEO/retired.p4v').write_bytes(b'old');self.assertIn('UNDECLARED:VIDEO/retired.p4v',self.result())
     def test_09_trusted_manifest_modified(self):
-        self.trusted.write_text('{}');self.assertIn('TRUST_MANIFEST_SHA_MISMATCH',self.result())
+        self.trusted.write_text('{}');self.assertIn('TRUST_REFERENCE_SHA_MISMATCH',self.result())
     def test_10_duplicate_json_key(self):
         (self.r/'release.json').write_text((self.r/'release.json').read_text().replace('"movies": 23','"movies": 23, "movies": 23'))
         self.assertTrue(any(x.startswith('INVALID_JSON') for x in self.result()))
@@ -88,5 +91,19 @@ class QA12Test(unittest.TestCase):
         (self.base/'VIDEO/MOVIE00.p4v').unlink();self.m['files'].pop('VIDEO/MOVIE00.p4v');self.update()
         self.assertIn('MOVIE_STEM_ID_MISMATCH',self.result())
     def test_18_no_trust_hash(self):self.assertIn('BAD_TRUST_DIGEST',self.result(digest=''))
+    def test_19_catalogue_tamper_digest(self):
+        self.movies.write_text('[]')
+        self.assertIn('TRUST_REFERENCE_SHA_MISMATCH',g.verify_reference(self.movies,self.movie_sha,self.r))
+    def test_20_catalogue_inside_release(self):
+        self.movies.rename(self.r/'films.json')
+        self.assertIn('TRUST_REFERENCE_INSIDE_RELEASE_TREE',g.verify_reference(self.r/'films.json',g.sha256(self.r/'films.json'),self.r))
+    def test_21_cli_known_good_fixture(self):
+        self.assertEqual(g.main(['--release-folder',str(self.r),'--trusted-manifest',str(self.trusted),
+            '--trusted-manifest-sha256',self.frozen,'--expected-build',str(self.b),
+            '--original-movie-stems',str(self.movies),'--original-movie-stems-sha256',self.movie_sha]),0)
+    def test_22_cli_wrong_stem_pin(self):
+        self.assertEqual(g.main(['--release-folder',str(self.r),'--trusted-manifest',str(self.trusted),
+            '--trusted-manifest-sha256',self.frozen,'--expected-build',str(self.b),
+            '--original-movie-stems',str(self.movies),'--original-movie-stems-sha256','0'*64]),2)
 
 if __name__=='__main__':unittest.main(verbosity=2)
