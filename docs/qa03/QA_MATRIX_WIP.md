@@ -248,3 +248,5 @@ T1 pinned original `btlFormationCopyDefault` L1220–1233 (`flags&8`, second ref
 
 ### STAB-02e — 2026-11-20
 T1 original `btlAICommandScriptSpawnChild` FUN_001EA2D0 (`src/Battle/btlEffect.c` L628–641) directly initializes a child and sets an action code; no formation packet call in that function. Actual reinforcement reachability T0; no T2/T3. Trace AI dispatch/child init vs packet and GE watchdog, normal battle negative control; rollback any gameplay/save/HOME regression. [Source investigation](STAB02_AI_CHILD_SPAWN_TRACE_2026-11-20_WIP.md).
+
+- **2026-11-20 11:03 CET STAB-02f T1:** pinned original `btlAICommandScriptSpawnChild` (`btlEffect.c:628-641`) → `btlUnitInitChild` (`btlUnit_inferred_0019e9f0.c:296-306`, FUN_0019EF30) lazy `btlUnitCreate(2)` and unconditional `btlUnitInitFromRecord(childUnit, id)` without local NULL check. Whether allocator returns NULL or reinforcement reaches this path is T0. Frozen perf06 `port/rwsky.c:1499-1533` watchdog remains independent; no T2/T3. [Detailed trace](STAB02_CHILD_LAZY_INIT_BOUNDARY_2026-11-20_WIP.md). Next inspect `btlUnitCreate` and opcode registration, then rotate STAB-01.
