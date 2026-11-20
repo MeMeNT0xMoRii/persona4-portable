@@ -338,3 +338,6 @@ SEC-01n T1 addendum (2026-11-20): [allocator boundary audit](SEC01N_INLINE_GE_AL
 
 ### SEC-01o — 2026-11-20 18:00 (T1 only)
 Frozen `port/rwsky.c` L1380–1435: `clear_striped` unchecked vertex-pointer write after `sceGuGetMemory`, plus three command emissions and finish-tail headroom. Test title clear negative control, Junes F009_004 RTT stress, fusion clear; log per-bank high-water, attempted clear bytes, gate/cache, finish margin; T2/T3 NOT RUN. [Source note](SEC01O_STRIPED_CLEAR_CALLER_CONTRACT_2026-11-20_WIP.md). No fix or FPS claim.
+
+### SEC-01p — 2026-11-20 19:00 (T1 only)
+`port/rwsky.c::func_003f79b0` frozen L1590–1641: after submitting frame, pipelined path toggles `pipe_set` and sets `list=list_store[pipe_set]` **before** debug-freeze prints `list`. Freeze log therefore identifies next bank, not verified last shown bank. Diag-lite must separately record submitted bank/start/end/GE ID/seq, next selected bank, actual GE completion and accepted present; title/menu nonpipeline negative control plus Junes F009_004 pipeline stress. [SEC-01p](SEC01P_FREEZE_PROBE_BANK_IDENTITY_2026-11-20_WIP.md). No overflow or wrong-frame capture reproduced, no build/T2/T3.
