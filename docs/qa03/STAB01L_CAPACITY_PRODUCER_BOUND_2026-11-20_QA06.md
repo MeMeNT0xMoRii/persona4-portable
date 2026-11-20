@@ -1,0 +1,23 @@
+# STAB-01l — actual roster capacity producer bounded to 6/8/10/12 (QA06, 2026-11-20)
+
+**T1 direct pinned original-source finding; T0 native linked PSP symbol / real symptom.** Follow-up to scheduled [STAB-01k signed roster capacity hypothesis](STAB01K_SIGNED_ROSTER_CAPACITY_2026-11-20_WIP.md). Original fixed source pin `Raikaru/Persona4-Decompilation@363eab8a966d60a9773b45f330f2344329ec4f0a`; frozen PSP runtime `MeMeNT0xMoRii/persona4-portable@29b0fcfdec70222a4052099b67fb4a11e8d8aff4`. No gameplay code changed, built, tested under PPSSPP or PSP Go.
+
+## New actual producer proof: hypothetical huge roster count is not reachable through this normal function
+
+- [`src/Main/Battle/Data/datPersona.c::datPersonaRosterCapacity FUN_0010B5B0` L970–985](https://github.com/Raikaru/Persona4-Decompilation/blob/363eab8a966d60a9773b45f330f2344329ec4f0a/src/Main/Battle/Data/datPersona.c#L970-L985) reads integer flags `D_0079B40C[0]`, checks bits in descending order `4,2,1`, then returns exactly `12,10,8,6` respectively. **For any 32-bit flag value**, the source function returns one of **6, 8, 10, 12**, not an unchecked raw save-derived count.
+- [`datPersonaSetRosterMode FUN_0010B610` L991–1020](https://github.com/Raikaru/Persona4-Decompilation/blob/363eab8a966d60a9773b45f330f2344329ec4f0a/src/Main/Battle/Data/datPersona.c#L991-L1020) resets these three low bits then enables them cumulatively for valid mode 0..3; bad mode calls assert. Even an invalid flags value would be masked by the **producer** into a small return value.
+- [`src/Yajima/y_list.c::yListSlotRefresh FUN_002E4090` L664–746](https://github.com/Raikaru/Persona4-Decompilation/blob/363eab8a966d60a9773b45f330f2344329ec4f0a/src/Yajima/y_list.c#L664-L746) uses `s16 slotIndex` against `(datPersonaRosterCapacity() & 0xFFFF)` for cases 1, 5 and 6. Under the above actual producer, `slotIndex` ranges at most 0..11. **STAB-01k's hypothetical >32767 signed-index overflow does not occur via this source-level normal call path.** Its condition had not been demonstrated with a malicious/edited save; downgrade as a low-value speculation rather than a currently actionable overflow fix.
+- The frozen `tools/psp_census.py` `FIXES` entries around L163–171 reference `datPersonaRosterCapacity()` **only within an anchor for adding fusion preview logging** to `src/Event/Fcl/y_fclCombine.c`, not a rewrite of this producer. This does not independently prove the linked native `datPersonaRosterCapacity` has identical bytes; verify generated C object/symbol if Codex investigates.
+- 12 active roster records × 48B = 576B payload; fits previously documented kind1/5/6 `yListSlotCreate` work area for up to 253 rows. This calculation depends on the source's capacity guarantee and does not validate all other `kind` loops or unchecked work pointer indices.
+
+## What is *not* cleared by this correction
+
+`yListSlotRefresh` case 6 accesses `((YListPersonaMetadata*)iGpffffb3d4)[current.id]` and then `memcpy(&registered, datPersonaCachedRecord(current.id), 0x30)` without a local NULL check. **A bounded roster slot count does not bound each `current.id` or establish cache presence.** Previous edited-save Compendium metadata, sort, index0, roster count/cache hypotheses remain separate and potentially consequential. No evidence that an observed Register crash has this exact cause; T0 until traced in actual PSP binary with cloned private saves.
+
+## Saturday Codex testing and priority change
+
+1. Confirm actual generated PSP object / linked ELF symbol of `datPersonaRosterCapacity` from pinned source; log returned capacity in normal, minimally edited and heavily edited cloned saves only if source mismatch or symptoms warrant. Expected set `{6,8,10,12}`. If a real trace yields anything else, it falsifies this native transfer and raises source/build integrity rather than justify treating 32768 as normal.
+2. Prioritize read-only **ID domain, metadata bounds, cache-record NULL and sort/index-init state** before touching the roster loop. Add a negative control clean Register and normal fusion; no save auto-repair.
+3. Preserve P0 SEC-01 GU command bank/list safety, isolated regular perf06 artifact, and reversible build stages. Do not spend early Saturday time on an unnecessary arbitrary count clamp that changes original behavior without evidence.
+
+**Summary:** Source-proven correction narrows risk. Original signed 16-bit counter is safe against this particular capacity overflow because the called producer is range-bounded. This says nothing about port binary equivalence, bad Persona IDs, NULL pointers or the real user's observed freeze. No T2/T3, new EBOOT, FPS delta or game-source patch in QA06.
