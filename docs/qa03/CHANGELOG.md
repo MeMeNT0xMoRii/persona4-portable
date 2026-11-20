@@ -3,6 +3,8 @@
 **Purpose:** Publicly track *planning/documentation* changes for the 19–21 November 2026 period. Do not imply a shipped runtime or new hardware acceptance. Appended change records and exact Git commits provide provenance.
 
 | Date | Change | Basis / status |
+| 2026-11-20 21:00 CET | PERF-01r: frozen show-raster skipped-frame early return bypasses timing/hwprof sampling; separate simulation, skip, submit, finish and accepted-present events required before p95 claim | [source note](PERF01_SKIPPED_FRAME_OBSERVABILITY_2026-11-20_WIP.md), T1 only, no game edit/build/new T2/T3 |
+
 |---|---|---|
 | 2026-11-18 | Earlier 71 Golden images/audit captured | **SUPERSEDED** 2026-11-19. Do not use older Golden IDs as current comparison. |
 | 2026-11-19 | Hardware comparison perf06 vs b388: b383 Igor-floor CULL, b386 Fusion-card faces; performance gains measured in upstream and observed by user in selected scenes | Candidate cherry-picks. No perf06 code change. |
