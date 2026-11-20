@@ -297,3 +297,6 @@ Cross-audited all **17 current ordered queue rows** (00..15 incl 03a) against fr
 
 ### 2026-11-20 18:00 SEC-01o — striped clear caller preflight (T1)
 Frozen `port/rwsky.c` L1380–1435 `clear_striped` writes `count` vertices immediately after unchecked `sceGuGetMemory` and then emits CLEARMODE/DRAW/CLEARMODE commands; 480px clear = 30 × 12B = 360B payload, plus possible 8B wrapper header and following GE commands. A NULL-return-only allocator fix would crash this caller; a payload-only bound ignores post-clear commands and FINISH/END. [Focused note](SEC01O_STRIPED_CLEAR_CALLER_CONTRACT_2026-11-20_WIP.md). **Next:** transactional whole-frame GE preflight/command census; PERF-01 presented timing. No T2/T3.
+
+### 2026-11-20 19:00 SEC-01p — pipelined debug-freeze bank identity (T1)
+Frozen `port/rwsky.c::func_003f79b0` L1590–1641 switches `pipe_set`/`list` to the NEXT bank before L+R+SELECT logs `FREEZE ... list`; logged address does **not** identify the just-submitted/shown frame's bank in pipelined mode. For diagnostics, log submitted GE list ID/start/end/seq and selected-next bank separately; no blocking sync or unsafe bank reads. [Focused source note](SEC01P_FREEZE_PROBE_BANK_IDENTITY_2026-11-20_WIP.md). No runtime change or T2/T3. Next SEC-01 retirement/writer census, PERF-01 actual presents.
