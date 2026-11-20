@@ -22,8 +22,8 @@
 | G07 | Enemy reinforcement wave from private standard and problematic save clones | Freeze vs recover, cold child vs existing child, 52-allocation first-unit branch, formation packet completion vs GE queued/finished; no raw save upload |
 | G08 | Attack damage / Rush / target change / skill and item menus | Damage numbers track enemy position, wheel glyph/selection strip remain aligned, no missing outline/black panel or unexpected command |
 | G09 | All-Out / eye cut-in / pursuit effects | Original art and color/alpha/UV, 2-/3-/4-party permutations where reachable; no black TV frame geometry stripes; extra GE-list headroom |
-| G10 | Velvet Room entry, Igor/Margaret chair animation, normal two-parent fusion | 2-parent input select, result previews stable with NO manual popup while merely browsing; no wrong Persona, visual flicker or audio loss |
-| G11 | Manual skill selection two-parent, if feature ON | List only legal available inheritances, exact slot count, Scroll/Select/Undo/Cancel; result record and 8-bit mask correct, no double-confirm reroll; cancel leaves original saved/preview state unchanged |
+| G10 | Velvet Room entry, Igor/Margaret chair animation, normal two-parent fusion | 2-parent input select, result previews stable with NO manual popup while merely browsing **or on level-too-high/owned rejection or confirmation-dialog NO**; original 0x2D request is not YES, no wrong Persona, visual flicker or audio loss |
+| G11 | Manual skill selection two-parent, if feature ON | List only legal available inheritances **after true YES and validated non-accident outcome**; exact slot count, Scroll/Select/Undo/Cancel; result record and 8-bit mask correct, no double-confirm reroll; accident result respects Vanilla policy; cancel leaves original saved/preview state unchanged |
 | G12 | Triangle and 4–6 parent fusion, if feature ON | Correct mode-specific entry and exit, all inherited skills preserved, legal lists; if EXPERIMENTAL flag then mark separate from regular and don't silently pass untested mode |
 | G13 | Apsaras and Zio/fusion glowing effects | Compare glow/alpha and fused Persona animation to same scene; no flicker/missing blue effect, no transition crash |
 | G14 | Compendium Register/Withdraw, normal then minimally/heavily modified *private save clones* | No invalid Persona ID metadata read, NULL cache copy, wrong sort slot/record alias, unbounded loops or save corruption; backup untouched source |
@@ -45,3 +45,8 @@ Record device/firmware/storage (ef0:/ or ms0:/), build name/profile/manifest SHA
 - PASS and FAIL are per scene and per artifact SHA. **NOT RUN is not PASS**. A normal RESONANCE01 build with a disabled experimental fusion feature may still qualify as testable, but must never be advertised as having working selectable fusion inheritance.
 
 Use [Saturday Codex masterprompt](RESONANCE01_CODEX_MASTERPROMPT_2026-11-21_READY_DRAFT.md) and [fusion audit](FUSION_RESONANCE01_MANUAL_INHERITANCE_IMPLEMENTATION_REAUDIT_2026-11-20_WIP.md) for engineering owners and test obligations.
+
+
+## QA06 2026-11-20 added fusion callback controls (not yet executed)
+
+Specific trace expectation from [pinned original fusion YES/rare audit](FUSION_FINAL_APPROVAL_GATE_2026-11-20_QA06_WIP.md): mode2 request 0x2D -> reject/eligibility0x2F -> YES/no at dialog0x30 -> rare0x34; mode3 0x46 ->0x48 ->0x49 ->0x4D; multi 0x57 ->0x59 ->0x5A ->0x5C. Mark each **YES, NO, rejected, accident/non-accident** subcase separately as PASS/FAIL/NOT RUN if feature enabled; verify no modal on NO or rejected fusion and that modal doesn't perturb rare decision. A visible manual selector before original affirmative is a failure even if its chosen skills seem valid. These subcases supplement G10–G12 and do not change 20-case count. Keep selector experimental until native acceptance.
