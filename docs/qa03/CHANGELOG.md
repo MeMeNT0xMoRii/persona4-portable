@@ -163,3 +163,5 @@ Original pinned `btlFormationCopyRecord FUN_001D3EA0` L1143–1180 loops `entryC
 
 
 2026-11-20 07:55 CET — STAB-02c T1: pinned original `btlEffectCreateFormationPacket FUN_001D65D0` registers prepare/step/finish callbacks at +0x68/+0x6c/+0x70, establishing packet→conditional formation copy but NOT reinforcement constructor→packet reachability. Frozen perf06 `rwsky.c::func_003f79b0` watchdog independent. See [STAB02 WIP](STAB02_FORMATION_RESOURCE_ENTRY_BOUNDS_2026-11-20_WIP.md). T0 cause; no T2/T3 or game edit. Next trace callers of packet constructor, retain clean non-reinforcement negative control and artifact hashes.
+
+- **STAB-02d 2026-11-20 09:01 CET (T1):** original pinned `btlMainUnitLoadInit` (`src/Battle/btlAction_inferred_001b1510.c` L1223–1241) enqueues model-load then formation-effect packet with dependency UID; other pinned call sites in victory, cut-in and enemy cast prove formation packets are **not reinforcement-exclusive**. Reinforcement constructor 0x001AC008→packet edge still T0. Next trace constructor/UID dependency or rotate STAB-01. See STAB02 WIP. Frozen perf06 watchdog rechecked; no T2/T3, no runtime changes.
