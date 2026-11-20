@@ -151,3 +151,6 @@
 
 ### 2026-11-20 06:04 CET — STAB-02 formation record static bounds audit (T1, docs only)
 Original pinned `btlFormationCopyRecord FUN_001D3EA0` L1143–1180 loops `entryCount` without local 31-entry block capacity check; clone-reference block selector similarly unchecked locally; destroy path trusts counts. Frozen perf06 GE watchdog L1499–1533 independently reread. No proof of malformed retail data, reinforcement reachability, runtime overflow, freeze cause or T2/T3. [New targeted WIP](STAB02_FORMATION_RESOURCE_ENTRY_BOUNDS_2026-11-20_WIP.md) commit `0ded01d`; priority queue/matrix updated. No runtime edits/builds/assets.
+
+
+- 2026-11-20 06:56 CET **STAB-02b (T1/T0):** original pinned `btlFormationCopyDefault FUN_001D40D0` L1220–1233 calls unchecked `btlFormationCopyRecord` only when flag8 and counter reaches 2; `btlEffectPrepareFormationStep FUN_001D6300` L63–73 is confirmed caller. Reinforcement constructor→effect scheduling not established, archived JAL claim remains secondary. Frozen perf06 GE watchdog cross-checked separately. Added conditional test/falsifier, negative control and rollback in STAB02 WIP; no runtime edits/builds/T2/T3.
