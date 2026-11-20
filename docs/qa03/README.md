@@ -172,3 +172,7 @@ The masterprompt should refer to **this single hub**, read linked docs once, bui
 ### QA06 2026-11-20 roster capacity source-producer correction
 
 - [**STAB-01l bounded producer**](STAB01L_CAPACITY_PRODUCER_BOUND_2026-11-20_QA06.md): direct original `datPersonaRosterCapacity` at `src/Main/Battle/Data/datPersona.c` L970–985 returns 6/8/10/12 for all flags. Scheduled STAB-01k hypothetical signed-counter >32767 overflow **is not reachable through that original producer**. Continue independent Compendium case6 metadata-ID/cache-NULL investigations; no new real-game reproduction or PSP symbol proof.
+
+### 2026-11-20 ~17h QA06 — final rare-result Fusion negative proof
+
+- [**Fusion Accident near-level candidate search can conditionally run forever**](FUSION_ACCIDENT_NEARLEVEL_NONTERMINATION_2026-11-20_QA06_WIP.md) — direct pinned PS2 `yListSlotFillNearLevel` repeatedly widens up to level1..99 and insists on **>5 eligible** results with no attempt limit; if the final eligible world has <=5 and branch enters expansion, the loop has no normal exit. Normal state `0x36`, Triangle `0x4F`, and fallback from `0x37/0x50` are relevant; a naive loop break can expose their `RpRandom()%0` case. This **does not** prove the user's edited-save crashes or Vanilla reachability; game source, EBOOT and hardware unchanged. Saturday Fusion-Experimental design requires a validated rare-result transaction, never regular/diag-lite as untested optional logic.
