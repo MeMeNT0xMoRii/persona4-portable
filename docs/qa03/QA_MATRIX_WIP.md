@@ -445,3 +445,6 @@ All current source evidence **T1**, no build/PPSSPP T2/Go T3 performed in this p
 - **VIDEO-01 (T1, NOT TESTED):** [audio drain liveness](VIDEO01_AUDIO_DRAIN_LIVENESS_2026-11-21_WIP.md), frozen `port/video.c` L62–91, L323–339; movie natural EOF/skip vs mute/no-audio negative control, log worker stop and channel rest; PPSSPP T2 and Go T3 pending. No new FPS evidence.
 
 **VIDEO-02 (T1 only, 2026-11-21):** [natural movie EOF clock wait](VIDEO02_FINAL_FRAME_AUDIO_CLOCK_LIVENESS_2026-11-21_WIP.md) in frozen `port/video.c` L310–323 can wait indefinitely if `movie_time` never reaches the target without audio_error; late START/CIRCLE not polled in hold. Separate from VIDEO-01 cleanup wait. Test natural/late-skip/muted/back-to-back T2 then T3; rollback on tail truncation, transitions, leaks. Not a confirmed device hang.
+
+
+**VIDEO-03 (T1, 2026-11-21):** [movie display ACK vs completion](VIDEO03_MOVIE_DISPLAY_ACK_AND_COMPLETION_COUNTER_2026-11-21_WIP.md), frozen `port/video.c` L282–311. Display API return ignored before `shown`/callback/EOF; conditional failed-ACK impact T0, no T2/T3. Baseline normal/skip/muted/back-to-back negative controls; later failure injection, bounded ACK telemetry, rollback for video stalls or story-transition changes. Not a measured frame-present failure.
