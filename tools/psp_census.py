@@ -697,11 +697,11 @@ def p4_wheel01_patch(text):
     This is not a tested UI correction; text/selection strip require separate A/B.
     Fail closed when upstream source no longer matches the pinned original.
     """
-    signature = "void btlSelectionDrawCommands(u8 *selection, s32 workAddress, u8 *drawState)\\n{"
+    signature = "void btlSelectionDrawCommands(u8 *selection, s32 workAddress, u8 *drawState)\n{"
     if text.count(signature) != 1:
         raise RuntimeError("P4_WHEEL01: expected exactly one command-wheel function")
     start = text.index(signature)
-    end = text.find("\\n}\\n", start + len(signature))
+    end = text.find("\n}\n", start + len(signature))
     if end < 0:
         raise RuntimeError("P4_WHEEL01: function terminator missing")
     end += 3
