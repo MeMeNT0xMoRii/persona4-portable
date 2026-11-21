@@ -372,3 +372,5 @@ New [exact source T1 + tested timeline](SEC01R_FLIP_SEQUENCE_FRAMEBUFFER_PAIR_AC
 
 
 **VIDEO-03 (2026-11-21 04:00 CET, T1):** [movie display acknowledgement audit](VIDEO03_MOVIE_DISPLAY_ACK_AND_COMPLETION_COUNTER_2026-11-21_WIP.md): frozen `port/video.c::p4_video_play` L282–311 ignores `sceDisplaySetFrameBuf` return yet increments `shown`, invokes `p4_video_on_frame` and accepts EOF `shown == h.frames`. Failure occurrence/visible effect T0; no T2/T3. Keep VIDEO medium behind B0/SEC-01/D1/saves, log return with decoded/submitted/accepted counters, preserve skip/EOF and callback semantics; do not confuse with main GE flip SEC-01r.
+
+**SAVE-IO-01 (2026-11-21 05:00 CET, T1):** Frozen `port/memcard.c::func_00432288` L139–187 calls `sync_card()` *after* successful `.tmp`→primary rename, and may report `MC_IO` while new primary is already installed. This is ambiguous durability/return, not demonstrated corruption. [Focused fault-injection protocol](SAVEIO01_POST_RENAME_SYNC_AMBIGUOUS_COMMIT_2026-11-21_WIP.md). Preserve existing perf06 ms0/ef0 sync; test negative controls before altering transaction semantics.
