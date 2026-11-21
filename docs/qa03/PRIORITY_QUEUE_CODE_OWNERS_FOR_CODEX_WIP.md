@@ -1,5 +1,8 @@
 # QA03 — Authoritative rolling priority queue + reproducible original/PSP code-owner registry for Codex
 
+**SAVE-IO-02 (2026-11-21 08:00 CET, T1/T0):** Frozen `port/memcard.c::open_saved` L102–110 retries `.bak` only on `ENOENT`; `func_00431f28` L132–143 short read reports `MC_IO` without backup retry, even if backup exists. Recovery policy limitation, not proven corruption or PSP Go fault; verify original serialization validity before changes. [Source/falsifier/negative controls/rollback](SAVEIO02_BACKUP_RECOVERY_ONLY_ENOENT_2026-11-21_WIP.md). Below B0/SEC-01/D1/P0; separate from SAVE-IO-01.
+
+
 **AUDIO-BANK-02 (2026-11-21 07:00 CET, T1/T0):** Frozen `port/audio.c::process_commands` CMD_BANK stops all old-bank sequences/voices before `bank_copy_step` can fail and retain the old bank; potential audible interruption, not reproduced or proven contrary to Vanilla. [Source/test/falsifier/rollback](AUDIOBANK02_PRECOMMIT_VOICE_STOP_FAILURE_2026-11-21_WIP.md). Keep distinct from AUDIO-BANK-01, below B0/SEC-01/D1.
 
 
