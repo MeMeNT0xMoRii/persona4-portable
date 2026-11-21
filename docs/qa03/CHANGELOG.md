@@ -328,3 +328,6 @@ Report created commit e2cdc59373f4269fcaec6a8428a6acf8d9b8fcda and Node-executio
 - 2026-11-21 02:00 CET: VIDEO-01 source-only conditional audio drain/cleanup hang path in frozen `port/video.c`, [analysis](VIDEO01_AUDIO_DRAIN_LIVENESS_2026-11-21_WIP.md); no runtime edits or execution.
 
 - 2026-11-21 ~03:00 CET: VIDEO-02 source-only T1: frozen `port/video.c` natural EOF final-frame audio-clock wait has no deadline or input polling, preceding VIDEO-01 worker cleanup; [source, falsifier and rollback](VIDEO02_FINAL_FRAME_AUDIO_CLOCK_LIVENESS_2026-11-21_WIP.md). No game changes, T2/T3 or hardware FPS claims.
+
+
+- 2026-11-21 ~04:00 CET: VIDEO-03 T1 source-only: frozen `port/video.c` movie display return is unchecked before `shown`/callback/EOF. Conditional failed-ACK impact not reproduced; [WIP](VIDEO03_MOVIE_DISPLAY_ACK_AND_COMPLETION_COUNTER_2026-11-21_WIP.md). No runtime change, build, T2/T3 or private upload.
