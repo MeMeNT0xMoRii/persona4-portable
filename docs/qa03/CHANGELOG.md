@@ -1,5 +1,7 @@
 # QA03 planning log and decision ledger
 
+**AUDIO-BANK-01 (2026-11-21 ~06:00 CET, T1/T0):** Frozen `port/audio.c::p4_audio_bank_ready` L169–172 returns true for FAILED state=4 (`state>=3`), which `bank_request` L172–182 and `bank_copy_step` L215–250 set on failure; `effect_start` L352–355 can then use an existing old bank if present. Whether retaining old bank is intended is UNVERIFIED; no T2/T3. [Focused source-owner/test/rollback note](AUDIOBANK01_FAILED_REQUEST_REPORTED_READY_2026-11-21_WIP.md). Below B0/SEC-01/D1; no native changes.
+
 **Purpose:** Publicly track *planning/documentation* changes for the 19–21 November 2026 period. Do not imply a shipped runtime or new hardware acceptance. Appended change records and exact Git commits provide provenance.
 
 | Date | Change | Basis / status |
