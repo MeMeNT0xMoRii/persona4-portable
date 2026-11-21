@@ -326,3 +326,5 @@ Report created commit e2cdc59373f4269fcaec6a8428a6acf8d9b8fcda and Node-executio
 - 2026-11-20 22:00 CET SEC-01s (T1 source): signed `sceGuGetMemory` wrapper size arithmetic can overflow before capacity check; new [source-pinned negative-control and fail-closed contract](SEC01S_SIGNED_GETMEMORY_SIZE_2026-11-20_WIP.md). Docs only; no fix, build, test or FPS claim.
 
 - 2026-11-21 02:00 CET: VIDEO-01 source-only conditional audio drain/cleanup hang path in frozen `port/video.c`, [analysis](VIDEO01_AUDIO_DRAIN_LIVENESS_2026-11-21_WIP.md); no runtime edits or execution.
+
+- 2026-11-21 ~03:00 CET: VIDEO-02 source-only T1: frozen `port/video.c` natural EOF final-frame audio-clock wait has no deadline or input polling, preceding VIDEO-01 worker cleanup; [source, falsifier and rollback](VIDEO02_FINAL_FRAME_AUDIO_CLOCK_LIVENESS_2026-11-21_WIP.md). No game changes, T2/T3 or hardware FPS claims.
