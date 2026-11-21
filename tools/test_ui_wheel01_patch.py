@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TOOL = ROOT / "tools" / "psp_census.py"
 ORIGINAL = ROOT / "ext" / "Persona4-Decompilation" / "src" / "Battle" / "btlEffect_inferred_00202c60.c"
-SIGNATURE = "void btlSelectionDrawCommands(u8 *selection, s32 workAddress, u8 *drawState)\\n{"
+SIGNATURE = "void btlSelectionDrawCommands(u8 *selection, s32 workAddress, u8 *drawState)\n{"
 OLD_LINES = (
     "circle.center.x = 96.0f + translationX;",
     "circle.center.y = 318.0f + offsetY;",
@@ -36,8 +36,8 @@ def load_patch():
 
 def test_fixture(patch):
     # The synthetic source has a second, unrelated region to verify scope.
-    body = SIGNATURE + "\\n    " + "\\n    ".join(OLD_LINES) + "\\n}\\n"
-    source = "/* before */\\n" + body + "\\n/* after */\\n"
+    body = SIGNATURE + "\n    " + "\n    ".join(OLD_LINES) + "\n}\n"
+    source = "/* before */\n" + body + "\n/* after */\n"
     result = patch(source)
     expected = source
     for old, new in zip(OLD_LINES, NEW_LINES):
@@ -45,10 +45,10 @@ def test_fixture(patch):
         expected = expected.replace(old, new, 1)
     assert result == expected, "Unexpected changes outside the five wheel expressions"
     assert patch(source) == result, "Patch not deterministic"
-    for broken in (source.replace(SIGNATURE, "void wrong(void)\\n{", 1),
+    for broken in (source.replace(SIGNATURE, "void wrong(void)\n{", 1),
                    source + body,
                    source.replace(OLD_LINES[0], "", 1),
-                   source.replace(OLD_LINES[0], OLD_LINES[0] + "\\n    " + OLD_LINES[0], 1)):
+                   source.replace(OLD_LINES[0], OLD_LINES[0] + "\n    " + OLD_LINES[0], 1)):
         try:
             patch(broken)
         except RuntimeError:
