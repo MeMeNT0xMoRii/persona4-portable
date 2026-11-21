@@ -1,5 +1,13 @@
 # Persona 4 for PSP
 
+## Current fork development — 21 November 2026
+
+**Persona4-PORTABLE is still an experimental work in progress.** The fork's most recent documented test baseline is **v0.27-dev-perf06** (based on the later b249 code lineage). The next planned development candidate is **v0.27-dev-RESONANCE01**, focusing on PSP Go stability, GE/rendering safety, diagnostic logging, performance and selective 16:9 UI corrections. **RESONANCE01 has not been built, validated or released.** Hardware results from older builds should not be interpreted as measurements of this candidate.
+
+Active fork development and QA documentation: **[dev/v0.27-perf06](https://github.com/MeMeNT0xMoRii/persona4-portable/tree/dev/v0.27-perf06)** · [current QA/status notes](https://github.com/MeMeNT0xMoRii/persona4-portable/blob/dev/v0.27-perf06/docs/qa03/README.md).
+
+**Important:** The default-branch instructions below describe the older **b176 upstream-era source snapshot**. The linked b176 preparation download builds that upstream version, **not the current Persona4-PORTABLE fork**. For later fork code and its separate build requirements, consult the development branch. Do not treat this repository as offering a new public RESONANCE01 binary.
+
 An experimental native PSP port of **Shin Megami Tensei: Persona 4** (PlayStation 2, USA, `SLUS_217.82`). The port combines recovered C, locally translated retail routines and PSP implementations of graphics, input, files, saves, audio and movie playback.
 
 You must supply your own legally obtained USA disc image. Game executables, archives, music, voices, movies and generated game data are not included in the source repository.
@@ -8,7 +16,7 @@ You must supply your own legally obtained USA disc image. Game executables, arch
 
 Use the **source-build** preparation package: extract the entire archive, run `Prepare P4.exe`, select your original USA ISO and an output folder, then copy the resulting `P4` folder to `PSP/GAME/` on your memory card. The utility downloads the PSP compiler on the first build; no separate Python or PSPDEV setup is needed. See [the preparation guide](docs/prepare_game.md) for building the package and using it.
 
-Download **P4-PSP-b176-windows-x64.zip** from the [b176 pre-release](https://github.com/dreikk91/persona4-psp/releases/tag/b176). The utility compiles EBOOT and matching data locally from your ISO and pinned upstream sources. It needs Internet access for the first upstream download, or a verified offline source ZIP. The older prebuilt-EBOOT b164 download was withdrawn.
+**Historical upstream b176 preparation package (not the current fork):** Download **P4-PSP-b176-windows-x64.zip** from the [b176 pre-release](https://github.com/dreikk91/persona4-psp/releases/tag/b176). The utility compiles EBOOT and matching data locally from your ISO and pinned upstream sources. It needs Internet access for the first upstream download, or a verified offline source ZIP. The older prebuilt-EBOOT b164 download was withdrawn.
 
 ## Build and install
 
@@ -20,11 +28,11 @@ The b176 utility was checked by a clean `--build-only` build from the release pa
 
 The [source-build utility validation](docs/source_build_validation_b164.md) also covers the frozen Windows runtime, build caching and hidden compiler processes.
 
-The current working-tree build is **b176**. The source build currently targets Windows and a Windows PSPSDK toolchain. A PSP with 64 MB RAM and firmware capable of running homebrew is required; PSP-1000 support is not established.
+The default-branch source snapshot here is **b176**, not the later perf06 fork baseline. The source build currently targets Windows and a Windows PSPSDK toolchain. A PSP with 64 MB RAM and firmware capable of running homebrew is required; PSP-1000 support is not established.
 
-## Status
+## Historical b176 status (default branch)
 
-This is a work in progress, with hardware testing of selected scenes, saves, battles and movie transitions. It has not been validated through a complete playthrough.
+The observations in this section concern earlier b176-era development; they are **not** RESONANCE01 results. This is a work in progress, with hardware testing of selected scenes, saves, battles and movie transitions. It has not been validated through a complete playthrough.
 
 - Graphics run through PSP GU/GE, with clipping, mesh caches, hardware skinning and widescreen adaptations.
 - Some scenes, including Dojima's room, have reached about 30 FPS on hardware at 333 MHz. Heavy scenes remain slower. Frameskip aims to keep the game clock near real time; this does not mean 30 displayed frames per second everywhere.
