@@ -1,5 +1,8 @@
 # QA03 planning log and decision ledger
 
+- **2026-11-21 ~13:00 CET FINAL QA03:** [Bounded RESONANCE01 signoff](RESONANCE01_FINAL_2026-11-21_1300_CET_SIGNOFF.md), commit `4c84276889d7076d520022552a480e8525c93681`. G0 conditional GO only; release/PSP Go NO-GO pending B0/SEC-01/D1/T2/T3. GitHub QA09–QA18 and pinned source sampled; full docs inventory/link check and private binaries NOT REVIEWED. No native edits/builds.
+
+
 **SAVE-IO-02 (2026-11-21 08:00 CET, T1/T0):** Frozen `port/memcard.c::open_saved` L102–110 retries `.bak` only on `ENOENT`; `func_00431f28` L132–143 short read reports `MC_IO` without backup retry, even if backup exists. Recovery policy limitation, not proven corruption or PSP Go fault; verify original serialization validity before changes. [Source/falsifier/negative controls/rollback](SAVEIO02_BACKUP_RECOVERY_ONLY_ENOENT_2026-11-21_WIP.md). Below B0/SEC-01/D1/P0; separate from SAVE-IO-01.
 
 
