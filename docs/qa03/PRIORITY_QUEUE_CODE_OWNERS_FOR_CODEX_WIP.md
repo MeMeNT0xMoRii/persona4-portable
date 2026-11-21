@@ -1,4 +1,6 @@
 # QA03 — Authoritative rolling priority queue + reproducible original/PSP code-owner registry for Codex
+
+**AUDIO-BANK-01 (2026-11-21 ~06:00 CET, T1/T0):** Frozen `port/audio.c::p4_audio_bank_ready` L169–172 returns true for FAILED state=4 (`state>=3`), which `bank_request` L172–182 and `bank_copy_step` L215–250 set on failure; `effect_start` L352–355 can then use an existing old bank if present. Whether retaining old bank is intended is UNVERIFIED; no T2/T3. [Focused source-owner/test/rollback note](AUDIOBANK01_FAILED_REQUEST_REPORTED_READY_2026-11-21_WIP.md). Below B0/SEC-01/D1; no native changes.
 2026-11-19. This is a **living research index** and one-stop first-read alongside HANDOFF_LIVE.md; never mistake a T1 code reading for an implemented or tested fix. Baseline game executable source commit **29b0fcfdec70222a4052099b67fb4a11e8d8aff4** on branch **dev/v0.27-perf06** (later docs commits do not automatically create a newer EBOOT). Original PS2 decomp pinned **Raikaru/Persona4-Decompilation@363eab8a966d60a9773b45f330f2344329ec4f0a**. Upstream PSP **dreikk91/persona4-psp@b388**, PC original-source reference **Raikaru/Izanagi@bfb12b6896955b626cc45254c92e8b76789ae147**. Golden 120 pairs are private and geometry-only reference. All links below identify source; reread at exact commit before edits.
 
 ## How to use with Codex/Work and the hourly research run
