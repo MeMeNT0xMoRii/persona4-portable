@@ -324,3 +324,5 @@ Report created commit e2cdc59373f4269fcaec6a8428a6acf8d9b8fcda and Node-executio
 - Added scoped on-demand SEC-01r reference to current starter/master/adversarial matrix and queue/QA/README, no original game runtime changes, EBOOT, PSP Go or PPSSPP game session. Continued unchanged P0 complete GE list bounds+retirement, conditional hard-stop on unsafe hardware promotion, D1 first. User **explicitly updated existing P4P hourly automation** final 2026-11-21 ~13:00 CET run to inventory ALL GitHub docs and check full canonical master/links/coverage/safety, report final GO/NO-GO before 13:30; schedule preserved through 13:30 cutoff. Last GitHub write HANDOFF.
 
 - 2026-11-20 22:00 CET SEC-01s (T1 source): signed `sceGuGetMemory` wrapper size arithmetic can overflow before capacity check; new [source-pinned negative-control and fail-closed contract](SEC01S_SIGNED_GETMEMORY_SIZE_2026-11-20_WIP.md). Docs only; no fix, build, test or FPS claim.
+
+- 2026-11-21 02:00 CET: VIDEO-01 source-only conditional audio drain/cleanup hang path in frozen `port/video.c`, [analysis](VIDEO01_AUDIO_DRAIN_LIVENESS_2026-11-21_WIP.md); no runtime edits or execution.
