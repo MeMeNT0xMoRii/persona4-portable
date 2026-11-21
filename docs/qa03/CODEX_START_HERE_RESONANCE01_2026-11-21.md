@@ -2,6 +2,8 @@
 
 **Status 20 Nov 2026:** Documentation-only, **not** an instruction to execute until the user explicitly starts/approves the Saturday Codex development assignment. This is a compact dispatcher, **not a replacement** for source proofs or the full [Codex execution masterprompt](RESONANCE01_CODEX_MASTERPROMPT_2026-11-21_READY_DRAFT.md). The former [MASTERPROMPT_WIP.md](MASTERPROMPT_WIP.md) is historical/archived; **DO NOT submit it as the Saturday execution prompt**. Skip historical daily append-only transcripts unless a specific evidence conflict requires them.
 
+**QA16 optional shorter bootstrap for user-initiated 13:30 session:** [RESONANCE01 CODEX LAUNCH CARD](RESONANCE01_CODEX_LAUNCH_CARD_2026-11-21.md) can run **G0 only** before loading this 28 KB starter and 59 KB canonical master; once the environment is confirmed, the full requirements below remain binding. This saves unnecessary prompt/credit context on missing private toolchain/ISO; does not skip QA13/QA15, real final ELF map, GE P0, release/QA07 or PPSSPP/Go acceptance. All 10 relative launch-card doc links verified from live GitHub.
+
 ## The absolute minimum startup context (read once)
 
 1. **THIS page** (~short); [RESONANCE01 current execution masterprompt](RESONANCE01_CODEX_MASTERPROMPT_2026-11-21_READY_DRAFT.md), which defines actual execution/verification authority, stages and required outputs. Do not recursively open every page it mentions immediately.
