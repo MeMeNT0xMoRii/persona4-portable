@@ -335,3 +335,5 @@ Report created commit e2cdc59373f4269fcaec6a8428a6acf8d9b8fcda and Node-executio
 - 2026-11-21 ~04:00 CET: VIDEO-03 T1 source-only: frozen `port/video.c` movie display return is unchecked before `shown`/callback/EOF. Conditional failed-ACK impact not reproduced; [WIP](VIDEO03_MOVIE_DISPLAY_ACK_AND_COMPLETION_COUNTER_2026-11-21_WIP.md). No runtime change, build, T2/T3 or private upload.
 
 - 2026-11-21 05:00 CET QA03 SAVE-IO-01: static source review of frozen `port/memcard.c::func_00432288` found ambiguous post-rename sync failure/return contract; documented fault-injection and rollback, no native changes or hardware claim. [Note](SAVEIO01_POST_RENAME_SYNC_AMBIGUOUS_COMMIT_2026-11-21_WIP.md).
+
+- 2026-11-21 07:00 CET — AUDIO-BANK-02 T1: frozen audio CMD_BANK stops old-bank voices before asynchronous replacement can fail; retained old bank may have interrupted cues. Original semantics and player impact T0; no game code/build/T2/T3. [Focused note](AUDIOBANK02_PRECOMMIT_VOICE_STOP_FAILURE_2026-11-21_WIP.md).
