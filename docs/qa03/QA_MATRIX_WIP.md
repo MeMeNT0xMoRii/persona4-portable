@@ -448,3 +448,5 @@ All current source evidence **T1**, no build/PPSSPP T2/Go T3 performed in this p
 
 
 **VIDEO-03 (T1, 2026-11-21):** [movie display ACK vs completion](VIDEO03_MOVIE_DISPLAY_ACK_AND_COMPLETION_COUNTER_2026-11-21_WIP.md), frozen `port/video.c` L282–311. Display API return ignored before `shown`/callback/EOF; conditional failed-ACK impact T0, no T2/T3. Baseline normal/skip/muted/back-to-back negative controls; later failure injection, bounded ACK telemetry, rollback for video stalls or story-transition changes. Not a measured frame-present failure.
+
+- **SAVE-IO-01 — T1 / T2 NOT RUN / T3 NOT RUN:** post-rename `sceIoSync` failure may return `MC_IO` with new primary installed; inject each transaction-stage failure in isolated host harness; normal save, backup fallback, HOME and ms0/ef0 negative controls. See [source note](SAVEIO01_POST_RENAME_SYNC_AMBIGUOUS_COMMIT_2026-11-21_WIP.md). No source fix approved.
