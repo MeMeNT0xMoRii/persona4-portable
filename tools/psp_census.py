@@ -689,7 +689,43 @@ ASM_FIXES = {
 }
 
 
+
+def p4_wheel01_patch(text):
+    """Opt-in wheel geometry experiment, ONLY btlSelectionDrawCommands.
+
+    Never change the global 2D projection, other fan callers or original assets.
+    This is not a tested UI correction; text/selection strip require separate A/B.
+    Fail closed when upstream source no longer matches the pinned original.
+    """
+    signature = "void btlSelectionDrawCommands(u8 *selection, s32 workAddress, u8 *drawState)\\n{"
+    if text.count(signature) != 1:
+        raise RuntimeError("P4_WHEEL01: expected exactly one command-wheel function")
+    start = text.index(signature)
+    end = text.find("\\n}\\n", start + len(signature))
+    if end < 0:
+        raise RuntimeError("P4_WHEEL01: function terminator missing")
+    end += 3
+    body = text[start:end]
+    edits = (
+        ("circle.center.x = 96.0f + translationX;", "circle.center.x = 95.3333333f + translationX;"),
+        ("circle.center.y = 318.0f + offsetY;", "circle.center.y = 306.3529412f + offsetY;"),
+        ("shdDrawRadialFan(position, 150.0f, color.word, color.word, outlineGrowth * 81.0f, 0.0f, 0x30, 1.0f, 1.0f, 1);",
+         "shdDrawRadialFan(position, 150.0f, color.word, color.word, outlineGrowth * 81.0f, 0.0f, 0x30, 0.94871795f, 1.17194570f, 1);"),
+        ("shdDrawRadialFan(position, 150.0f, color.word, color.word, radius, 0.0f, 0x30, 1.0f, 1.0f, 1);",
+         "shdDrawRadialFan(position, 150.0f, color.word, color.word, radius, 0.0f, 0x30, 0.94871795f, 1.17194570f, 1);"),
+        ("shdDrawRadialFan(position, 150.0f, color.word, color.word, radius + 1.0f, 0.0f, 0x30, 1.0f, 1.0f, 1);",
+         "shdDrawRadialFan(position, 150.0f, color.word, color.word, radius + 1.0f, 0.0f, 0x30, 0.94871795f, 1.17194570f, 1);"),
+    )
+    for old, new in edits:
+        if body.count(old) != 1:
+            raise RuntimeError("P4_WHEEL01: nonunique or missing source pattern: " + old)
+        body = body.replace(old, new, 1)
+    return text[:start] + body + text[end:]
+
+
 def shim(text, rel=""):
+    if rel == "src/Battle/btlEffect_inferred_00202c60.c" and os.environ.get("P4_WHEEL01") == "1":
+        text = p4_wheel01_patch(text)
     if rel in ("src/itfMsgProcedure_Window.c", "src/itfMsgProcedure_Window_inferred_0027bec0.c"):
         # The TV forecast uses its own depth mask for each animated weather card.
         text = text.replace("calDrawWeather(", "p4_forecast_weather(")
