@@ -1,5 +1,8 @@
 # Unified QA, bug and proposed fix matrix (WIP)
 
+**AUDIO-BANK-02 (2026-11-21 07:00 CET, T1/T0):** Frozen `port/audio.c::process_commands` CMD_BANK stops all old-bank sequences/voices before `bank_copy_step` can fail and retain the old bank; potential audible interruption, not reproduced or proven contrary to Vanilla. [Source/test/falsifier/rollback](AUDIOBANK02_PRECOMMIT_VOICE_STOP_FAILURE_2026-11-21_WIP.md). Keep distinct from AUDIO-BANK-01, below B0/SEC-01/D1.
+
+
 **AUDIO-BANK-01 (2026-11-21 ~06:00 CET, T1/T0):** Frozen `port/audio.c::p4_audio_bank_ready` L169–172 returns true for FAILED state=4 (`state>=3`), which `bank_request` L172–182 and `bank_copy_step` L215–250 set on failure; `effect_start` L352–355 can then use an existing old bank if present. Whether retaining old bank is intended is UNVERIFIED; no T2/T3. [Focused source-owner/test/rollback note](AUDIOBANK01_FAILED_REQUEST_REPORTED_READY_2026-11-21_WIP.md). Below B0/SEC-01/D1; no native changes.
 
 **Baseline:** `dev/v0.27-perf06`, full game-source/manifest SHA required per A/B. **User approval:** documentation WIP only. **Evidence codes:** U=PSP-Go/user observation; I=120 paired images; S=static code/upstream notes; E=repeatable PPSSPP test; H=matched PSP-Go hardware A/B; ?=hypothesis. The latest 120 IDs replace all old Golden 71 IDs. Do not reinterpret unrelated screenshot indices.
