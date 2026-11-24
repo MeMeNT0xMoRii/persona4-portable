@@ -1,5 +1,7 @@
 # Persona4-PORTABLE — LIVE HANDOFF / CONTINUITY (WIP)
 
+- **2026-11-24 VELOCITY01 UI ALIGNMENT 03.** Privater Sammelbuild, Runtime ce3663f. Kampf-Layer, Camp, Status, Dungeon-Party, Dialoge und City-Labels aktualisiert. BGM_TRACE dokumentiert reproduzierbare Stream-Ereignisse. Native Prüfung, QA07 und gezielte Emulator-Smokes bestanden. PSP-Go-Abnahme und Musikursache offen. [Korrekturmatrix und QA](VELOCITY01_UI_ALIGNMENT_03_2026-11-24.md)
+
 - **2026-11-24 VELOCITY01 UI ALIGNMENT 02.** Privater Sammelbuild, Runtime 043724e. UI02 verfeinert Rad, Kampflisten, TV-Kontur, Camp, Ortsbalken, Minimap und Dialoge und ergänzt ausgewählte Persona-, S.Link-, Analyse- und Result-Teile. Striktes QA07 und der repräsentative Klassenraum-/Camp-Smoke bestanden. UI01-Rückweg lokal geprüft. PSP-Go-Abnahme des neuen Layouts steht aus. [Korrekturmatrix und QA](VELOCITY01_UI_ALIGNMENT_02_2026-11-24.md)
 
 - **2026-11-24 VELOCITY01 UI ALIGNMENT.** Privater PSP-Go-Sammelbuild ab World Lists `8a6c8e8`, Runtime `52c95f5`. Static Flat bleibt die einzige bisher nachgewiesene FPS-Verbesserung der Phase. Die Korrekturmatrix enthält Referenzkoordinaten für Battle-Untermenüs, Camp, Floor-Label und Save/Load, dazu Legacy-Schalter und Navigator-Diagnose. Hardware-QA des UI-Kandidaten offen. [Korrekturmatrix und Testumfang](VELOCITY01_UI_ALIGNMENT_2026-11-24.md) · [PSP-Go-Performanceabschluss](../VELOCITY01_PERFORMANCE_TRANSPLANT.md#abschluss-vor-ui-alignment--psp-go-junes-west-f009_004)
