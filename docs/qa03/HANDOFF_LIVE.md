@@ -1,5 +1,7 @@
 # Persona4-PORTABLE — LIVE HANDOFF / CONTINUITY (WIP)
 
+- **2026-11-24 VELOCITY01 STABILITY 01.** Privater PSP-Go-Kandidat, Runtime 669a07e. Raster-/RTT-Schutz, gezielte UI-Rückkorrekturen und optionale FPS-/SFX-Diagnose. Static Flat bleibt Standard. G2 P0_UNVERIFIED, Save/HOME und die schweren FPS-Einbrüche stehen zur Hardwareprüfung. Manuelle Fusion-Skillauswahl verbleibt außerhalb der bestätigten Funktionen. [Fehlermatrix und Hardware-QA](VELOCITY01_STABILITY_01_2026-11-24.md)
+
 - **2026-11-24 VELOCITY01 UI ALIGNMENT 03.** Privater Sammelbuild, Runtime ce3663f. Kampf-Layer, Camp, Status, Dungeon-Party, Dialoge und City-Labels aktualisiert. BGM_TRACE dokumentiert reproduzierbare Stream-Ereignisse. Native Prüfung, QA07 und gezielte Emulator-Smokes bestanden. PSP-Go-Abnahme und Musikursache offen. [Korrekturmatrix und QA](VELOCITY01_UI_ALIGNMENT_03_2026-11-24.md)
 
 - **2026-11-24 VELOCITY01 UI ALIGNMENT 02.** Privater Sammelbuild, Runtime 043724e. UI02 verfeinert Rad, Kampflisten, TV-Kontur, Camp, Ortsbalken, Minimap und Dialoge und ergänzt ausgewählte Persona-, S.Link-, Analyse- und Result-Teile. Striktes QA07 und der repräsentative Klassenraum-/Camp-Smoke bestanden. UI01-Rückweg lokal geprüft. PSP-Go-Abnahme des neuen Layouts steht aus. [Korrekturmatrix und QA](VELOCITY01_UI_ALIGNMENT_02_2026-11-24.md)
